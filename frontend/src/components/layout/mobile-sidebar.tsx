@@ -1,5 +1,3 @@
-"use client";
-
 import { useState } from "react";
 import { Menu } from "lucide-react";
 import { Sheet, SheetContent, SheetTrigger, SheetTitle } from "@/components/ui/sheet";

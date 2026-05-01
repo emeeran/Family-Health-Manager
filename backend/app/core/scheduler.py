@@ -50,11 +50,3 @@ async def stop_scheduler():
         await asyncio.gather(*_running_tasks, return_exceptions=True)
     _running_tasks.clear()
     logger.info("All scheduled jobs stopped")
-
-
-def get_job_status() -> list[dict]:
-    """Return status of all registered jobs."""
-    return [
-        {"name": name, "interval_seconds": interval, "running": any(not t.done() for t in _running_tasks)}
-        for name, (interval, _) in _jobs.items()
-    ]

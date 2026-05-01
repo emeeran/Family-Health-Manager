@@ -36,14 +36,6 @@ class TTLCache:
                 for k in keys_to_remove:
                     del self._store[k]
 
-    def stats(self) -> tuple[int, int]:
-        """Return (total_keys, expired_keys) for monitoring."""
-        now = time.monotonic()
-        with self._lock:
-            total = len(self._store)
-            expired = sum(1 for _, (exp, _) in self._store.items() if now > exp)
-        return total, expired
-
 
 # Shared cache instance — services can use this
 cache = TTLCache(default_ttl=300)

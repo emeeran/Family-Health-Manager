@@ -3,7 +3,7 @@ import logging
 from datetime import date
 from uuid import UUID
 
-from sqlalchemy import select, func, and_
+from sqlalchemy import select, func
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.health_alert import HealthAlert, AlertSeverity, AlertType
@@ -46,22 +46,6 @@ class HealthAlertService:
         self.db.add(alert)
         await self.db.flush()
         return alert
-
-    async def check_duplicate(
-        self, member_id: UUID, test_name: str, record_date: date
-    ) -> bool:
-        """Check if an alert already exists for this member/test/date."""
-        result = await self.db.execute(
-            select(HealthAlert).where(
-                and_(
-                    HealthAlert.family_member_id == str(member_id),
-                    HealthAlert.test_name == test_name,
-                    HealthAlert.is_dismissed.is_(False),
-                    func.date(HealthAlert.created_at) == record_date,
-                )
-            ).limit(1)
-        )
-        return result.scalar_one_or_none() is not None
 
     async def batch_check_duplicates(
         self, member_id: UUID

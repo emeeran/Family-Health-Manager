@@ -58,30 +58,3 @@ export function extractSummary(record: HealthRecordResponse): string | null {
     return null;
   }
 }
-
-export function extractParkinsonsSummary(record: HealthRecordResponse): string | null {
-  try {
-    const parsed = JSON.parse(record.clinical_data);
-    if (parsed._type !== "structured" || parsed._recordType !== "parkinsons_log") return null;
-    const parts: string[] = [];
-    const motorLabels: Record<string, string> = {
-      on: "ON",
-      off: "OFF",
-      wearing_off: "Wearing Off",
-      dyskinesia: "Dyskinesia",
-    };
-    if (parsed.motor_state) parts.push(motorLabels[parsed.motor_state] || parsed.motor_state);
-    const symptoms: string[] = [];
-    if (parsed.tremor_severity && parsed.tremor_severity !== "none")
-      symptoms.push(`Tremor: ${parsed.tremor_severity}`);
-    if (parsed.rigidity && parsed.rigidity !== "none") symptoms.push(`Rigid: ${parsed.rigidity}`);
-    if (parsed.bradykinesia && parsed.bradykinesia !== "none")
-      symptoms.push(`Slow: ${parsed.bradykinesia}`);
-    if (parsed.gait_balance && parsed.gait_balance !== "normal")
-      symptoms.push(`Gait: ${parsed.gait_balance}`);
-    if (symptoms.length) parts.push(symptoms.join(" · "));
-    return parts.length > 0 ? parts.join("  |  ") : null;
-  } catch {
-    return null;
-  }
-}

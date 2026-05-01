@@ -15,10 +15,6 @@ export function register(data: LoginRequest) {
   });
 }
 
-export function logout() {
-  return apiRequest<{ message: string }>("/auth/logout", { method: "POST" });
-}
-
 export function getMe() {
   return apiRequest<UserResponse>("/auth/me");
 }

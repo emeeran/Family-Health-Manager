@@ -1,5 +1,3 @@
-"use client";
-
 import React, { useMemo, type ComponentType } from "react";
 import {
   Flame,

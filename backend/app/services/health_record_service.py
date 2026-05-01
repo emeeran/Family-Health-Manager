@@ -1,7 +1,7 @@
 """Health record service."""
 from datetime import date, datetime, timedelta, time, timezone
 from uuid import UUID
-from sqlalchemy import select, func, tuple_
+from sqlalchemy import select, tuple_
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import joinedload
 import base64
@@ -337,30 +337,3 @@ class HealthRecordService:
             if _has_lab_data(r.clinical_data, r.record_type)
         ]
 
-    async def get_total_count(self, member_id: UUID) -> int:
-        """Get total count of records for a member."""
-        result = await self.db.execute(
-            select(func.count()).where(
-                HealthRecord.family_member_id == member_id,
-                HealthRecord.is_deleted.is_(False),
-            )
-        )
-        return result.scalar() or 0
-
-    async def list_household_records(
-        self, member_ids: list[UUID], limit: int = 100
-    ) -> list[HealthRecord]:
-        """List records for all given member IDs in a single query."""
-        if not member_ids:
-            return []
-        result = await self.db.execute(
-            select(HealthRecord)
-            .options(joinedload(HealthRecord.provider), joinedload(HealthRecord.attachments))
-            .where(
-                HealthRecord.family_member_id.in_(member_ids),
-                HealthRecord.is_deleted.is_(False),
-            )
-            .order_by(HealthRecord.record_date.desc(), HealthRecord.created_at.desc())
-            .limit(limit)
-        )
-        return list(result.scalars().unique().all())

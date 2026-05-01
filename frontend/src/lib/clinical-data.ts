@@ -169,10 +169,3 @@ export function getDefaultTableData(
   }
   return data;
 }
-
-/** Legacy helper — returns rows for first table only */
-export function getDefaultTableRows(config: RecordTypeConfig): Record<string, string>[] {
-  const data = getDefaultTableData(config);
-  const keys = Object.keys(data);
-  return keys.length > 0 ? data[keys[0]] : [];
-}

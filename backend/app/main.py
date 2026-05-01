@@ -33,7 +33,7 @@ from app.routers import (
     notifications,
     audit,
     backup,
-    medication_router,
+    medications,
     vaccinations,
     smart_entry,
     smart_search,
@@ -261,7 +261,7 @@ app.include_router(reminders.router, prefix="/api/v1")
 app.include_router(notifications.router, prefix="/api/v1")
 app.include_router(audit.router, prefix="/api/v1")
 app.include_router(backup.router, prefix="/api/v1")
-app.include_router(medication_router.router, prefix="/api/v1")
+app.include_router(medications.router, prefix="/api/v1")
 app.include_router(vaccinations.router, prefix="/api/v1")
 app.include_router(smart_entry.router, prefix="/api/v1")
 app.include_router(smart_search.router, prefix="/api/v1")

@@ -1,7 +1,6 @@
 """Family member service."""
 import json
 import logging
-import re
 from datetime import datetime, timezone
 from uuid import UUID
 from sqlalchemy import select
@@ -12,26 +11,6 @@ from app.models.base import FamilyMember, HealthRecord, RecordType, Gender, Rela
 from app.schemas.family_member import MedicalHistoryQuestionnaire
 
 logger = logging.getLogger(__name__)
-
-
-def _parse_duration(duration_str: str | None) -> int:
-    """Parse duration string into days. Returns 30 if unparseable."""
-    if not duration_str:
-        return 30
-    text = str(duration_str).strip().lower()
-    m = re.match(r"([0-9]+)\s*days?", text)
-    if m:
-        return int(m.group(1))
-    m = re.match(r"([0-9]+)\s*weeks?", text)
-    if m:
-        return int(m.group(1)) * 7
-    m = re.match(r"([0-9]+)\s*months?", text)
-    if m:
-        return int(m.group(1)) * 30
-    m = re.match(r"([0-9]+)$", text)
-    if m:
-        return int(m.group(1))
-    return 30
 
 
 class MemberService:
@@ -158,27 +137,6 @@ class MemberService:
         member = await self.get_member(household_id, member_id)
         member.is_active = False
         await self.db.flush()
-
-    async def get_brief_medical_history(self, member_id: UUID) -> dict:
-        """Get brief medical history summary for dashboard."""
-        result = await self.db.execute(
-            select(FamilyMember).where(FamilyMember.id == member_id)
-        )
-        member = result.scalar_one_or_none()
-        if not member:
-            raise ValueError("Member not found")
-
-        history = {"conditions": [], "allergies": [], "active_medications": []}
-        if member.medical_history_summary:
-            for part in member.medical_history_summary.split("; "):
-                for key in ["Conditions", "Allergies"]:
-                    if part.startswith(f"{key}:"):
-                        history[key.lower()] = [
-                            x.strip() for x in part.replace(f"{key}:", "").split(",")
-                        ]
-
-        history["active_medications"] = await self.get_active_medications(member_id)
-        return history
 
     async def get_active_medications(self, member_id: UUID) -> list[dict]:
         """Get current medications for a member.

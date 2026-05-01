@@ -19,6 +19,12 @@ interface ApiOptions {
 
 const REQUEST_TIMEOUT = 30_000;
 
+function handleUnauthorized(): never {
+  fetch(`${API_BASE_URL}/auth/logout`, { method: "POST", credentials: "include" }).catch(() => {});
+  window.location.href = "/login";
+  throw new ApiError(401, { message: "Session expired" });
+}
+
 export async function apiRequest<T>(path: string, options: ApiOptions = {}): Promise<T> {
   const { method = "GET", body, params, isFormData = false } = options;
 
@@ -50,14 +56,7 @@ export async function apiRequest<T>(path: string, options: ApiOptions = {}): Pro
       credentials: "include",
     });
 
-    if (response.status === 401) {
-      // Clear any stale state and redirect to login
-      fetch(`${API_BASE_URL}/auth/logout`, { method: "POST", credentials: "include" }).catch(
-        () => {}
-      );
-      window.location.href = "/login";
-      throw new ApiError(401, { message: "Session expired" });
-    }
+    if (response.status === 401) handleUnauthorized();
 
     if (!response.ok) {
       const error = await response.json().catch(() => ({
@@ -113,13 +112,7 @@ export async function streamRequest(
       credentials: "include",
     });
 
-    if (response.status === 401) {
-      fetch(`${API_BASE_URL}/auth/logout`, { method: "POST", credentials: "include" }).catch(
-        () => {}
-      );
-      window.location.href = "/login";
-      throw new ApiError(401, { message: "Session expired" });
-    }
+    if (response.status === 401) handleUnauthorized();
 
     if (!response.ok) {
       const error = await response.json().catch(() => ({

@@ -11,7 +11,6 @@ import type {
   RecordInsightResponse,
 } from "../types/health-record";
 import type { RecordType } from "../types/enums";
-import type { VerificationResult } from "../types/message";
 
 export function listRecords(
   memberId: string,
@@ -152,17 +151,4 @@ export function smartSearchRecords(query: string) {
 
 export function getRecordInsight(memberId: string, recordId: string) {
   return apiRequest<RecordInsightResponse>(`/members/${memberId}/records/${recordId}/insight`);
-}
-
-export function regenerateRecordInsight(memberId: string, recordId: string) {
-  return apiRequest<RecordInsightResponse>(
-    `/members/${memberId}/records/${recordId}/regenerate-insight`,
-    { method: "POST" }
-  );
-}
-
-export function getInsightVerification(memberId: string, recordId: string) {
-  return apiRequest<VerificationResult>(
-    `/members/${memberId}/records/${recordId}/insight/verification`
-  );
 }

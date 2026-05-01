@@ -88,16 +88,18 @@ const PRESCRIPTION_TABLE: TableRowDef = {
   ],
 };
 
+const LAB_TEST_FIELDS: FieldDef[] = [
+  { key: "test_name", label: "Test", type: "text", required: true, placeholder: "e.g. HbA1c" },
+  { key: "result", label: "Result", type: "text", placeholder: "e.g. 8.9 %" },
+  { key: "ref_value", label: "Ref. Value", type: "text", placeholder: "e.g. 6.0 %" },
+  { key: "note", label: "Note", type: "text", placeholder: "e.g. High" },
+];
+
 const LAB_RESULTS_TABLE: TableRowDef = {
   key: "lab_results",
   label: "Lab Results",
   allowAddRemove: true,
-  fields: [
-    { key: "test_name", label: "Test", type: "text", required: true, placeholder: "e.g. HbA1c" },
-    { key: "result", label: "Result", type: "text", placeholder: "e.g. 8.9 %" },
-    { key: "ref_value", label: "Ref. Value", type: "text", placeholder: "e.g. 6.0 %" },
-    { key: "note", label: "Note", type: "text", placeholder: "e.g. High" },
-  ],
+  fields: LAB_TEST_FIELDS,
 };
 
 const DOCTOR_VISIT: RecordTypeConfig = {
@@ -158,12 +160,7 @@ const LAB_REPORT: RecordTypeConfig = {
     key: "tests",
     label: "Test Results",
     allowAddRemove: true,
-    fields: [
-      { key: "test_name", label: "Test", type: "text", required: true, placeholder: "e.g. HbA1c" },
-      { key: "result", label: "Result", type: "text", placeholder: "e.g. 8.9 %" },
-      { key: "ref_value", label: "Ref. Value", type: "text", placeholder: "e.g. 6.0 %" },
-      { key: "note", label: "Note", type: "text", placeholder: "e.g. High" },
-    ],
+    fields: LAB_TEST_FIELDS,
   },
   description: "Record laboratory test results.",
 };

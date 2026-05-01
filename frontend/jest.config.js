@@ -6,7 +6,7 @@ module.exports = {
   moduleNameMapper: {
     "^@/(.*)$": "<rootDir>/src/$1",
   },
-  setupFilesAfterSetup: ["<rootDir>/src/test-setup.ts"],
+  setupFilesAfterFramework: ["<rootDir>/src/test-setup.ts"],
   transform: {
     "^.+\\.tsx?$": [
       "ts-jest",

@@ -6,7 +6,8 @@ from uuid import uuid4
 import pytest
 from unittest.mock import AsyncMock, MagicMock
 
-from app.services.medication_service import MedicationService, _parse_duration
+from app.services.medication_service import MedicationService
+from app.core.parsing import parse_duration
 
 
 # ── _parse_duration ──────────────────────────────────────────────────
@@ -33,7 +34,7 @@ from app.services.medication_service import MedicationService, _parse_duration
     ],
 )
 def test_parse_duration(input_str, expected_days):
-    assert _parse_duration(input_str) == expected_days
+    assert parse_duration(input_str) == expected_days
 
 
 # ── MedicationService.get_active_medications ─────────────────────────

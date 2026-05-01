@@ -15,7 +15,6 @@ dependencies = [
     "pydantic>=2.12.5",
     "pydantic-settings>=2.13.1",
     "pymupdf>=1.27.2.2",
-    "python-dotenv>=1.2.2",
     "python-jose[cryptography]>=3.5.0",
     "python-multipart>=0.0.22",
     "sqlalchemy>=2.0.48",

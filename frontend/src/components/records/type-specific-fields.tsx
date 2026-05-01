@@ -1,5 +1,3 @@
-"use client";
-
 import { getTables } from "@/lib/record-type-configs";
 import type { RecordTypeConfig } from "@/lib/record-type-configs";
 import type { ExtractionBatch } from "@/lib/extraction-store";

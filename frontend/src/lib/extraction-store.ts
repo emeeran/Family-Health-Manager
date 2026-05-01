@@ -162,22 +162,7 @@ export function consumeBatch(
   return result;
 }
 
-/** Legacy compat: consume first available batch of a type. */
-export function consumeExtraction(
-  memberId: string,
-  type: "prescriptions" | "labTests" | "eyeglass"
-): Record<string, string>[] | Record<string, string> | null {
-  const batches = getBatchesForType(memberId, type);
-  if (batches.length === 0) return null;
-  return consumeBatch(memberId, batches[0].id, type);
-}
-
 /** Clear all stored extraction data for a member. */
 export function clearExtraction(memberId: string) {
   sessionStorage.removeItem(storageKey(memberId));
-}
-
-/** Check if any extraction data exists for a member. */
-export function hasExtractionData(memberId: string): boolean {
-  return loadExtraction(memberId) !== null;
 }

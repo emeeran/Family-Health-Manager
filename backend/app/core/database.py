@@ -1,7 +1,6 @@
 """Database engine and session management."""
 from collections.abc import AsyncGenerator
 from sqlalchemy.ext.asyncio import AsyncSession, create_async_engine, async_sessionmaker
-from sqlalchemy.orm import DeclarativeBase
 from app.core.config import get_settings
 
 settings = get_settings()
@@ -39,12 +38,6 @@ SessionLocal = async_sessionmaker(
     autocommit=False,
     autoflush=False,
 )
-
-
-class Base(DeclarativeBase):
-    """SQLAlchemy declarative base."""
-
-    pass
 
 
 async def create_tables():
@@ -90,8 +83,8 @@ async def get_db() -> AsyncGenerator[AsyncSession, None]:
 
 
 async def update_model(
-    db: AsyncSession, model: Base, allowed_fields: set[str] | None = None, **kwargs
-) -> Base:
+    db: AsyncSession, model: object, allowed_fields: set[str] | None = None, **kwargs
+) -> object:
     """Update model fields from kwargs and flush. Supports setting fields to None.
 
     If allowed_fields is provided, only those fields will be updated.

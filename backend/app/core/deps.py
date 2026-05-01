@@ -1,7 +1,6 @@
 """Dependency injection for routers."""
 import base64
 import json
-from dataclasses import dataclass
 from typing import Annotated
 from uuid import UUID
 from fastapi import Depends, HTTPException, Request
@@ -14,14 +13,6 @@ from app.models.base import User, Household, FamilyMember
 from app.services.member_service import MemberService
 
 security = HTTPBearer(auto_error=False)
-
-
-@dataclass
-class PaginationParams:
-    """Pagination parameters for list endpoints."""
-
-    cursor: str | None = None
-    limit: int = 20
 
 
 def decode_cursor(cursor: str | None) -> dict | None:
