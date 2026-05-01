@@ -1,0 +1,50 @@
+# Python
+__pycache__/
+*.py[cod]
+*.pyo
+.venv/
+*.egg-info/
+dist/
+build/
+original*/
+local/
+
+# Environment
+.env
+*.env.local
+
+# Editors
+.vscode/settings.json
+.idea/
+*.swp
+*~
+
+# Testing / Coverage
+.pytest_cache/
+.mypy_cache/
+htmlcov/
+.coverage
+
+# OS
+.DS_Store
+Thumbs.db
+
+# DB
+*.db
+*.sqlite3
+
+# Node
+node_modules/
+
+# App data (SQLite DB, uploads, etc.)
+backend/data/
+
+# Trash
+trash2review/
+
+# Claude Code
+.claude/
+
+# AI tool caches
+.cache_ggshield
+.qwen/

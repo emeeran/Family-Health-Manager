@@ -1,0 +1,404 @@
+=== FAMILY HEALTH SUMMARY ===
+
+--- Meeran Esmail ---
+DOB: 05-Jun-1967
+Conditions: Conditions: HT-2003,T2D-2008, Parkinson's Disease-2020; Surgeries: 1983-Appendectomy
+Blood Group: A+
+Recent Records (20):
+  [12-Apr-2026] DOCTOR_VISIT — T2DM, HYPERTENSION, PERIPHERAL NEUROPATHY, RIGHT MERALGIA PARESTHETICA, DEPRESSION--- From EM ARH 090426.pdf ---TYPE 2 DM
+    Complaint: Review
+    Postprandial Blood Glucose: 238 mg/dL (ref: 70-140 mg/dL) — High - diabetic range
+    Postprandial Blood Glucose: 238 mg/dL (ref: 70-140 mg/dL) — High - diabetic range
+    HbA1c: 8.9 % (ref: < 7.0 % (General Goal for Diabetic Patients)) — Elevated - above target
+    Estimated Average Glucose: 208.73 mg/dL (ref: 70-130 mg/dL (ADA guideline)) — High - diabetic range
+    Blood Urea: 26 mg/dl (ref: 15-40 mg/dl) — Normal
+    Blood Creatinine: 0.9 mg/dl (ref: 0.5-1.2 mg/dl) — Normal
+    e G F R: 98.39 ml/min (ref: > 60 ml/min) — Normal
+    Albumin/Creatinine Ratio: 15 mg/g (ref: < 30 mg/g) — Normal
+    Triglycerides: 155 mg/dl (ref: < 150 mg/dl) — High - above target
+    Total Cholesterol: 148 mg/dl (ref: < 200 mg/dl) — Normal
+    HDL: 47 mg/dl (ref: > 40 mg/dl) — Normal
+    LDL: 70 mg/dl (ref: < 100 mg/dl) — Normal
+    VLDL: 31 mg/dl (ref: < 40 mg/dl) — Normal
+    Total chol / HDL -chol Ratio: 3.15 (ref: < 5.0) — Normal
+    LDL - Chol / HDL chol Ratio: 1.49 — Normal
+    Amylase: 71 IU/L (ref: up to 100 IU/L) — Normal
+    Lipase: 120 IU/L (ref: up to 60 IU/L) — Elevated - rechecked
+    Total Bilirubin: 3.2 mg/dl (ref: 0.3 - 1.2 mg/dl) — Elevated
+    Total Protein: 6.7 gm/dl (ref: 6.5 - 8.0 gm/dl) — Normal
+    Albumin: 4.8 gm/dl (ref: 3.0 - 4.5 gm/dl) — Elevated
+    Globulins: 1.9 gm/dl — Normal
+    S.G.O.T.: 18 IU/L (ref: 10 - 35 IU/L) — Normal
+    S.G.P.T.: 20 IU/L (ref: 10 - 40 IU/L) — Normal
+    Alk. Phosphatase: 67 IU/L (ref: 40 - 130 IU/L) — Normal
+    GGT: 38 IU/L (ref: 5 - 60 IU/L) — Normal
+    Hepatitis B Surface Antigen: NON REACTIVE — Normal
+    Sodium: 137 mmol/l (ref: 135-148 mmol/l) — Normal
+    Potassium: 4.0 mmol/l (ref: 3.5-5.3 mmol/l) — Normal
+    Chloride: 104 mmol/l (ref: 90-110 mmol/l) — Normal
+    Bicarbonate: 26 mmol/l (ref: 20-26 mmol/l) — Normal
+    Anion Gap: 7 mmol/l (ref: < 20 mmol/l) — Normal
+    Specific Gravity: 1.020 (ref: 1.015 - 1.026) — Normal
+    pH: 6.0 (ref: 6.0 - 6.8) — Normal
+    Leucocytes: Negative (ref: Negative) — Normal
+    Nitrite: Negative (ref: Negative) — Normal
+    Protein: NIL (ref: Negative) — Normal
+    Glucose: ++ (ref: Negative) — Elevated
+    Ketone: Negative (ref: Negative) — Normal
+    Urobilinogen: NORMAL (ref: Normal) — Normal
+    Bilirubin: NIL (ref: Negative) — Normal
+    Blood (RBC): NIL (ref: Negative) — Normal
+    Pus Cells: 4-5 (ref: 2-3 /HPF) — Elevated - above normal
+    Epithelial Cells: 3-4 (ref: 2-3 /HPF) — Elevated - above normal
+    RBCs: NIL (ref: 0-2 CELLS /HPF) — Normal
+    Casts: NIL (ref: 0-2 CELLS /HPF) — Normal
+    Crystals: NIL (ref: 0-2 CELLS /HPF) — Normal
+    Bacteria: NIL (ref: 0-2 CELLS /HPF) — Normal
+    Others: NIL — Normal
+    Prescriptions: Inj HUMALOG LISP (PLAIN) CARTRIDGE 20-0-10 (before_food) [Continue Till Next Review]; Tab CYBLEX MV 80/0.2MG TAB 1-0-1 (with_food) [Continue Till Next Review]; Tab PIOZ MF 15MG TAB 0-0-1 (before_food) [Continue Till Next Review]; Tab GLUXIT S 10/100 MG 1-0-0 (before_food) [Continue Till Next Review]; Other SENTIDOR OINTMENT 0-0-0 [local use]
+  [14-Feb-2026] DOCTOR_VISIT — TYPE 2 DM--- From EM NEURO SIVARAJAN 140226.pdf ---T2DM, HYPERTENSION, PERIPHERAL NEUROPATHY, RIGHT MERALGIA PARESTHETICA, DEPRESSION
+    Complaint: Review
+    Prescriptions: Tab Syndopa 110 1-1-1 (before_food); Other Syndopa CR 250 1 (after_food) [11PM]; Tab XAFINACT 50MG 1-1 (after_food) [1 morning - 1 night]; Tab ROPARK 1MG 2-1-1 (after_food) [2 tablets morning - 1 tablet afternoon - 1 tablet night]; Tab PARKITIDIN 100MG 1-1 (after_food) [1 tablet morning - 1 tablet afternoon]; Cap ECOSPRIN AV 75/10MG 1 (after_food) [1 capsule night]; Tab MET XL 25 1-1 (after_food) [1 tablet morning - 1 tablet night]; Tab RIVOTRIL 0.5MG 1; Tab DUZELA M 30MG 1-1 (after_food) [1 tablet morning - 1 tablet night]; Tab ZOLCALM 5MG 1 (after_food) [1 tablet night]
+  [14-Feb-2026] DOCTOR_VISIT — Parkinson disease, T2DM, HYPERTENSION, PERIPHERAL NEUROPATHY;RIGHT MERALGIA PARESTHETICA, DEPRESSION
+    Complaint: Review
+    Existing Conditions: T2DM, HYPERTENSION, DEPRESSION
+    Prescriptions: Tab Syndopa 110 1-1-1 (empty_stomach); Tab Syndopa CR 250 0-0-1 (bedtime); Tab XAFINACT 50MG 1-1-0 (empty_stomach); Tab ROPARK 1MG 2-1-1 (empty_stomach); Tab PARKITIDIN 100MG 1-1-0 (empty_stomach); Cap ECOSPRIN AV 75/10MG 0-0-1 (bedtime); Tab MET XL 25 1-0-0 (after_food); Tab RIVOTRIL 0.5MG (stat) [as when required]; Tab DUZELA M 30MG 0-1-1 (after_food); Tab ZOLCALM 5MG 0-0-1 (after_food) [as when required]
+  [04-Sep-2025] LAB_REPORT
+    Postprandial Blood Glucose: 296 mg/dL (ref: 70-140 mg/dL) — High - diabetic range
+    HbA1c: 8.7 % (ref: < 7.0 % (General Goal for Diabetic Patients)) — Elevated - above target
+    Estimated Average Glucose: 202.99 mg/dL (ref: 70-130 mg/dL (ADA guideline)) — High - diabetic range
+    Blood Urea: 24 mg/dl (ref: 15-40 mg/dl) — Normal
+    Blood Creatinine: 0.8 mg/dl (ref: 0.5-1.2 mg/dl) — Normal
+    e G F R: 102.58 ml/min (ref: > 60 ml/min) — Normal
+    Albumin/Creatinine Ratio: 16 mg/g (ref: < 30 mg/g) — Normal
+    Uric Acid: 3.3 mg/dl (ref: 3.5 - 7.0 mg/dl) — Low - monitor
+    Triglycerides: 248 mg/dL (ref: < 150 mg/dL) — High - monitor
+    Total Cholesterol: 136 mg/dL (ref: < 200 mg/dL) — Normal
+    HDL: 44 mg/dL (ref: > 40 mg/dL) — Normal
+    LDL: 42 mg/dL (ref: < 100 mg/dL) — Normal
+    VLDL: 50 mg/dL (ref: < 40 mg/dL) — High - monitor
+    Total chol / HDL chol Ratio: 3.09 (ref: < 5.0) — Normal
+    LDL - Chol / HDL chol Ratio: 0.95 (ref: < 3.5) — Normal
+    AMYLASE: 40 IU/L (ref: up to 100 IU/L) — Normal
+    LIPASE: 62 IU/L (ref: up to 60 IU/L) — Elevated - above target
+    Serum Calcium: 8.6 mg/dl (ref: 8.5 - 10.2 mg/dl) — Normal
+    Total Bilirubin: 2.4 mg/dl (ref: 0.3 - 1.2 mg/dl) — Elevated - rechecked
+    Total Protein: 6.9 gm/dl (ref: 6.5 - 8.0 gm/dl) — Normal
+    Albumin: 4.4 gm/dl (ref: 3.0 - 4.5 gm/dl) — Normal
+    Globulins: 2.5 gm/dl — Normal
+    S.G.O.T.: 20 IU/L (ref: 10 - 35 IU/L) — Normal
+    S.G.P.T.: 19 IU/L (ref: 10 - 40 IU/L) — Normal
+    Alk. Phosphatase: 70 IU/L (ref: 40 - 130 IU/L) — Normal
+    GGT: 31 IU/L (ref: 5 - 60 IU/L) — Normal
+    Hepatitis B Surface Antigen: NON REACTIVE — Normal
+    Sodium: 136 mmol/l (ref: 135-148 mmol/l) — Normal
+    Potassium: 4.0 mmol/l (ref: 3.5-5.3 mmol/l) — Normal
+    Chloride: 105 mmol/l (ref: 90-110 mmol/l) — Normal
+    Bicarbonate: 26 mmol/l (ref: 20-26 mmol/l) — Normal
+    Anion Gap: 5 mmol/l (ref: < 20 mmol/l) — Normal
+    TOTAL PSA ASSAY: 0.6 ng/ml (ref: < 4.0 ng/ml (upto 59 Yrs)) — Normal
+    Total Count: 4850 cell/cmm (ref: 4000-11000 cell/cmm) — Normal
+    Neutrophils: 54 % (ref: 40-75 %) — Normal
+    Lymphocytes: 34 % (ref: 20-45 %) — Normal
+    Eosinophils: 03 % (ref: 00-06 %) — Normal
+    Monocytes: 08 % (ref: 02-10 %) — Normal
+    Basophils: 01 % (ref: 00-01 %) — Normal
+    Haemoglobin: 14.7 gms% (ref: M: 13-18; F: 11-16 gms%) — Normal
+    R.B.C: 5.1 milli/cmm (ref: M: 4.5-5.5; F: 3.8-5.2 milli/cmm) — Normal
+    P.C.V: 43 % (ref: M: 40-55; F: 35-48 %) — Normal
+    M.C.V: 82 Fl (ref: 82-98 Fl) — Normal
+    M.C.H: 28 pg (ref: 28-32 pg) — Normal
+    M.C.H.C: 34 % (ref: 32-36 %) — Normal
+    Platelets: 174 thou/cmm (ref: 150-400 thou/cmm) — Normal
+    ESR: 13 mm/hr (ref: Male : < 15 mm/hr) — Normal
+    Specific Gravity: 1.015 (ref: 1.015 - 1.026) — Normal
+    pH: 6.0 (ref: 6.0 - 6.8) — Normal
+    Glucose: ++ (ref: Negative) — Elevated - monitor
+    Pus Cells: 4-5 (ref: 2-3 /HPF) — Elevated - above normal
+    Epithelial Cells: 2-3 (ref: 2-3 /HPF) — Normal
+    RBCs: NIL (ref: 0-2 CELLS /HPF) — Normal
+    Casts: NIL (ref: 0-2 CELLS /HPF) — Normal
+    Crystals: NIL (ref: NIL) — Normal
+    Bacteria: NIL (ref: NIL) — Normal
+    Others: NIL (ref: NIL) — Normal
+    ABI(PT): 1.00 (ref: > 0.90 (Normal)) — Normal
+    ABI(DP): 1.00 (ref: > 0.90 (Normal)) — Normal
+    TBI: 0.91 (ref: > 0.70 (Normal)) — Normal
+  [04-Sep-2025] DOCTOR_VISIT — TYPE 2 DM; TYPE 2 DM
+    Prescriptions: Inj HUMALOG LISPRO (PLAIN) CARTRIDGE 14-0-0 (before_food) [Continue Till Next Review]; Tab CYBLEX MV 80/0.2MG TAB 1-0-1 (with_food) [Continue Till Next Review]; Tab PIOZ MF 15MG TAB 0-0-1 (before_food) [Continue Till Next Review]; Tab GLUXIT S 10/100 MG 1-0-0 (before_food) [Continue Till Next Review]; Other SENTIDOR OINTMENT 0-0-0 [local use]
+  [04-Sep-2025] DOCTOR_VISIT — TYPE 2 DM
+    Complaint: Review
+    Prescriptions: Inj HUMALOG LISPRO (PLAIN) CARTRIDGE 14-0-0 (before_food) [Continue Till Next Review]; Tab CYBLEX MV 80/0.2MG TAB 1-0-1 (with_food) [Continue Till Next Review]; Tab PIOZ MF 15MG TAB 0-0-1 (after_food) [Continue Till Next Review]; Tab GLUXIT S 10/100 MG 1-0-0 (before_food) [Continue Till Next Review]; Other SENTIDOR OINTMENT 0-0-0 [local use]
+  [04-Sep-2025] LAB_REPORT
+    POSTPRANDIAL BLOOD GLUCOSE: 296 (ref: < 140 mg/dl) — High - diabetic range
+    HbA1c: 8.7 (ref: < 7 % (General Goal for Diabetic Patients)) — Elevated - above target
+    Estimated Average Glucose: 202.99
+    Blood Urea: 24 (ref: 15-40 mg/dl) — Normal
+    Blood Creatinine: 0.8 (ref: 0.5-1.2 mg/dl) — Normal
+    e G F R: 102.58 (ref: > 60 ml/min) — Normal
+    Albumin/Creatinine Ratio: 16 (ref: < 30 mg/g) — Normal
+    Uric Acid: 3.3 (ref: 3.5 - 7.0 mg/dl) — Low - monitor
+    Triglycerides: 248 (ref: less than 150 mg/dl) — High - monitor
+    Total Cholesterol: 136 (ref: less than 200 mg/dl) — Normal
+    HDL: 44 (ref: more than 40 mg/dl) — Normal
+    LDL: 42 (ref: less than 100 mg/dl) — Normal
+    VLDL: 50 (ref: less than 40 mg/dl) — High - monitor
+    Total chol / HDL chol Ratio: 3.09
+    LDL - Chol / HDL chol Ratio: 0.95
+    AMYLASE: 40 (ref: up to 100 IU/L) — Normal
+    LIPASE: 62 (ref: up to 60 IU/L) — Elevated - above target
+    Serum Calcium: 8.6 (ref: 8.5 - 10.2 mg/dl) — Normal
+    Total Bilirubin: 2.4 (ref: (0.3 - 1.2) mg/dl) — Elevated - monitor
+    Total Protein: 6.9 (ref: (6.5 - 8.0) gm/dl) — Normal
+    Albumin: 4.4 (ref: (3.0 - 4.5) gm/dl) — Normal
+    Globulins: 2.5 — Normal
+    S.G.O.T.: 20 (ref: (10 - 35) IU/L) — Normal
+    S.G.P.T: 19 (ref: (10 - 40) IU/L) — Normal
+    Alk. Phosphatase: 70 (ref: (40 - 130) IU/L) — Normal
+    GGT: 31 (ref: (5 - 60) IU/L) — Normal
+    Hepatitis B Surface Antigen: NON REACTIVE — Normal
+    Sodium: 136 (ref: 135 - 148 mmol/l) — Normal
+    Potassium: 4.0 (ref: 3.5 - 5.3 mmol/l) — Normal
+    Chloride: 105 (ref: 90 - 110 mmol/l) — Normal
+    Bicarbonate: 26 (ref: 20 - 26 mmol/l) — Normal
+    Anion Gap: 5 (ref: < 20 mmol/l) — Normal
+    TOTAL PSA ASSAY: 0.6 (ref: < 4.0 ng / ml (upto 59 Yrs)) — Normal
+    Total Count: 4850 (ref: 4000-11000 cell/cmm) — Normal
+    Neutrophils: 54 (ref: 40-75 %) — Normal
+    Lymphocytes: 34 (ref: 20-45 %) — Normal
+    Eosinophils: 03 (ref: 00-06 %) — Normal
+    Monocytes: 08 (ref: 02-10 %) — Normal
+    Basophils: 01 (ref: 00-01 %) — Normal
+    Haemoglobin: 14.7 (ref: M: 13-18 (F: 11-16)) — Normal
+    R.B.C: 5.1 (ref: M: 4.5-5.5 (F: 3.8-5.2)) — Normal
+    P.C.V: 43 (ref: M: 40-55 (F: 35-48)) — Normal
+    M.C.V: 82 (ref: 82-98) — Normal
+    M.C.H: 28 (ref: 28-32) — Normal
+    M.C.H.C: 34 (ref: 32-36 %) — Normal
+    Platelets: 174 (ref: 150-400) — Normal
+    ESR: 13 (ref: < 15 mm/hr (Male)) — Normal
+    Specific Gravity: 1.015 (ref: 1.015 - 1.026) — Normal
+    pH: 6.0 (ref: 6.0 - 6.8) — Normal
+    Leucocytes: NEGATIVE (ref: NEGATIVE) — Normal
+    Nitrite: NEGATIVE (ref: NEGATIVE) — Normal
+    Protein: NIL (ref: NIL) — Normal
+    Glucose: ++ (ref: NEGATIVE) — Elevated - monitor
+    Ketone: NEGATIVE (ref: NEGATIVE) — Normal
+    Urobilinogen: NORMAL (ref: NORMAL) — Normal
+    Bilirubin: NIL (ref: NIL) — Normal
+    Blood (RBC): NIL (ref: NIL) — Normal
+    Pus Cells: 4-5 (ref: 2-3 HPF) — Elevated - above target
+    Epithelial Cells: 2-3 (ref: 2-3 HPF) — Normal
+    RBCs: NIL (ref: 0-2 CELLS) — Normal
+    Casts: NIL (ref: 0-2 CELLS) — Normal
+    Crystals: NIL — Normal
+    Bacteria: NIL — Normal
+    Others: NIL — Normal
+    ABI(PT): 1.00 (ref: > 0.90 Abnormal) — Normal
+    ABI(DP): 1.00 (ref: > 0.90 Abnormal) — Normal
+    TBI: 0.91 (ref: > 0.70 Normal) — Borderline
+    Brachial Right Peak Velocity: 18.5
+    Brachial Left Peak Velocity: 17.6
+    Right Upper Arm Pressure: 120
+    Left Upper Arm Pressure: 110
+  [21-Aug-2025] DOCTOR_VISIT — TYPE 2 DM; Parkinson disease
+    Prescriptions: Tab Syndopa 110mg 1-0-1 [TDS]; Tab Syndopa 110 1-1-1 (before_food); Tab Ropark 1 mg 1-1 (after_food); Tab Ropark 2 mg 1; Tab Ropinirole 0.5 mg 0-1-1 (empty_stomach); Tab Syndopa CR 250mg 1-0-1 (after_food) [From 21-Aug-2025 till next review]; Cap Duzela 40mg 1-0-1 (after_food) [From 21-Aug-2025 till next review]
+  [25-May-2025] LAB_REPORT
+    Total Bilirubin: 1.78 (ref: 0.1-1.2 mg/dL) — Elevated
+    Direct Bilirubin: 0.51 (ref: 0.0-0.3 mg/dL) — Elevated
+    Indirect Bilirubin: 1.27 (ref: 0.1-0.9 mg/dL) — Elevated
+    AST (SGOT): 26 (ref: 5-35 U/L) — Normal
+    ALT (SGPT): 23 (ref: 5-40 U/L) — Normal
+    Alkaline Phosphatase: 76 (ref: 56-119 U/L) — Normal
+    GGT: 44 (ref: 5-50 U/L) — Normal
+    Albumin: 4.61 (ref: 3.2-4.5 g/dL) — Elevated
+    Total Protein: 7.14 (ref: 6-8 g/dL) — Normal
+    Globulin: 2.53 (ref: 2.3-3.5 g/dL) — Normal
+    A/G Ratio:  (ref: 0.8-2.0 Ratio)
+    Prothrombin Time (PT): 1.8 (ref: 11.0-15.0 Seconds) — Low
+    INR: 1.07 (ref: 0.8-1.2) — Normal
+    HbA1C: 8.8 (ref: Non-Diabetic: <5.7%) — Elevated - diabetic range
+    Cholesterol: 205.9 (ref: <200 mg/dL) — Borderline high
+    HDL Cholesterol: 52 (ref: >40 mg/dL) — Normal
+    LDL Cholesterol: 158 (ref: 100-129 mg/dL) — Borderline high
+    Triglycerides: 164 (ref: <150 mg/dL) — High
+    Urea: 27 (ref: 28-100 mg/dL) — Normal
+    Creatinine: 1.0 (ref: 0.7-1.3 mg/dL) — Normal
+    Uric Acid: 5.0 (ref: 3.6-7.5 mg/dL) — Normal
+  [09-May-2025] DOCTOR_VISIT — Age-related nuclear cataract, bilateral - H25.13; T2DM, HYPERTENSION, PERIPHERAL NEUROPATHY, RIGHT MERALGIA PARESTHETICA, DEPRESSION
+    Prescriptions: Tab Syndopa 110 1-1-1 (before_food); Tab Syndopa CR 250 1-0-0 (before_food); Tab Xafinact 50mg 1-0-0 (before_food); Tab Ropark 1mg 2-1-1 (before_food); Tab Parkitidin 100mg 1-1-0 (before_food); Cap Ecosprin AV 75/10mg 0-0-1 (before_food); Tab Met XL 25 1-0-0 (before_food); Tab Rivotril 0.5mg 0-0-1 (before_food); Tab Duzela 30mg 1-0-1 (before_food)
+  [08-May-2025] DOCTOR_VISIT — Parkinson's disease; T2DM, HYPERTENSION, PERIPHERAL NEUROPATHY, RIGHT MERALGIA PARESTHETICA, DEPRESSION
+    Existing Conditions: T2DM, HYPERTENSION, DEPRESSION
+    Prescriptions: Tab Syndopa 110 1-1-1 (before_food); Tab Syndopa CR 250 1 (bedtime); Tab Xafinact 50MG 1; Tab Ropark 1MG 2-1.5-0.5; Tab Parkitidin 100MG 1-1; Cap Ecosprin AV 75/10MG 1; Tab Met XL 25 1; Tab Zolcalm 5MG 1; Tab Duzela M 30MG 1-1
+  [15-Apr-2025] DOCTOR_VISIT — PARKINSON DISEASE, RT HAND TREMOR, HYPOPHONIA, RT SIDED RIGIDITY, T2DM, HYPERTENSION, PERIPHERAL NEUROPATHY, DEPRESSION; T2DM, HYPERTENSION, PERIPHERAL NEUROPATHY, RIGHT MERALGIA PARESTHETICA, DEPRESSION
+    Existing Conditions: T2DM, HYPERTENSION, DEPRESSION
+    Prescriptions: Tab Syndopa 110MG 1-1-1 (before_food); Tab Syndopa CR 250 1 (bedtime); Other Xafinact 50MG 1-1; Tab Ropark 1MG 2-1.5-1.5; Tab Parkitidin 100MG 1-1; Cap Ecosprin AV 75/OMG 1; Tab Met XL 25 1; Tab Zolcalm 5MG 1; Cap Duzela 40MG 1-1; Tab Neurobion Forte 1
+  [09-Apr-2025] DOCTOR_VISIT — TYPE 2 DM, HYPERTENSION, THROMBOPHLEBITIS, FATTY LIVER GRADE 1, PARKINSON'S DISEASE
+    Existing Conditions: TYPE 2 DM, HYPERTENSION, THROMBOPHLEBITIS, PARKINSON'S DISEASE
+    Prescriptions: Tab HUMALOG LISPRO 0-0-0 (before_food) [Continue till next review]; Tab PIOZ MF 15MG 1-0-1 (with_food) [Continue till next review]; Tab CYBLEX MV 80/0.2MG 0-0-1 (after_food) [Continue till next review]; Tab SENTIDOR OINTMENT 0-0-0 [Local use]
+  [14-Oct-2024] DOCTOR_VISIT — T2DM, HYPERTENSION, PERIPHERAL NEUROPATHY, RIGHT MERALGIA PARESTHETICA, DEPRESSION, Parkinson disease; T2DM - uncontrolled, HYPERTENSION, DIABETIC PERIPHERAL NEUROPATHY, PARKINSONS DISEASE WITH AUTONOMIC DYSFUNCTION, CHRONIC DEPRESSION
+    Complaint: Came for glycemic control
+    Existing Conditions: T2DM, HYPERTENSION, DEPRESSION
+    Fasting Glucose: 216.6 (ref: 70-110 mg/dL) — High - diabetic range
+    Post Prandial Glucose: 328.8 (ref: 90-140 mg/dL) — High - diabetic range
+    HbA1c: 11.5 (ref: 5.7-7.0 % (Good control)) — Elevated - above target
+    Creatinine: 1.1 (ref: 0.2-1.2 mg/dL) — Normal
+    Random Glucose: 283.35 (ref: < 140 mg/dL) — High - diabetic range
+    Calcium: 9.0 (ref: 8.6-10.2 mg/dL) — Normal
+    Sodium: 136 (ref: 136-145 mmol/L) — Normal
+    Potassium: 3.9 (ref: 3.5-5.3 mmol/L) — Normal
+    Prescriptions: Tab ECOSPRIN AV 75 0-0-1 (after_food) [to continue]; Tab CYBLEX M 80 1-0-1 (before_food) [to continue]; Tab MET XL 25 mg 1-0-0 (after_food) [to continue]; Tab SYNDOPA CR 250 mg 0-0-1 [to continue]; Tab XAFINACT 50 mg 1-0-1 (after_food) [to continue]; Tab ROPARK 1 MG 2-1.5-1.5 (after_food) [to continue]; Tab DUZELA M 30 0-0-1 (after_food) [to continue]; Tab PARKITIDIN 100 MG 1-1-0 (after_food) [to continue]; Tab ZOLCALM 5 0-0-1 (after_food) [to continue]; Tab SYNDOPA 110 mg 1-1-1 (before_food) [to continue]
+    Investigations: FBS, PP3S, RBS, HbA1c, Renal Function Test
+  [12-Oct-2024] DOCTOR_VISIT — T2DM, HYPERTENSION, PERIPHERAL NEUROPATHY, DEPRESSION; T2DM, HYPERTENSION, PERIPHERAL NEUROPATHY, RIGHT MERALGIA PARESTHETICA, DEPRESSION
+    Complaint: shingies right ghuteal region
+    Existing Conditions: T2DM, HYPERTENSION, DEPRESSION
+    HbA1c: 10.2 (ref: < 6.0 % (ADA guideline)) — Elevated - above target
+    Prescriptions: Tab Syndopa 110 1-1-1 (before_food); Tab Syndopa CR 250 1-0-0 (before_food); Tab Xafinact 50 1-0-1 (before_food); Tab Ropark 1 2-0-0 (before_food); Tab Parkitidin 100 1-1-0 (before_food); Cap Ecosprin AV 75 0-0-1; Tab Met XL 25 1-0-0; Tab Zolcalm 5 0-0-1; Tab Duzela M 30 0-1-1; Tab Neurobion Forte 1-0-0
+    Investigations: EEG, Nerve Conduction Study, Vertigo Assessment, Neuropathy Analysis, Sleep Study
+  [13-Jul-2024] DOCTOR_VISIT — T2DM, HYPERTENSION, PERIPHERAL NEUROPATHY, RIGHT MERALGIA PARESTHETICA, DEPRESSION; T2DM, HYPERTENSION, PERIPHERAL NEUROPATHY, RIGHT MERALGIA PARESTHETICA, DEPRESSION, PARKINSON DISEASE
+    Complaint: neck pain, rt arm ache, low mood
+    Existing Conditions: T2DM, HYPERTENSION, DEPRESSION
+    Prescriptions: Tab Syndopa 110 1-1-1 (before_food); Tab Syndopa CR 250 1; Tab Xafinact 50 1; Tab Ropark 1 1; Tab Parkitidin 100 1-1-1; Tab Duzela M 30 1-1; Cap Ecosprin AV 75 1; Tab Zolcalm 5 1; Tab Gluxit S 10/100 1; Tab Neurobion Forte 1
+    Investigations: EEG, Nerve Conduction Study, Vertigo Assessment, Neuropathy Analysis, Sleep Study
+  [10-May-2024] DOCTOR_VISIT — Parkinson's disease; T2DM, HYPERTENSION, PERIPHERAL NEUROPATHY, RIGHT MERALGIA PARESTHETICA, DEPRESSION
+    Complaint: Occasional nocturnal limb jerks and awakenings
+    Existing Conditions: T2DM, HYPERTENSION, DEPRESSION
+    Prescriptions: Tab Syndopa 110MG 1-1-1 (before_food); Tab Syndopa CR 250 1-0-1 (before_food); Tab Xafinact 50MG 1-0-1 (before_food); Tab Ropark 1MG 2-1-1 (before_food); Tab Parkitidin 100MG 1-1-0 (before_food); Tab Duzela M 30MG 0-1-1 (before_food); Cap Ecosprin AV 75MG 0-0-1 (before_food); Tab Zolcalm 5MG 0-0-1 (before_food); Tab Gluxit S 10/100 1-0-0 (before_food); Tab Neurobion Forte 1-0-0 (before_food)
+    Investigations: EEG, Nerve Conduction Study, Vertigo Assessment, Neuropathy Analysis, Sleep Study
+  [24-Apr-2024] DOCTOR_VISIT — TYPE 2 DM, HYPERTENSION, THROMBOPHLEBITIS, LIVER HYPOECHOIC LESION, PARKINSONS DISEASE
+    Existing Conditions: TYPE 2 DM, HYPERTENSION, THROMBOPHLEBITIS, PARKINSONS DISEASE, FATTY LIVER
+    Prescriptions: Tab GLUXIT S 10/100 MG 1-0-1 (before_food)
+  [04-Mar-2024] DOCTOR_VISIT — Parkinsons Disease- idiopathic; T2DM, HYPERTENSION, PERIPHERAL NEUROPATHY, RIGHT MERALGIA PARESTHETICA, DEPRESSION, Parkinson disease
+    Complaint: nocturnal leg cramps, daytime tiredness
+    Existing Conditions: T2DM, HYPERTENSION, DEPRESSION
+    Prescriptions: Tab Syndopa 110 1-1-1 (before_food); Tab Syndopa CR 250 1 (bedtime); Tab Xafinact 50 1-1; Tab Ropark 1 1; Tab Parkitidin 100 1½-12-1½; Tab Duzela M 30 1-1; Cap Ecosprin AV 75 1; Tab Zolcalm 5 1; Tab Gluxit S 10/100 1
+    Investigations: EEG, Nerve Conduction Study, Vertigo Assessment, Neuropathy Analysis, Sleep Study
+  [02-Dec-2023] DOCTOR_VISIT — T2DM, HYPERTENSION, PERIPHERAL NEUROPATHY, RIGHT MERALGIA PARESTHETICA, DEPRESSION, PARKINSON DISEASE; T2DM, HYPERTENSION, PERIPHERAL NEUROPATHY, DEPRESSION
+    Existing Conditions: T2DM, HYPERTENSION, DEPRESSION
+    Fasting Blood Sugar: 161 (ref: 70-100 mg/dL) — High - diabetic range
+    Postprandial Blood Sugar: 290 (ref: < 180 mg/dL) — High - diabetic range
+    HbA1c: 8 (ref: < 6.0 %) — Elevated - above target
+    Prescriptions: Tab Syndopa 1-1-1 (with_food) [Levodopa 100mg + Carbidopa 10mg]; Tab Duzela M 1-0-1 (after_food) [Duloxetine 30mg + Methylcobalamin 1500mcg]
+
+--- Jenitha Meeran ---
+DOB: 11-Apr-1977
+Conditions: Conditions: Adenomyosis (2018), Uterine Fibroids (2018), Anemia, Fatty Liver Grade I
+Blood Group: A+
+Recent Records (2):
+  [09-Apr-2025] DOCTOR_VISIT — Bulky uterus with multiple fibroids, hemorrhagic cyst in left ovary.
+    Complaint: Pain in lower abdomen
+    Hemoglobin: 9.2 g/dL (ref: 12-15 g/dL) — Low - monitor
+    PCV: 30.00 % (ref: 40-50 %) — Low - monitor
+    RBC COUNT: 4.86 Million/cu.mm (ref: 3.8-4.8 Million/cu.mm) — Normal
+    MCV: 61.6 fL (ref: 83-101 fL) — Low - monitor
+    MCH: 18.9 Pg (ref: 27-32 Pg) — Low - monitor
+    MCHC: 30.7 g/dL (ref: 31.5-34.5 g/dL) — Low - monitor
+    R.D.W: 20.1 % (ref: 11.6-14 %) — High - monitor
+    TOTAL LEUCOCYTE COUNT (TLC): 7,050 cells/cu.mm (ref: 4000-10000 cells/cu.mm) — Normal
+    NEUTROPHILS: 57.2 % (ref: 40-80 %) — Normal
+    LYMPHOCYTES: 34.3 % (ref: 20-40 %) — Normal
+    MONOCYTES: 4.5 % (ref: 2-10 %) — Normal
+    EOSINOPHILS: 2.8 % (ref: <1-2 %) — High - monitor
+    BASOPHILS: 1.2 % (ref: 0-1 %) — High - monitor
+    PLATELET COUNT: 309,000 cells/cu.mm (ref: 150,000-410,000 cells/cu.mm) — Normal
+    Investigations: USGComplete Abdomen with TVS
+  [29-Aug-2018] DOCTOR_VISIT — Focal adenomyosis (posterior wall), Multiple uterine fibroids, Anemia (Hb 8.5), Fatty liver Grade I
+    Data: Chief Complaint: Pain lower abdomen 2-3 days, worse today. Heavy menstrual flow with dull periods x2 years. Irregular cycles 25/30 days. LMP: 20/8/18.
+
+Examination: Pallor++, BP 110/80 mmHg, RIF tender, right fornix tenderness+.
+
+USG Pelvis (TAS & TVS):
+- Uterus: Retroverted retroflexed, 8.3x6.6x6.5 cm
+- Endometrial thickness: 8.3 mm
+- Posterior wall ill-defined isoechoic lesion 3.3x3.0x3.2 cm — focal adenomyosis
+- Anterior wall subserosal fibroid 2.5x2.9x1.6 cm
+- 2-3 seedling fibroids
+- RT ovar
+    Rx: 1. Inj Iron Sucrose
+2. Tab Doxycycline 1-0-1 x 10 days (after food)
+3. Tab Metrogyl 1-0-1 x 10 days (after food)
+4. Tab Rabeprazole 1-0-1 (1/2 hr before food)
+5. Tab Onglyza-XT 1-0-1 x 1 month
+
+--- Ashik Nesin ---
+DOB: 05-Jan-1994
+Blood Group: A+
+
+--- Reshman Susmi ---
+DOB: 01-Jan-2000
+Blood Group: A+
+
+--- Tarika Nesin ---
+DOB: 20-Dec-2020
+
+--- Tariq  Al Fayad ---
+DOB: 03-Oct-1997
+Conditions: Conditions: Aplastic Anemia - 24-1-2019
+Blood Group: A+
+
+
+=== KEY LAB TRENDS (all dates) ===
+
+Fasting Glucose:
+  14-Oct-2024: 216.6 (High - diabetic range)
+
+Glycosylated HbA1c:
+  12-Sep-2015: 9.3 (Above 10 % - Poor Control)
+
+HB A1c:
+  28-Jun-2019: 6.7 (Fair Control)
+  28-Jun-2019: 6.7 (Fair Control)
+
+HDL Cholesterol:
+  12-Sep-2015: 36 (Normal)
+  25-May-2018: 43 (Normal)
+  25-May-2025: 52 (Normal)
+
+HbA1C:
+  25-May-2025: 8.8 (Elevated - diabetic range)
+
+HbA1c:
+  09-Nov-2013: 8.9 (Elevated - above target)
+  25-May-2018: 7.5 (Poor control)
+  02-Dec-2023: 8 (Elevated - above target)
+  12-Oct-2024: 10.2 (Elevated - above target)
+  14-Oct-2024: 11.5 (Elevated - above target)
+  04-Sep-2025: 8.7 % (Elevated - above target)
+  04-Sep-2025: 8.7 (Elevated - above target)
+  12-Apr-2026: 8.9 % (Elevated - above target)
+
+LDL Cholesterol:
+  12-Sep-2015: 72 (Healthy)
+  25-May-2018: 46 (Normal)
+  25-May-2025: 158 (Borderline high)
+
+POSTPRANDIAL BLOOD GLUCOSE:
+  04-Sep-2025: 296 (High - diabetic range)
+
+Postprandial Blood Glucose:
+  09-Nov-2013: 144 (High - diabetic range)
+  04-Sep-2025: 296 mg/dL (High - diabetic range)
+  12-Apr-2026: 238 mg/dL (High - diabetic range)
+  12-Apr-2026: 238 mg/dL (High - diabetic range)
+
+Total Cholesterol:
+  09-Nov-2013: 105 (Normal)
+  12-Sep-2015: 128 (Low Risk)
+  25-May-2018: 107 (Normal)
+  04-Sep-2025: 136 mg/dL (Normal)
+  04-Sep-2025: 136 (Normal)
+  12-Apr-2026: 148 mg/dl (Normal)
+
+Triglyceride:
+  12-Sep-2015: 96 (Normal)
+
+Triglycerides:
+  09-Nov-2013: 75 (Normal)
+  25-May-2018: 90 (Normal)
+  25-May-2025: 164 (High)
+  04-Sep-2025: 248 mg/dL (High - monitor)
+  04-Sep-2025: 248 (High - monitor)
+  12-Apr-2026: 155 mg/dl (High - above target)
+
+VLDL Cholesterol:
+  12-Sep-2015: 20

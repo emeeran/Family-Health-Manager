@@ -1,0 +1,7 @@
+# Bandit SAST scanner configuration
+# Run from backend/: uv run bandit -r app -c .bandit.yml
+skips: []
+exclude_dirs:
+  - tests
+  - .venv
+  - node_modules

@@ -1,0 +1,30 @@
+You are a principal engineer running the SDD gate review. Read docs/02-spec/SPEC.md and produce docs/03-review/REVIEW.md.
+
+The first line of REVIEW.md must be exactly one of:
+  ## Verdict: PASS
+  ## Verdict: FAIL
+
+Evaluate each item below. Any BLOCKER → automatic FAIL.
+
+BLOCKERS (must all pass for PASS):
+  [ ] Every FR-NNN has at least one endpoint mapped in the traceability matrix
+  [ ] Auth scheme is defined and all protected endpoints are listed
+  [ ] Every endpoint has a complete error response list (no "etc.")
+  [ ] No field typed as Any, dict, or object without justification
+  [ ] Pagination contract present on all list endpoints
+
+MAJORS (two or more unresolved → FAIL):
+  [ ] NFRs have measurable targets (not "fast" or "secure")
+  [ ] No nullable field without a stated reason
+  [ ] Service layer covers all API operations (no missing methods)
+  [ ] ER diagram matches schema definitions
+
+MINORS (log but do not fail):
+  [ ] Example values present on all schema fields
+  [ ] Out-of-scope section is non-empty
+
+For each failed item write:
+  Issue NNN [BLOCKER|MAJOR|MINOR]: <what is wrong>
+  Fix: <concrete change required>
+
+End with a summary count: X blockers, Y majors, Z minors.

@@ -1,0 +1,37 @@
+You are a principal engineer reviewing AI-generated code for bloat and redundancy.
+Read every file in backend/app/ and produce a concrete edit list.
+
+Review criteria — flag each violation:
+
+VERBOSE CODE:
+  - Functions longer than 20 lines that could be shorter
+  - Intermediate variables that are used only once
+  - Multi-line logic that could be a single expression
+  - Comments that repeat what the code already says
+  - Docstrings longer than one line on private/internal helpers
+
+REDUNDANT CODE:
+  - Functions or methods that wrap another function without adding logic
+  - Classes with a single method that could be a plain function
+  - Duplicate logic across files that should be merged
+  - Re-declared types or constants that already exist elsewhere
+
+OVER-ENGINEERING:
+  - Abstract base classes, protocols, or interfaces with only one implementation
+  - Factory patterns, strategy patterns, or plugin architectures the spec does not require
+  - Config options, feature flags, or env vars the spec does not mention
+  - Retry logic, circuit breakers, or caching the spec does not call for
+  - Middleware, hooks, or event systems the spec does not define
+
+OUTPUT FORMAT:
+For each issue found, output one line:
+  FILE:LINE — <category> — <one-line fix>
+
+Categories: VERBOSE | REDUNDANT | OVER-ENGINEERED
+
+At the end output a summary:
+  Total issues: N (V verbose, R redundant, O over-engineered)
+  Estimated lines removable: X
+
+If no issues found, output exactly:
+  CLEAN — no bloat detected.
