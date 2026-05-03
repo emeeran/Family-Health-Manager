@@ -12,7 +12,6 @@ import {
   Bell,
   AlertTriangle,
   Pill,
-  X,
   ChevronRight,
 } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -31,8 +30,6 @@ import { useRecordQuickView } from "@/components/records/record-quick-view-provi
 import { getLastUsedMember, setLastUsedMember } from "@/lib/member-context";
 import { Hba1cModernChart } from "@/components/dashboard/hba1c-modern-chart";
 import { getMemberDashboard } from "@/lib/api/members";
-import { listHealthAlerts, dismissHealthAlert } from "@/lib/api/health-alerts";
-import { toast } from "sonner";
 
 const HealthTrendsChart = React.lazy(() =>
   import("@/components/dashboard/health-trends-chart").then((mod) => ({
@@ -48,7 +45,6 @@ const RecordTypeChart = React.lazy(() =>
 import type { FamilyMemberResponse } from "@/lib/types/member";
 import type { ReminderResponse } from "@/lib/types/reminder";
 import type { HealthRecordResponse } from "@/lib/types/health-record";
-import type { HealthAlertResponse } from "@/lib/types/health-alert";
 
 /* ── Helpers ── */
 
@@ -148,66 +144,6 @@ function HealthScoreRing({
   );
 }
 
-/* ── Alert Strip ── */
-
-function AlertStrip({
-  alerts,
-  memberNames,
-  onDismiss,
-}: {
-  alerts: HealthAlertResponse[];
-  memberNames: Record<string, string>;
-  onDismiss: (id: string) => void;
-}) {
-  if (alerts.length === 0) return null;
-
-  const shown = alerts
-    .filter((a) => a.severity === "critical" || a.severity === "warning")
-    .slice(0, 3);
-  if (shown.length === 0) return null;
-
-  return (
-    <div className="flex gap-3 overflow-x-auto pb-1">
-      {shown.map((alert) => {
-        const isCritical = alert.severity === "critical";
-        const borderColor = isCritical ? "border-l-red-500" : "border-l-amber-500";
-        const bgColor = isCritical
-          ? "bg-red-50 dark:bg-red-950/20"
-          : "bg-amber-50 dark:bg-amber-950/20";
-        const memberName = memberNames[alert.family_member_id] || "Unknown";
-        return (
-          <div
-            key={alert.id}
-            className={`flex items-start gap-3 rounded-xl border-l-4 ${borderColor} ${bgColor} px-4 py-3 min-w-[280px] max-w-[380px] shrink-0`}
-          >
-            <AlertTriangle
-              className={`h-4 w-4 mt-0.5 shrink-0 ${isCritical ? "text-red-500" : "text-amber-500"}`}
-            />
-            <div className="min-w-0 flex-1">
-              <p className="text-sm font-semibold truncate">{alert.title}</p>
-              <p className="text-xs text-muted-foreground mt-0.5">
-                {memberName}
-                {alert.test_name && (
-                  <span>
-                    {" "}
-                    · {alert.test_name}: {alert.value} (ref: {alert.reference})
-                  </span>
-                )}
-              </p>
-            </div>
-            <button
-              onClick={() => onDismiss(alert.id)}
-              className="shrink-0 text-muted-foreground/50 hover:text-foreground transition-colors"
-            >
-              <X className="h-3.5 w-3.5" />
-            </button>
-          </div>
-        );
-      })}
-    </div>
-  );
-}
-
 /* ── Props ── */
 
 interface DashboardStats {
@@ -247,43 +183,34 @@ export function DashboardContent({
 
   const [memberScores, setMemberScores] = useState<Record<string, ScoreData>>({});
   const [scoresLoading, setScoresLoading] = useState(true);
-  const [healthAlerts, setHealthAlerts] = useState<HealthAlertResponse[]>([]);
 
-  // Fetch health scores + alerts
+  // Fetch health scores
   useEffect(() => {
     if (!activeMembers.length) {
       setScoresLoading(false);
       return;
     }
-    if (!activeMembers.length) {
-      setScoresLoading(false);
-      return;
-    }
     setScoresLoading(true);
-    Promise.all([
-      Promise.all(
-        activeMembers.map((m) =>
-          getMemberDashboard(m.id)
-            .then((d) => ({
-              id: m.id,
-              data: {
-                score: d.health_score,
-                medications: d.active_medications_count,
-                conditions: d.active_conditions_count,
-              } as ScoreData,
-            }))
-            .catch(() => ({
-              id: m.id,
-              data: { score: 0, medications: 0, conditions: 0 } as ScoreData,
-            }))
-        )
-      ),
-      listHealthAlerts({ dismissed: false }).catch(() => []),
-    ]).then(([scoreResults, alerts]) => {
+    Promise.all(
+      activeMembers.map((m) =>
+        getMemberDashboard(m.id)
+          .then((d) => ({
+            id: m.id,
+            data: {
+              score: d.health_score,
+              medications: d.active_medications_count,
+              conditions: d.active_conditions_count,
+            } as ScoreData,
+          }))
+          .catch(() => ({
+            id: m.id,
+            data: { score: 0, medications: 0, conditions: 0 } as ScoreData,
+          }))
+      )
+    ).then((scoreResults) => {
       const map: Record<string, ScoreData> = {};
       for (const r of scoreResults) map[r.id] = r.data;
       setMemberScores(map);
-      setHealthAlerts(alerts);
       setScoresLoading(false);
     });
   }, [activeMembers]);
@@ -400,16 +327,6 @@ export function DashboardContent({
     return { avgScore, totalConditions, totalMedications };
   }, [memberScores]);
 
-  async function handleDismissAlert(alertId: string) {
-    try {
-      await dismissHealthAlert(alertId);
-      setHealthAlerts((prev) => prev.filter((a) => a.id !== alertId));
-      toast.success("Alert dismissed");
-    } catch {
-      toast.error("Failed to dismiss alert");
-    }
-  }
-
   return (
     <div className="space-y-6 max-w-[1600px] mx-auto">
       {/* SECTION 1: Hero Bar */}
@@ -437,16 +354,6 @@ export function DashboardContent({
           </div>
         </div>
         <div className="flex items-center gap-2">
-          {healthAlerts.filter((a) => a.severity === "critical").length > 0 && (
-            <Link
-              to="/health-alerts"
-              className="inline-flex items-center gap-2 rounded-lg border-2 border-red-300 bg-red-50 px-3 h-10 text-sm font-semibold text-red-700 hover:bg-red-100 transition-colors"
-            >
-              <AlertTriangle className="h-4 w-4" />
-              {healthAlerts.filter((a) => a.severity === "critical").length} alert
-              {healthAlerts.filter((a) => a.severity === "critical").length !== 1 ? "s" : ""}
-            </Link>
-          )}
           {stats.unreadNotifications > 0 && (
             <Link
               to="/notifications"
@@ -502,10 +409,7 @@ export function DashboardContent({
         </div>
       )}
 
-      {/* SECTION 2: Alert Strip */}
-      <AlertStrip alerts={healthAlerts} memberNames={memberNames} onDismiss={handleDismissAlert} />
-
-      {/* SECTION 3: Family Health Rings */}
+      {/* SECTION 2: Family Health Rings */}
       <div>
         <div className="flex items-center justify-between mb-3">
           <h2 className="text-lg font-bold">Family Health</h2>
