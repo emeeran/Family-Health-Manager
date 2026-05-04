@@ -33,7 +33,7 @@ export function ExportButton({ memberId, variant = "outline", size = "sm" }: Exp
 
   return (
     <DropdownMenu>
-      <DropdownMenuTrigger asChild>
+      <DropdownMenuTrigger>
         <Button variant={variant} size={size} disabled={loading}>
           {loading ? (
             <Loader2 className="h-4 w-4 animate-spin" />

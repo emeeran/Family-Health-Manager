@@ -1,6 +1,6 @@
 const CACHE_NAME = "health-keeper-v1";
 const API_CACHE_NAME = "health-api-v1";
-const API_CACHE_TTL = 5 * 60 * 1000; // 5 minutes
+const _API_CACHE_TTL = 5 * 60 * 1000; // 5 minutes
 const PRECACHE_URLS = ["/dashboard", "/members", "/providers"];
 
 // Install — precache key pages

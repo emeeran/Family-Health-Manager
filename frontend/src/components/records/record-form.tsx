@@ -289,7 +289,7 @@ export function RecordForm({
 
   const recordType = watch("record_type");
   const config = recordType ? getConfig(recordType) : null;
-  const tables = useMemo(() => (config ? getTables(config) : []), [config]);
+  const tables = useMemo(() => (recordType ? getTables(getConfig(recordType)) : []), [recordType]);
 
   const handleAddProvider = useCallback(async () => {
     const name = newProviderName.trim();

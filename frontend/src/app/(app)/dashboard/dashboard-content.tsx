@@ -12,22 +12,13 @@ import {
   AlertTriangle,
   ChevronRight,
   ShieldCheck,
-  TrendingUp,
   Clock,
-  Sparkles,
   Syringe,
-  ArrowRight,
 } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
-import {
-  RELATIONSHIP_LABELS,
-  RECORD_TYPE_LABELS,
-  BMI_CATEGORY_COLORS,
-  HBA1C_CATEGORY_COLORS,
-} from "@/lib/constants";
+import { RELATIONSHIP_LABELS, RECORD_TYPE_LABELS, HBA1C_CATEGORY_COLORS } from "@/lib/constants";
 import { formatDate } from "@/lib/utils";
 import { QuickAddRecordDialog } from "@/components/records/quick-add-record-dialog";
 import { QuickLogInput } from "@/components/records/quick-log-input";

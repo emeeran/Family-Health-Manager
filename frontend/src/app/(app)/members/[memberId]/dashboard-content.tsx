@@ -20,7 +20,6 @@ import {
 import {
   GENDER_LABELS,
   RELATIONSHIP_LABELS,
-  BMI_CATEGORY_COLORS,
   HBA1C_CATEGORY_COLORS,
   RECORD_TYPE_LABELS,
 } from "@/lib/constants";
@@ -54,8 +53,6 @@ import {
   ShieldCheck,
   Bell,
   CalendarDays,
-  Stethoscope,
-  Heart,
   BarChart3,
 } from "lucide-react";
 import type {
@@ -680,16 +677,13 @@ export function MemberDashboardContent({ dashboard }: MemberDashboardContentProp
       })
       .join("");
 
-    // Parse insight into sections, filter out drug/medication-related sections
+    // Parse insight into sections
     let insightHtml = "";
     if (insight) {
       const skipPatterns = [
         "drug analysis",
         "drug interaction",
-        "drug interactions",
         "medication analysis",
-        "medication interaction",
-        "medication interactions",
         "section-3",
         "section 3",
       ];
@@ -852,43 +846,6 @@ ${sectionHtml}
     setShowReport(true);
   }
 
-  if (showPreConsult && preConsultNote) {
-    return (
-      <PreConsultationNoteViewer
-        response={preConsultNote.response}
-        provider={preConsultNote.provider_used}
-        generatedAt={preConsultNote.generated_at}
-        verification={preConsultNote.verification}
-        memberName={`${member.first_name} ${member.last_name}`}
-        onBack={() => setShowPreConsult(false)}
-        onExportPDF={handlePreConsultPDF}
-      />
-    );
-  }
-
-  if (showReport && insight) {
-    return (
-      <Suspense
-        fallback={
-          <div className="flex items-center justify-center py-12">
-            <p className="text-muted-foreground">Loading report...</p>
-          </div>
-        }
-      >
-        <InsightReport
-          response={insight.response}
-          provider={insight.provider_used}
-          generatedAt={insight.generated_at}
-          verification={insight.verification}
-          memberName={`${member.first_name} ${member.last_name}`}
-          memberDob={formatDate(member.date_of_birth)}
-          memberGender={GENDER_LABELS[member.gender]}
-          onBack={() => setShowReport(false)}
-        />
-      </Suspense>
-    );
-  }
-
   const memberName = `${member.first_name} ${member.last_name}`;
   const hasAllergies = member.allergies && member.allergies.length > 0;
   const hasEmergency = member.emergency_contact_name || member.emergency_contact_phone;
@@ -975,6 +932,44 @@ ${sectionHtml}
         : riskLevel === "low"
           ? "bg-emerald-500"
           : null;
+
+  // Early returns — AFTER all hooks
+  if (showPreConsult && preConsultNote) {
+    return (
+      <PreConsultationNoteViewer
+        response={preConsultNote.response}
+        provider={preConsultNote.provider_used}
+        generatedAt={preConsultNote.generated_at}
+        verification={preConsultNote.verification}
+        memberName={`${member.first_name} ${member.last_name}`}
+        onBack={() => setShowPreConsult(false)}
+        onExportPDF={handlePreConsultPDF}
+      />
+    );
+  }
+
+  if (showReport && insight) {
+    return (
+      <Suspense
+        fallback={
+          <div className="flex items-center justify-center py-12">
+            <p className="text-muted-foreground">Loading report...</p>
+          </div>
+        }
+      >
+        <InsightReport
+          response={insight.response}
+          provider={insight.provider_used}
+          generatedAt={insight.generated_at}
+          verification={insight.verification}
+          memberName={`${member.first_name} ${member.last_name}`}
+          memberDob={formatDate(member.date_of_birth)}
+          memberGender={GENDER_LABELS[member.gender]}
+          onBack={() => setShowReport(false)}
+        />
+      </Suspense>
+    );
+  }
 
   return (
     <div className="space-y-3 max-w-[1400px] mx-auto">

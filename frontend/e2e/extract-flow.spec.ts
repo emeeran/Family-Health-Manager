@@ -47,8 +47,8 @@ test("extraction auto-populates form fields with JPEG", async ({ page }) => {
   const clinicalData = await page.locator("#clinical_data").inputValue();
   const diagnosis = await page.locator("#diagnosis").inputValue();
 
-  console.log("Clinical data:", clinicalData?.substring(0, 100));
-  console.log("Diagnosis:", diagnosis);
+  console.error("Clinical data:", clinicalData?.substring(0, 100));
+  console.error("Diagnosis:", diagnosis);
 
   expect(clinicalData.length).toBeGreaterThan(0);
 });

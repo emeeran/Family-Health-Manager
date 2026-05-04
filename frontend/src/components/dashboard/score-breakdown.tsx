@@ -1,5 +1,4 @@
 import { useState } from "react";
-import type { MemberScore } from "@/lib/types/dashboard";
 
 interface ScoreBreakdownProps {
   breakdown: Record<string, { score: number; max: number; label: string }>;

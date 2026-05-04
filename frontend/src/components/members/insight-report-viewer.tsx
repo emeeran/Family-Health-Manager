@@ -47,7 +47,6 @@ export function parseSections(markdown: string): InsightSection[] {
 const SECTION_COLORS: Record<string, string> = {
   "health overview": "#3B82F6",
   "active conditions": "#EF4444",
-  "medication analysis": "#8B5CF6",
   "lab trends": "#10B981",
   "risk assessment": "#F59E0B",
   recommendations: "#06B6D4",

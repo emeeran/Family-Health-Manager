@@ -101,7 +101,9 @@ export async function streamRequest(
   if (body) headers["Content-Type"] = "application/json";
 
   const controller = new AbortController();
-  const timeoutId = setTimeout(() => controller.abort(), REQUEST_TIMEOUT);
+  // AI streaming can take minutes — use 5 min timeout
+  const STREAM_TIMEOUT = 300_000;
+  const timeoutId = setTimeout(() => controller.abort(), STREAM_TIMEOUT);
 
   try {
     const response = await fetch(url, {

@@ -455,7 +455,7 @@ function DoctorVisitDisplay({
   diagnosis,
   nextReviewDate,
 }: DoctorVisitDisplayProps) {
-  const prescriptions = tableData["prescriptions"] || [];
+  const prescriptions = useMemo(() => tableData["prescriptions"] || [], [tableData]);
   const labResults = useMemo(() => tableData["lab_results"] || [], [tableData]);
   const hasLabResults = labResults.length > 0;
   const hasPrescriptions = prescriptions.length > 0;

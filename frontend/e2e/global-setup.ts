@@ -19,7 +19,7 @@ async function globalSetup() {
       data: { username, password: TEST_PASSWORD },
       failOnStatusCode: false,
     });
-    console.log(`Pre-registered ${username}`);
+    console.error(`Pre-registered ${username}`);
   }
   await apiRequest.dispose();
 }

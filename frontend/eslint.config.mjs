@@ -3,7 +3,7 @@ import tseslint from "typescript-eslint";
 import reactHooks from "eslint-plugin-react-hooks";
 
 const eslintConfig = defineConfig([
-  globalIgnores(["dist/**", "build/**", ".vite/**"]),
+  globalIgnores(["dist/**", "build/**", ".vite/**", ".next/**"]),
   ...tseslint.configs.recommended,
   {
     plugins: {

@@ -33,7 +33,7 @@ test("multi-file upload triggers extraction and auto-populates form", async ({ p
   await fileInput.setInputFiles(FIXTURE);
 
   // 5. Verify progress bar appears (extraction triggered)
-  const progressBar = page.locator('.bg-primary[style*="width"]');
+  const _progressBar = page.locator('.bg-primary[style*="width"]');
   // Wait a moment for extraction to start — progress bar should appear
   await expect(page.getByText(/Extracting 1\/1/))
     .toBeVisible({ timeout: 5000 })
@@ -53,7 +53,7 @@ test("multi-file upload triggers extraction and auto-populates form", async ({ p
         .catch(() => "");
       if (errorText) {
         // Extraction failed — likely AI service issue in test env; verify the flow still works structurally
-        console.log("Extraction error (expected in test env):", errorText);
+        console.error("Extraction error (expected in test env):", errorText);
       }
     });
 

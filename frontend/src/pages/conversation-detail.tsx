@@ -206,7 +206,7 @@ export default function ConversationDetailPage() {
   const [sending, setSending] = useState(false);
   const [streamingContent, setStreamingContent] = useState("");
   const [showScrollBtn, setShowScrollBtn] = useState(false);
-  const streamAbortRef = useRef<AbortController | null>(null);
+  const _streamAbortRef = useRef<AbortController | null>(null);
 
   const chatEndRef = useRef<HTMLDivElement>(null);
   const scrollRef = useRef<HTMLDivElement>(null);

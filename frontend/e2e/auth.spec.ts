@@ -1,5 +1,4 @@
 import { test, expect } from "@playwright/test";
-import { registerAndLogin } from "./helpers/auth";
 import { TEST_PASSWORD } from "./helpers/auth";
 
 const API_BASE = "http://localhost:3000/api/v1";

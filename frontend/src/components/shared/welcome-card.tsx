@@ -17,7 +17,7 @@ interface SetupStep {
   label: string;
   href: string;
   icon: React.ReactNode;
-  check: () => boolean;
+  check: boolean;
 }
 
 interface WelcomeCardProps {
