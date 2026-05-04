@@ -43,78 +43,67 @@ export function PreventiveTimeline({ items, onSetReminder }: PreventiveTimelineP
   });
 
   return (
-    <Card className="overflow-hidden shadow-sm">
-      <div className="px-5 pt-4 pb-2 flex items-center justify-between">
-        <div className="text-base font-semibold flex items-center gap-2.5">
-          <div className="flex h-7 w-7 items-center justify-center rounded-lg bg-emerald-500/10">
-            <Shield className="h-4 w-4 text-emerald-600" />
-          </div>
+    <Card className="shadow-none">
+      <CardContent className="pt-4 pb-3 space-y-2.5">
+        <div className="flex items-center gap-2 text-sm font-semibold">
+          <Shield className="h-4 w-4 text-emerald-500" />
           Preventive Care
           {items.length > 0 && (
-            <Badge className="text-[11px] font-bold px-2 py-0.5 bg-emerald-100 text-emerald-800 border border-emerald-200">
+            <Badge className="text-[10px] font-bold px-1.5 py-0 bg-emerald-100 text-emerald-800 border border-emerald-200">
               {items.length}
             </Badge>
           )}
         </div>
-      </div>
-      <CardContent>
+
         {sorted.length === 0 ? (
-          <div className="flex flex-col items-center gap-2 py-6 text-foreground/70">
-            <Shield className="h-8 w-8 text-emerald-400" />
-            <p className="text-sm font-medium">All preventive care up to date</p>
+          <div className="flex items-center gap-2 py-2 text-muted-foreground">
+            <Shield className="h-4 w-4 text-emerald-500" />
+            <span className="text-xs">All preventive care up to date</span>
           </div>
         ) : (
-          <div className="relative pl-6">
-            {/* Timeline line */}
-            <div className="absolute left-[6px] top-2 bottom-2 w-px bg-border" />
-
-            <div className="space-y-3">
-              {sorted.map((item, idx) => {
-                const statusConfig = dueStatusConfig[item.due_status];
-                return (
-                  <div key={`${item.member_id}-${item.category}-${idx}`} className="relative">
-                    {/* Timeline dot */}
-                    <div
-                      className={`absolute -left-6 top-1.5 h-3 w-3 rounded-full border-2 border-background ${statusConfig.dotClass}`}
-                    />
-
-                    <div
-                      className={`flex items-start justify-between gap-2 rounded-xl border px-3 py-2.5 ${statusConfig.bg}`}
-                    >
-                      <div className="min-w-0 flex-1">
-                        <div className="flex items-center gap-2 flex-wrap">
-                          <p className="text-sm font-semibold truncate">{item.recommendation}</p>
-                          <Badge
-                            className={`text-[11px] font-bold shrink-0 px-1.5 py-0.5 ${priorityConfig[item.priority]}`}
-                          >
-                            {item.priority}
-                          </Badge>
-                        </div>
-                        <div className="flex items-center gap-2 mt-1">
-                          <span className="text-sm text-muted-foreground font-medium">
-                            {item.member_name}
-                          </span>
-                          <Badge
-                            className={`text-[11px] font-bold px-1.5 py-0.5 ${statusConfig.badgeClass}`}
-                          >
-                            <Clock className="h-2.5 w-2.5 mr-0.5" />
-                            {statusConfig.label}
-                          </Badge>
-                        </div>
+          <div className="relative pl-4 space-y-2">
+            <div className="absolute left-[5px] top-1.5 bottom-1.5 w-px bg-border" />
+            {sorted.map((item, idx) => {
+              const status = dueStatusConfig[item.due_status];
+              return (
+                <div key={`${item.member_id}-${item.category}-${idx}`} className="relative">
+                  <div
+                    className={`absolute -left-4 top-1.5 h-2.5 w-2.5 rounded-full border-2 border-background ${status.dotClass}`}
+                  />
+                  <div
+                    className={`flex items-start justify-between gap-2 rounded-lg border px-2.5 py-2 ${status.bg}`}
+                  >
+                    <div className="min-w-0 flex-1">
+                      <div className="flex items-center gap-1.5 flex-wrap">
+                        <p className="text-xs font-semibold truncate">{item.recommendation}</p>
+                        <Badge
+                          className={`text-[10px] font-bold shrink-0 px-1 py-0 ${priorityConfig[item.priority]}`}
+                        >
+                          {item.priority}
+                        </Badge>
                       </div>
-                      <Button
-                        variant="ghost"
-                        size="sm"
-                        onClick={() => onSetReminder(item.member_id, item.recommendation)}
-                        className="shrink-0 p-1 h-auto text-muted-foreground hover:text-foreground"
-                      >
-                        <CalendarPlus className="h-4 w-4" />
-                      </Button>
+                      <div className="flex items-center gap-1.5 mt-0.5">
+                        <span className="text-[11px] text-muted-foreground">
+                          {item.member_name}
+                        </span>
+                        <Badge className={`text-[10px] font-bold px-1 py-0 ${status.badgeClass}`}>
+                          <Clock className="h-2 w-2 mr-0.5" />
+                          {status.label}
+                        </Badge>
+                      </div>
                     </div>
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      onClick={() => onSetReminder(item.member_id, item.recommendation)}
+                      className="shrink-0 p-0.5 h-auto text-muted-foreground hover:text-foreground"
+                    >
+                      <CalendarPlus className="h-3.5 w-3.5" />
+                    </Button>
                   </div>
-                );
-              })}
-            </div>
+                </div>
+              );
+            })}
           </div>
         )}
       </CardContent>

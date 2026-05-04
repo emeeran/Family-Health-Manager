@@ -44,6 +44,11 @@ export interface RecordActivity {
   by_type: Record<string, number>;
 }
 
+export interface VaccinationStatus {
+  total_vaccinations: number;
+  overdue_count: number;
+}
+
 export interface RiskSummary {
   high_risk_members: number;
   moderate_risk_members: number;
@@ -56,6 +61,7 @@ export interface DashboardSummary {
   medication_summary: MedicationSummary;
   scores: MemberScore[];
   record_activity: RecordActivity;
+  vaccination_status: VaccinationStatus;
   risk_summary: RiskSummary;
 }
 

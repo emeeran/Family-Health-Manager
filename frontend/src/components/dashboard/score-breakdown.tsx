@@ -34,7 +34,24 @@ const TOOLTIP_COLORS: Record<string, string> = {
   recency: "text-gray-600",
 };
 
-type TooltipState = { key: string; label: string; score: number; max: number } | null;
+const TOOLTIP_DOT_COLORS: Record<string, string> = {
+  bmi: "bg-blue-500",
+  conditions: "bg-emerald-500",
+  labs: "bg-purple-500",
+  meds: "bg-amber-500",
+  profile: "bg-teal-500",
+  recency: "bg-gray-400",
+};
+
+type TooltipState = { key: string; label: string; score: number; max: number; pct: number } | null;
+
+function healthGrade(score: number): { label: string; color: string } {
+  if (score >= 85) return { label: "Excellent", color: "text-emerald-600" };
+  if (score >= 70) return { label: "Good", color: "text-green-600" };
+  if (score >= 50) return { label: "Fair", color: "text-amber-600" };
+  if (score >= 30) return { label: "Needs Attention", color: "text-orange-600" };
+  return { label: "Critical", color: "text-red-600" };
+}
 
 export function ScoreBreakdown({ breakdown, total, compact }: ScoreBreakdownProps) {
   const [tooltip, setTooltip] = useState<TooltipState>(null);
@@ -52,6 +69,8 @@ export function ScoreBreakdown({ breakdown, total, compact }: ScoreBreakdownProp
     );
   }
 
+  const grade = healthGrade(total);
+
   return (
     <div className="space-y-1.5">
       <div className="relative">
@@ -66,7 +85,13 @@ export function ScoreBreakdown({ breakdown, total, compact }: ScoreBreakdownProp
                 className="relative group/segment"
                 style={{ width: `${widthPct}%` }}
                 onMouseEnter={() => {
-                  setTooltip({ key, label: val.label, score: val.score, max: val.max });
+                  setTooltip({
+                    key,
+                    label: val.label,
+                    score: val.score,
+                    max: val.max,
+                    pct: Math.round(fillPct),
+                  });
                   setActiveKey(key);
                 }}
                 onMouseLeave={() => {
@@ -78,7 +103,13 @@ export function ScoreBreakdown({ breakdown, total, compact }: ScoreBreakdownProp
                     setTooltip(null);
                     setActiveKey(null);
                   } else {
-                    setTooltip({ key, label: val.label, score: val.score, max: val.max });
+                    setTooltip({
+                      key,
+                      label: val.label,
+                      score: val.score,
+                      max: val.max,
+                      pct: Math.round(fillPct),
+                    });
                     setActiveKey(key);
                   }
                 }}
@@ -97,33 +128,56 @@ export function ScoreBreakdown({ breakdown, total, compact }: ScoreBreakdownProp
 
         {/* Tooltip */}
         {tooltip && (
-          <div className="absolute -top-10 left-1/2 -translate-x-1/2 z-10 pointer-events-none rounded-lg border bg-popover/95 backdrop-blur-sm px-3 py-1.5 shadow-md text-xs whitespace-nowrap">
-            <span className={`font-semibold ${TOOLTIP_COLORS[tooltip.key] || ""}`}>
-              {tooltip.label}
-            </span>
-            <span className="text-muted-foreground ml-1.5">
-              {tooltip.score}/{tooltip.max}
-            </span>
+          <div className="absolute -top-11 left-1/2 -translate-x-1/2 z-10 pointer-events-none rounded-lg border bg-popover/95 backdrop-blur-sm px-3 py-1.5 shadow-md whitespace-nowrap">
+            <div className="flex items-center gap-1.5 text-xs">
+              <span
+                className={`inline-block h-2 w-2 rounded-full ${TOOLTIP_DOT_COLORS[tooltip.key] || "bg-gray-400"}`}
+              />
+              <span className={`font-semibold ${TOOLTIP_COLORS[tooltip.key] || ""}`}>
+                {tooltip.label}
+              </span>
+              <span className="text-muted-foreground">
+                {tooltip.score}/{tooltip.max}
+              </span>
+              <span
+                className={`ml-0.5 font-bold ${tooltip.pct >= 80 ? "text-emerald-600" : tooltip.pct >= 50 ? "text-amber-600" : "text-red-600"}`}
+              >
+                {tooltip.pct}%
+              </span>
+            </div>
           </div>
         )}
       </div>
 
-      {/* Legend + total */}
+      {/* Legend + total + grade */}
       {!compact && (
-        <div className="flex items-center justify-between">
+        <div className="flex items-center justify-between gap-2">
           <div className="flex flex-wrap gap-x-3 gap-y-1">
-            {entries.map(([key, val]) => (
-              <div key={key} className="flex items-center gap-1">
-                <span
-                  className={`inline-block h-2 w-2 rounded-full ${COMPONENT_COLORS[key] || "bg-gray-400"}`}
-                />
-                <span className="text-[10px] text-muted-foreground font-medium">
-                  {val.label} {val.score}/{val.max}
-                </span>
-              </div>
-            ))}
+            {entries.map(([key, val]) => {
+              const pct = val.max > 0 ? Math.round((val.score / val.max) * 100) : 0;
+              const isActive = activeKey === key;
+              return (
+                <div
+                  key={key}
+                  className={`flex items-center gap-1 transition-opacity ${isActive ? "opacity-100" : "opacity-70 hover:opacity-100"}`}
+                >
+                  <span
+                    className={`inline-block h-2 w-2 rounded-full ${COMPONENT_COLORS[key] || "bg-gray-400"}`}
+                  />
+                  <span className="text-[10px] text-muted-foreground font-medium">{val.label}</span>
+                  <span
+                    className={`text-[10px] font-bold ${pct >= 80 ? "text-emerald-600" : pct >= 50 ? "text-amber-600" : "text-red-600"}`}
+                  >
+                    {pct}%
+                  </span>
+                </div>
+              );
+            })}
           </div>
-          <span className="text-sm font-bold shrink-0 ml-2">{total}/100</span>
+          <div className="flex items-center gap-2 shrink-0">
+            <span className={`text-[10px] font-bold ${grade.color}`}>{grade.label}</span>
+            <span className="text-sm font-bold">{total}/100</span>
+          </div>
         </div>
       )}
     </div>
