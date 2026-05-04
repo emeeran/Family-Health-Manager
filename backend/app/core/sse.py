@@ -21,6 +21,7 @@ def make_sse_stream(
     """
     async def event_stream():
         insight_id: str | None = None
+        member_id: str | None = None
         try:
             async for data in source:
                 # Detect completed insights to trigger verification
@@ -29,20 +30,22 @@ def make_sse_stream(
                         parsed = json.loads(data)
                         if parsed.get("stage") == "complete" and parsed.get("insight_id"):
                             insight_id = parsed["insight_id"]
+                            member_id = parsed.get("member_id")
                     except (json.JSONDecodeError, AttributeError):
                         pass
                 yield f"data: {data}\n\n"
-            await db.commit()
-            # Fire-and-forget verification after commit
+            # Flush pending changes; get_db dependency will handle the final commit+close
+            await db.flush()
+            # Fire-and-forget verification after flush
             if insight_id:
                 try:
                     from app.services.insight_service import spawn_insight_verification_task
-                    spawn_insight_verification_task(UUID(insight_id), "streaming insight")
+                    spawn_insight_verification_task(UUID(insight_id), "streaming insight", member_id=member_id)
                 except Exception:
                     logger.debug("Post-stream verification skipped")
         except Exception as exc:
             await db.rollback()
-            logger.error("Insight stream error: %s", exc)
+            logger.error("Insight stream error: %s", exc, exc_info=True)
             yield f"data: {json.dumps({'stage': 'error', 'message': 'An error occurred during streaming'})}\n\n"
 
     return StreamingResponse(event_stream(), media_type="text/event-stream")

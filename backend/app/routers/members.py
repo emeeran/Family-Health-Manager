@@ -8,6 +8,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel, Field
 from sqlalchemy import select, func
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.orm import selectinload
 from app.core.database import get_db
 from app.core.deps import get_household_from_token
 from app.core.sse import make_sse_stream
@@ -595,51 +596,23 @@ async def generate_member_insights_stream(
 
 
 _PRE_CONSULT_PROMPT = (
-    "You are a clinical assistant preparing a pre-consultation inquiry sheet for a patient's upcoming "
-    "doctor visit. Generate 8-12 focused clinical questions that the patient should raise with their "
-    "physician.\n\n"
-    "Use ALL available patient data: demographics, medical history, diagnosed conditions, all "
-    "medications with dosages, lab results with dates and reference ranges, visit notes, vitals, "
-    "and any overdue follow-ups."
+    "Generate a list of discussion points for a patient to raise with their doctor during an "
+    "upcoming consultation. Use the patient's medical history, conditions, medications, lab "
+    "results, visit notes, and any reported symptoms."
     "{specialty_section}"
     "{symptoms_section}\n\n"
-    "OUTPUT FORMAT — produce EXACTLY this structure:\n\n"
-    "### **Pre-Consultation Clinical Inquiry**\n"
-    "*(AI-generated questions based on the patient's medical history and reported symptoms "
-    "for discussion with the attending physician.)*\n\n"
-    "Then list 8-12 items. Each item MUST follow this exact pattern:\n"
-    "* **Category (Detail):** Specific clinical question that references concrete patient data.\n\n"
-    "CATEGORIES (use the most relevant ones for this patient):\n"
-    "- **Medication Review (Drug Names)**: Questions about concurrent use, contraindications, "
-    "duplicate therapy, or interactions between the patient's specific medications. "
-    "Always name the drugs involved.\n"
-    "- **Symptom Assessment (Body Area)**: Questions about the etiology, significance, "
-    "or workup for a reported symptom. Always name the body area and reference relevant history.\n"
-    "- **Lab Result Interpretation (Test Name)**: Ask what a specific abnormal or borderline "
-    "lab value implies given the patient's known conditions. Cite the exact value, date, and reference range.\n"
-    "- **Dosage Optimization (Drug Name)**: Ask whether a current dosage is appropriate given "
-    "the latest lab values, weight changes, or disease progression.\n"
-    "- **Treatment Efficacy (Condition)**: Ask whether a current treatment is achieving its "
-    "target based on the most recent data (e.g., HbA1c still above target, BP still elevated).\n"
-    "- **Follow-up Planning (Test/Screening)**: Ask when a repeat test, screening, or follow-up "
-    "visit is due. Reference the last date performed and recommended interval.\n"
-    "- **Preventive Care**: Ask about overdue vaccinations, age-appropriate screenings, "
-    "or lifestyle interventions specific to the patient's conditions.\n"
-    "- **Referral Need (Specialty)**: Ask whether a specialist referral is warranted for a "
-    "specific concern, citing the relevant findings.\n"
-    "- **New Concern Investigation**: If the patient reported new symptoms, ask about "
-    "differential diagnosis, recommended workup, or urgency assessment.\n"
-    "{specialty_focus}\n"
+    "OUTPUT: a numbered list of 8-12 concise discussion points. Nothing else — no title, "
+    "no summary, no sections, no preamble, no closing.\n\n"
+    "Each point: **Topic:** One-sentence discussion point with specific patient data.\n\n"
+    "Cover: medication review, lab interpretation, treatment efficacy, symptom follow-up, "
+    "overdue follow-ups, preventive care, new concerns.\n"
+    "{specialty_focus}"
     "RULES:\n"
-    "- Every question MUST reference specific data from the patient's records: "
-    "exact medication names, lab values with units and dates, diagnosed conditions, visit notes.\n"
-    "- Be clinically precise. Use medical terminology appropriate for physician-level discussion.\n"
-    "- Prioritize actionable questions that will affect clinical decisions during THIS visit.\n"
-    "- Put the most clinically urgent questions first.\n"
-    "- No preamble or closing text beyond the header and bullet list.\n"
-    "- No filler or generic questions (e.g., 'How is your general health?'). Every item must be data-driven.\n"
-    "- If the patient has multiple conditions, ensure questions address EACH condition, not just the primary one.\n"
-    "- Include at least one question about medication interactions if the patient takes 3+ medications.\n"
+    "- Every point must reference specific data (drug names, lab values with units/dates, conditions).\n"
+    "- MEDICATION-INDICATION ACCURACY: MetXL/Metoprolol = beta-blocker for HYPERTENSION (NOT for diabetes). "
+    "Amlodipine = calcium channel blocker for HYPERTENSION. If unsure about a drug's indication, "
+    "say 'indication: review with doctor'. Never fabricate.\n"
+    "- Most urgent points first. No filler. Address each diagnosed condition.\n"
 )
 
 
@@ -666,8 +639,16 @@ async def _get_provider_specialty_context(
     if provider.speciality:
         specialty_section += f"- Specialty: {provider.speciality}\n"
         specialty_focus = (
-            f"- **{provider.speciality} Assessment**: Add questions specifically relevant "
-            f"to a {provider.speciality} consultation."
+            f"\nCRITICAL: This consultation is with a {provider.speciality} specialist. "
+            f"The discussion points MUST be scoped to {provider.speciality}-relevant concerns. "
+            f"Focus on: conditions, medications, lab results, and follow-ups that fall within "
+            f"the {provider.speciality} scope of practice. Only include points from other "
+            f"specialties if they directly affect the {provider.speciality} treatment plan "
+            f"(e.g., drug interactions between {provider.speciality} medications and other drugs).\n"
+        )
+    else:
+        specialty_focus = (
+            "\nThis is a general consultation. Cover all active health concerns broadly.\n"
         )
     return specialty_section, specialty_focus
 
@@ -691,6 +672,7 @@ async def generate_pre_consultation_note(
     # Append overdue follow-up context
     overdue_result = await db.execute(
         select(HealthRecord)
+        .options(selectinload(HealthRecord.provider))
         .where(
             HealthRecord.family_member_id == member_id,
             HealthRecord.next_review_date < date.today(),
@@ -823,44 +805,49 @@ async def generate_pre_consultation_note_stream(
     except ValueError:
         raise HTTPException(status_code=404, detail="Member not found")
 
-    # Append overdue follow-up context
-    overdue_result = await db.execute(
-        select(HealthRecord)
-        .where(
-            HealthRecord.family_member_id == member_id,
-            HealthRecord.next_review_date < date.today(),
-            HealthRecord.is_deleted.is_(False),
-            HealthRecord.next_review_date.isnot(None),
+    # Build prompt outside the stream to catch errors early
+    try:
+        overdue_result = await db.execute(
+            select(HealthRecord)
+            .options(selectinload(HealthRecord.provider))
+            .where(
+                HealthRecord.family_member_id == member_id,
+                HealthRecord.next_review_date < date.today(),
+                HealthRecord.is_deleted.is_(False),
+                HealthRecord.next_review_date.isnot(None),
+            )
+            .order_by(HealthRecord.next_review_date.asc())
         )
-        .order_by(HealthRecord.next_review_date.asc())
-    )
-    overdue_records = overdue_result.scalars().all()
+        overdue_records = overdue_result.scalars().all()
 
-    specialty_section, specialty_focus = await _get_provider_specialty_context(
-        provider_id, household.id, db
-    )
+        specialty_section, specialty_focus = await _get_provider_specialty_context(
+            provider_id, household.id, db
+        )
 
-    symptoms_section = ""
-    if symptoms and symptoms.strip():
-        symptoms_section = f"\n\nPATIENT-REPORTED SYMPTOMS:\n{symptoms.strip()}"
+        symptoms_section = ""
+        if symptoms and symptoms.strip():
+            symptoms_section = f"\n\nPATIENT-REPORTED SYMPTOMS:\n{symptoms.strip()}"
 
-    prompt_body = _PRE_CONSULT_PROMPT.format(
-        symptoms_section=symptoms_section,
-        specialty_section=specialty_section,
-        specialty_focus=specialty_focus,
-    )
-    if overdue_records:
-        overdue_ctx = "\n\nOVERDUE FOLLOW-UPS:\n"
-        for r in overdue_records:
-            overdue_ctx += f"- [{r.next_review_date}] {r.record_type.value}"
-            if r.diagnosis:
-                overdue_ctx += f" — {r.diagnosis}"
-            if r.provider_name:
-                overdue_ctx += f" (Provider: {r.provider_name})"
-            overdue_ctx += "\n"
-        prompt_body = overdue_ctx + "\n" + prompt_body
+        prompt_body = _PRE_CONSULT_PROMPT.format(
+            symptoms_section=symptoms_section,
+            specialty_section=specialty_section,
+            specialty_focus=specialty_focus,
+        )
+        if overdue_records:
+            overdue_ctx = "\n\nOVERDUE FOLLOW-UPS:\n"
+            for r in overdue_records:
+                overdue_ctx += f"- [{r.next_review_date}] {r.record_type.value}"
+                if r.diagnosis:
+                    overdue_ctx += f" — {r.diagnosis}"
+                if r.provider_name:
+                    overdue_ctx += f" (Provider: {r.provider_name})"
+                overdue_ctx += "\n"
+            prompt_body = overdue_ctx + "\n" + prompt_body
 
-    prompt = f"__preconsult__{member_id}__\n\n{prompt_body}"
+        prompt = f"__preconsult__{member_id}__\n\n{prompt_body}"
+    except Exception as exc:
+        logger.error("Pre-consultation setup failed: %s", exc, exc_info=True)
+        raise HTTPException(status_code=500, detail=f"Setup failed: {type(exc).__name__}: {exc}")
 
     ai_service = AIService(db)
     return make_sse_stream(

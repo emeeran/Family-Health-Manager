@@ -11,7 +11,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { VerificationBadge } from "@/components/shared/verification-badge";
-import { streamRequest } from "@/lib/api-client";
+import { streamRequest, ApiError } from "@/lib/api-client";
 import { listProviders } from "@/lib/api/providers";
 import {
   ClipboardList,
@@ -111,8 +111,15 @@ export const PreConsultationCard = memo(function PreConsultationCard({
           }
         },
       });
-    } catch {
-      toast.error("Failed to generate pre-consultation note");
+    } catch (err) {
+      if (err instanceof ApiError) {
+        const detail = err.data?.message || err.data?.error || err.message || "Unknown";
+        console.error("Pre-consult API error:", err.status, err.data);
+        toast.error(`Failed to generate: ${detail} (${err.status})`);
+      } else {
+        console.error("Pre-consult error:", err);
+        toast.error(`Failed to generate: ${err instanceof Error ? err.message : "Unknown error"}`);
+      }
     } finally {
       setLoading(false);
       setStreamStage("");

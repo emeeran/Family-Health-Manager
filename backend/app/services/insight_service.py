@@ -177,7 +177,7 @@ def spawn_insight_task(record_id: "UUID") -> None:
         logger.warning("No running event loop — skipping insight generation")
 
 
-def spawn_insight_verification_task(insight_id: "UUID", health_context: str) -> None:
+def spawn_insight_verification_task(insight_id: "UUID", health_context: str, member_id: str | None = None) -> None:
     """Fire-and-forget insight cross-verification using a different AI provider."""
     async def _run():
         db = SessionLocal()
@@ -190,9 +190,21 @@ def spawn_insight_verification_task(insight_id: "UUID", health_context: str) -> 
                 return
 
             ai_service = AIService(db)
+
+            # Build rich context from member data when available
+            ctx = health_context
+            if member_id:
+                try:
+                    from uuid import UUID as _UUID
+                    built = await ai_service._build_member_context(_UUID(member_id), comprehensive=True)
+                    if built:
+                        ctx = built[:2000]
+                except Exception:
+                    logger.debug("Could not build member context for verification, using fallback")
+
             from app.services.verification_service import VerificationService
             verification_svc = VerificationService(db, ai_service)
-            await verification_svc.verify_insight(insight, health_context)
+            await verification_svc.verify_insight(insight, ctx)
             await db.commit()
             logger.info("Verified insight %s", insight_id)
         except Exception:

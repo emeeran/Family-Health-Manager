@@ -59,10 +59,18 @@ export async function apiRequest<T>(path: string, options: ApiOptions = {}): Pro
     if (response.status === 401) handleUnauthorized();
 
     if (!response.ok) {
-      const error = await response.json().catch(() => ({
-        status_code: response.status,
-        message: response.statusText,
-      }));
+      const text = await response.text().catch(() => "");
+      let error;
+      try {
+        error = JSON.parse(text);
+      } catch {
+        error = {
+          status_code: response.status,
+          message: response.statusText || `HTTP ${response.status}`,
+          detail: text.slice(0, 200),
+        };
+      }
+      console.error(`API ${response.status} on ${path}:`, error);
       throw new ApiError(response.status, error);
     }
 
@@ -117,10 +125,18 @@ export async function streamRequest(
     if (response.status === 401) handleUnauthorized();
 
     if (!response.ok) {
-      const error = await response.json().catch(() => ({
-        status_code: response.status,
-        message: response.statusText,
-      }));
+      const text = await response.text().catch(() => "");
+      let error;
+      try {
+        error = JSON.parse(text);
+      } catch {
+        error = {
+          status_code: response.status,
+          message: response.statusText || `HTTP ${response.status}`,
+          detail: text.slice(0, 200),
+        };
+      }
+      console.error(`Stream ${response.status} on ${path}:`, error);
       throw new ApiError(response.status, error);
     }
 

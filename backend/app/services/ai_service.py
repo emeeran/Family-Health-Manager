@@ -306,7 +306,10 @@ class AIService:
         self.db.add(insight)
         await self.db.flush()
 
-        yield sse({"stage": "complete", "insight_id": str(insight.id), "provider": provider})
+        complete_event = {"stage": "complete", "insight_id": str(insight.id), "provider": provider}
+        if member_id:
+            complete_event["member_id"] = str(member_id)
+        yield sse(complete_event)
 
     async def _ollama_chat_stream(self, model: str, prompt: str) -> AsyncGenerator[str, None]:
         """Stream tokens from local Ollama model."""
