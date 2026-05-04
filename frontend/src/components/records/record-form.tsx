@@ -1409,7 +1409,7 @@ export function RecordForm({
                       refreshRecentBatches();
                     }
                   }}
-                  className="text-[10px] text-muted-foreground hover:text-destructive transition-colors"
+                  className="text-xs text-muted-foreground hover:text-destructive transition-colors"
                 >
                   Clear all
                 </button>
@@ -1433,7 +1433,7 @@ export function RecordForm({
                         <FileText className="h-3.5 w-3.5 text-muted-foreground" />
                         <span className="font-medium max-w-[140px] truncate">{batch.fileName}</span>
                         <span className="text-muted-foreground">{summary}</span>
-                        <span className="text-[10px] text-muted-foreground/60 flex items-center gap-0.5">
+                        <span className="text-xs text-muted-foreground/60 flex items-center gap-0.5">
                           <Clock className="h-2.5 w-2.5" />
                           {timeAgo(batch.timestamp)}
                         </span>
@@ -1858,16 +1858,16 @@ export function RecordForm({
             <table className="w-full text-sm">
               <thead>
                 <tr className="border-b">
-                  <th className="pb-1 text-left text-[10px] font-semibold text-muted-foreground uppercase">
+                  <th className="pb-1 text-left text-xs font-semibold text-muted-foreground uppercase">
                     Type
                   </th>
-                  <th className="pb-1 px-2 text-left text-[10px] font-semibold text-muted-foreground uppercase">
+                  <th className="pb-1 px-2 text-left text-xs font-semibold text-muted-foreground uppercase">
                     Medicine
                   </th>
-                  <th className="pb-1 px-2 text-left text-[10px] font-semibold text-muted-foreground uppercase">
+                  <th className="pb-1 px-2 text-left text-xs font-semibold text-muted-foreground uppercase">
                     Dose
                   </th>
-                  <th className="pb-1 px-2 text-left text-[10px] font-semibold text-muted-foreground uppercase">
+                  <th className="pb-1 px-2 text-left text-xs font-semibold text-muted-foreground uppercase">
                     Timing
                   </th>
                 </tr>

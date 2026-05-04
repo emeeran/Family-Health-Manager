@@ -1701,6 +1701,160 @@ class AIService:
             logger.warning("Failed to parse extraction response: %s", exc)
             return ExtractedFields()
 
+    async def chat_stream(
+        self,
+        conversation_id: UUID,
+        user_message: str,
+        member_id: UUID | None = None,
+        household_id: UUID | None = None,
+    ) -> AsyncGenerator[str, None]:
+        """Stream AI chat response with SSE progress events.
+
+        Yields JSON strings suitable for SSE data lines:
+        - {"stage":"user_message","id":"...","content":"..."}
+        - {"stage":"context","message":"Loading health context..."}
+        - {"stage":"provider","provider":"..."}
+        - {"stage":"token","content":"..."}
+        - {"stage":"complete","assistant_message":{...}}
+        - {"stage":"error","message":"..."}
+        """
+        def sse(data: dict) -> str:
+            return json.dumps(data)
+
+        # Save user message
+        user_msg = Message(
+            conversation_id=conversation_id,
+            role=MessageRole.USER,
+            content=user_message,
+        )
+        self.db.add(user_msg)
+        await self.db.flush()
+
+        yield sse({
+            "stage": "user_message",
+            "id": str(user_msg.id),
+            "content": user_message,
+            "created_at": user_msg.created_at.isoformat(),
+        })
+
+        # Build health context
+        health_context = ""
+        if member_id:
+            cache_key = str(member_id)
+            if not self._get_cache(cache_key):
+                yield sse({"stage": "context", "message": "Loading health context..."})
+                self._put_cache(cache_key, await self._build_member_context(
+                    member_id, comprehensive=True
+                ))
+            health_context = self._get_cache(cache_key) or ""
+        elif household_id:
+            cache_key = f"hh:{household_id}"
+            if not self._get_cache(cache_key):
+                yield sse({"stage": "context", "message": "Loading health context..."})
+                self._put_cache(cache_key, await self._build_household_context(
+                    household_id
+                ))
+            health_context = self._get_cache(cache_key) or ""
+
+        history = await self._get_conversation_history(conversation_id, limit=10)
+        full_context = f"{health_context}\n{history}" if health_context else history
+
+        system_note = _CLINICAL_SYSTEM_NOTE.format(today=self._fmt_date(date.today()))
+        full_prompt = f"{system_note}{full_context}\n\nUser: {user_message}\n\nAssistant:" if full_context else user_message
+
+        full_response = ""
+        provider = ""
+
+        # Try Ollama streaming first
+        for model, label in [
+            (settings.OLLAMA_MODEL, f"Ollama {settings.OLLAMA_MODEL}"),
+        ]:
+            try:
+                yield sse({"stage": "provider", "provider": label})
+                chunks = []
+                async for chunk in self._ollama_chat_stream(model, full_prompt):
+                    chunks.append(chunk)
+                    yield sse({"stage": "token", "content": chunk})
+                result = "".join(chunks)
+                if result:
+                    full_response = result
+                    provider = label
+                    break
+            except Exception as exc:
+                logger.warning("Ollama streaming model %s failed: %s", label, exc)
+
+        # Fallback: other Ollama models
+        if not full_response:
+            for model, label in [
+                (settings.OLLAMA_TEXT_MODEL, f"Ollama {settings.OLLAMA_TEXT_MODEL}"),
+            ]:
+                try:
+                    yield sse({"stage": "provider", "provider": label})
+                    chunks = []
+                    async for chunk in self._ollama_chat_stream(model, full_prompt):
+                        chunks.append(chunk)
+                        yield sse({"stage": "token", "content": chunk})
+                    result = "".join(chunks)
+                    if result:
+                        full_response = result
+                        provider = label
+                        break
+                except Exception as exc:
+                    logger.warning("Ollama streaming model %s failed: %s", label, exc)
+
+        # Fallback: cloud providers (non-streaming, sent as single token)
+        if not full_response:
+            cloud_providers: list[tuple] = []
+            if settings.OPENROUTER_API_KEY:
+                cloud_providers.append((self._call_openrouter_text, "OpenRouter DeepSeek V4 Flash"))
+            if settings.GROQ_API_KEY:
+                cloud_providers.append((self._call_groq_text, "Groq Llama-4-Scout"))
+            if settings.GEMINI_API_KEY:
+                cloud_providers.append((self._call_gemini_text, "Google Gemini 2.5 Flash"))
+
+            if cloud_providers:
+                try:
+                    yield sse({"stage": "provider", "provider": "Cloud AI"})
+                    full_response, provider = await self._race_providers(full_prompt, cloud_providers)
+                    if full_response:
+                        yield sse({"stage": "token", "content": full_response})
+                except Exception as exc:
+                    logger.warning("Cloud providers failed for streaming chat: %s", exc)
+
+        if not full_response:
+            yield sse({"stage": "error", "message": "All AI providers failed. Please try again."})
+            return
+
+        # Save assistant message
+        assistant_msg = Message(
+            conversation_id=conversation_id,
+            role=MessageRole.ASSISTANT,
+            content=full_response,
+        )
+        self.db.add(assistant_msg)
+
+        insight = AIInsight(
+            conversation_id=conversation_id,
+            prompt=user_message,
+            response=full_response,
+            provider_used=provider,
+        )
+        self.db.add(insight)
+        await self.db.flush()
+
+        yield sse({
+            "stage": "complete",
+            "assistant_message": {
+                "id": str(assistant_msg.id),
+                "role": "assistant",
+                "content": full_response,
+                "created_at": assistant_msg.created_at.isoformat(),
+                "disclaimer": "This is not medical advice. Consult a healthcare professional.",
+            },
+            "provider": provider,
+            "health_context": health_context,
+        })
+
     async def chat(
         self,
         conversation_id: UUID,

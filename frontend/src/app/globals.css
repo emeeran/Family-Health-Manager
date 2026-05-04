@@ -314,7 +314,7 @@ button,
 
 /* Focus ring polish */
 :focus-visible {
-  outline: 2px solid hsl(var(--ring));
+  outline: 2px solid var(--ring);
   outline-offset: 2px;
   border-radius: 4px;
 }
@@ -385,6 +385,46 @@ button,
 
 .animate-page-enter {
   animation: pageEnter 0.15s ease-out;
+}
+
+/* Reduced motion — respect user preference */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+
+  .animate-fade-in-up,
+  .animate-shake,
+  .animate-page-enter,
+  .card-hover {
+    animation: none !important;
+    transition: none !important;
+  }
+}
+
+/* Touch target sizing — ensure 44px minimum on touch devices */
+@media (pointer: coarse) {
+  button,
+  [role="button"],
+  a,
+  summary,
+  [type="checkbox"],
+  [type="radio"] {
+    min-height: 44px;
+    min-width: 44px;
+  }
+
+  /* Allow inline elements to be smaller but still tappable */
+  .inline-flex,
+  .badge {
+    min-height: unset;
+    min-width: unset;
+  }
 }
 
 /* Print styles — hide interactive chrome, show clean layout */

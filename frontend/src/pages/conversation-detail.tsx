@@ -24,7 +24,12 @@ import {
   AlertCircle,
 } from "lucide-react";
 import { toast } from "sonner";
-import { getConversation, sendMessage } from "@/lib/api/conversations";
+import {
+  getConversation,
+  sendMessage,
+  sendMessageStream,
+  type StreamEvent,
+} from "@/lib/api/conversations";
 import type { MessageResponse, SendMessageResponse } from "@/lib/types/message";
 import type { ConversationDetailResponse } from "@/lib/types/conversation";
 
@@ -122,7 +127,7 @@ function ChatMessage({
             <span className="text-xs font-medium text-foreground">
               {isUser ? "You" : "Health AI"}
             </span>
-            <span className="text-[10px] text-muted-foreground">
+            <span className="text-xs text-muted-foreground">
               {new Date(msg.created_at).toLocaleTimeString([], {
                 hour: "2-digit",
                 minute: "2-digit",
@@ -181,7 +186,7 @@ function DateSeparator({ date }: { date: string }) {
   return (
     <div className="flex items-center gap-3 my-4">
       <div className="flex-1 h-px bg-border" />
-      <span className="text-[10px] font-medium text-muted-foreground uppercase tracking-wider">
+      <span className="text-xs font-medium text-muted-foreground uppercase tracking-wider">
         {label}
       </span>
       <div className="flex-1 h-px bg-border" />
@@ -199,7 +204,9 @@ export default function ConversationDetailPage() {
   const [messages, setMessages] = useState<MessageResponse[]>([]);
   const [input, setInput] = useState("");
   const [sending, setSending] = useState(false);
+  const [streamingContent, setStreamingContent] = useState("");
   const [showScrollBtn, setShowScrollBtn] = useState(false);
+  const streamAbortRef = useRef<AbortController | null>(null);
 
   const chatEndRef = useRef<HTMLDivElement>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
@@ -233,10 +240,10 @@ export default function ConversationDetailPage() {
 
   const title = convData?.conversation.title || "Chat";
 
-  // Auto-scroll on new messages
+  // Auto-scroll on new messages and streaming content
   useEffect(() => {
     scrollToBottom();
-  }, [messages, sending, scrollToBottom]);
+  }, [messages, sending, streamingContent, scrollToBottom]);
 
   // Scroll button visibility
   useEffect(() => {
@@ -263,21 +270,70 @@ export default function ConversationDetailPage() {
     const text = input.trim();
     if (!text || sending || !conversationId) return;
     setSending(true);
+    setStreamingContent("");
     setInput("");
 
     // Reset textarea height
     if (textareaRef.current) textareaRef.current.style.height = "auto";
 
+    // Optimistic user message
+    const optimisticUserMsg: MessageResponse = {
+      id: `temp-${Date.now()}`,
+      conversation_id: conversationId,
+      role: "user" as const,
+      content: text,
+      created_at: new Date().toISOString(),
+    };
+    setMessages((prev) => [...prev, optimisticUserMsg]);
+
     try {
-      const response: SendMessageResponse = await sendMessage(conversationId, {
-        content: text,
+      let streamedText = "";
+
+      await sendMessageStream(conversationId, { content: text }, (event: StreamEvent) => {
+        if (event.stage === "user_message") {
+          // Replace optimistic user message with real one
+          const realId = event.id as string;
+          setMessages((prev) =>
+            prev.map((m) =>
+              m.id === optimisticUserMsg.id
+                ? { ...m, id: realId, created_at: (event.created_at as string) || m.created_at }
+                : m
+            )
+          );
+        } else if (event.stage === "token") {
+          streamedText += event.content as string;
+          setStreamingContent(streamedText);
+        } else if (event.stage === "complete") {
+          const assistantMsg = event.assistant_message as MessageResponse;
+          setStreamingContent("");
+          setMessages((prev) => [...prev, assistantMsg]);
+          // Update SWR cache
+          mutate();
+        } else if (event.stage === "error") {
+          toast.error((event.message as string) || "AI service unavailable");
+          // Remove optimistic user message on error
+          setMessages((prev) => prev.filter((m) => m.id !== optimisticUserMsg.id));
+          setInput(text);
+        }
       });
-      setMessages((prev) => [...prev, response.user_message, response.assistant_message]);
     } catch {
-      toast.error("Failed to send message");
-      setInput(text); // Restore input on error
+      // Fallback: try non-streaming endpoint
+      try {
+        setStreamingContent("");
+        // Remove optimistic message and retry via non-streaming
+        setMessages((prev) => prev.filter((m) => m.id !== optimisticUserMsg.id));
+        const response: SendMessageResponse = await sendMessage(conversationId, {
+          content: text,
+        });
+        setMessages((prev) => [...prev, response.user_message, response.assistant_message]);
+      } catch {
+        toast.error("Failed to send message");
+        setMessages((prev) => prev.filter((m) => m.id !== optimisticUserMsg.id));
+        setInput(text);
+      }
     } finally {
       setSending(false);
+      setStreamingContent("");
       textareaRef.current?.focus();
     }
   }
@@ -392,7 +448,7 @@ export default function ConversationDetailPage() {
               );
             })}
 
-            {/* Typing indicator */}
+            {/* Streaming response or typing indicator */}
             {sending && (
               <div className="flex gap-3 mt-6">
                 <div className="shrink-0 mt-0.5">
@@ -404,8 +460,16 @@ export default function ConversationDetailPage() {
                   <div className="flex items-center gap-2 px-1">
                     <span className="text-xs font-medium text-foreground">Health AI</span>
                   </div>
-                  <div className="bg-muted/80 rounded-2xl rounded-tl-md px-4 py-3">
-                    <TypingIndicator />
+                  <div className="bg-muted/80 rounded-2xl rounded-tl-md px-4 py-3 text-sm leading-relaxed max-w-[78%]">
+                    {streamingContent ? (
+                      <div className="chat-markdown">
+                        <Suspense fallback={<span className="text-muted-foreground">...</span>}>
+                          <MarkdownRenderer content={streamingContent} />
+                        </Suspense>
+                      </div>
+                    ) : (
+                      <TypingIndicator />
+                    )}
                   </div>
                 </div>
               </div>
@@ -437,6 +501,7 @@ export default function ConversationDetailPage() {
               onChange={(e) => setInput(e.target.value)}
               onKeyDown={handleKeyDown}
               placeholder="Message Health AI..."
+              aria-label="Type your message"
               disabled={sending}
               rows={1}
               className="w-full resize-none rounded-xl border border-input bg-transparent px-4 py-2.5 text-sm ring-offset-background placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:opacity-50 max-h-40"
@@ -455,7 +520,7 @@ export default function ConversationDetailPage() {
             )}
           </Button>
         </div>
-        <p className="mx-auto max-w-3xl text-center mt-1.5 text-[10px] text-muted-foreground/60">
+        <p className="mx-auto max-w-3xl text-center mt-1.5 text-xs text-muted-foreground/60">
           Enter to send, Shift+Enter for new line
         </p>
       </div>

@@ -1,4 +1,4 @@
-import { apiRequest } from "../api-client";
+import { apiRequest, streamRequest } from "../api-client";
 import type {
   ConversationCreate,
   ConversationResponse,
@@ -26,6 +26,22 @@ export function sendMessage(conversationId: string, data: MessageCreate) {
   return apiRequest<SendMessageResponse>(`/conversations/${conversationId}/messages`, {
     method: "POST",
     body: data,
+  });
+}
+
+export interface StreamEvent {
+  stage: string;
+  [key: string]: unknown;
+}
+
+export function sendMessageStream(
+  conversationId: string,
+  data: MessageCreate,
+  onEvent: (event: StreamEvent) => void
+): Promise<void> {
+  return streamRequest(`/conversations/${conversationId}/messages/stream`, {
+    body: data,
+    onEvent: onEvent as (event: Record<string, unknown>) => void,
   });
 }
 

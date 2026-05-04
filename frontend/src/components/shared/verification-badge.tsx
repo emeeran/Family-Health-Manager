@@ -131,7 +131,7 @@ export function VerificationBadge({
                     </span>
                     <span
                       className={cn(
-                        "text-[9px] px-1 py-0.5 rounded font-medium",
+                        "text-[11px] px-1 py-0.5 rounded font-medium",
                         w.severity === "high"
                           ? "bg-red-100 text-red-700"
                           : w.severity === "medium"

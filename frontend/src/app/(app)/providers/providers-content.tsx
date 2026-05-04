@@ -137,7 +137,7 @@ export function ProvidersContent({ providers }: ProvidersContentProps) {
                           )}
                         </span>
                         {m.uhid && (
-                          <span className="font-mono text-muted-foreground bg-muted px-1.5 py-0.5 rounded text-[10px] ml-2 shrink-0">
+                          <span className="font-mono text-muted-foreground bg-muted px-1.5 py-0.5 rounded text-xs ml-2 shrink-0">
                             {m.uhid}
                           </span>
                         )}

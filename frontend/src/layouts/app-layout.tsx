@@ -5,6 +5,7 @@ import { MobileBottomNav } from "@/components/layout/mobile-bottom-nav";
 import { Toaster } from "@/components/ui/sonner";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { ErrorBoundary } from "@/components/shared/error-boundary";
+import { OfflineBanner } from "@/components/shared/offline-banner";
 import { RecordQuickViewProvider } from "@/components/records/record-quick-view-provider";
 import { RecordQuickView } from "@/components/records/record-quick-view";
 
@@ -12,6 +13,7 @@ export function AppLayout() {
   return (
     <TooltipProvider>
       <RecordQuickViewProvider>
+        <OfflineBanner />
         <div className="flex h-screen overflow-hidden">
           <a
             href="#main-content"

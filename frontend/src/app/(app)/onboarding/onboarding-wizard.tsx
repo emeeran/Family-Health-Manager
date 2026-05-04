@@ -200,9 +200,9 @@ export function OnboardingWizard({ householdName: initialName }: OnboardingWizar
               </div>
               <div className="grid grid-cols-2 gap-3">
                 <div className="space-y-2">
-                  <Label>Gender</Label>
+                  <Label htmlFor="gender-select">Gender</Label>
                   <Select value={gender} onValueChange={(v) => setGender(v as Gender)}>
-                    <SelectTrigger>
+                    <SelectTrigger id="gender-select">
                       <SelectValue />
                     </SelectTrigger>
                     <SelectContent>
@@ -214,12 +214,12 @@ export function OnboardingWizard({ householdName: initialName }: OnboardingWizar
                   </Select>
                 </div>
                 <div className="space-y-2">
-                  <Label>Relationship</Label>
+                  <Label htmlFor="relationship-select">Relationship</Label>
                   <Select
                     value={relationship}
                     onValueChange={(v) => setRelationship(v as Relationship)}
                   >
-                    <SelectTrigger>
+                    <SelectTrigger id="relationship-select">
                       <SelectValue />
                     </SelectTrigger>
                     <SelectContent>

@@ -6,6 +6,7 @@ import { AuthLayout } from "@/layouts/auth-layout";
 
 // Auth pages
 const LoginPage = lazy(() => import("@/pages/login"));
+const Login2FAPage = lazy(() => import("@/pages/login-2fa"));
 const RegisterPage = lazy(() => import("@/pages/register"));
 
 // App pages
@@ -86,6 +87,7 @@ export const router = createBrowserRouter([
     element: <AuthLayout />,
     children: [
       { path: "login", element: withSuspense(LoginPage) },
+      { path: "login/2fa", element: withSuspense(Login2FAPage) },
       { path: "register", element: withSuspense(RegisterPage) },
       { path: "*", element: <NotFoundPage /> },
     ],

@@ -8,6 +8,7 @@ from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.middleware.gzip import GZipMiddleware
 from fastapi.responses import JSONResponse
+from prometheus_fastapi_instrumentator import Instrumentator
 from sqlalchemy.ext.asyncio import AsyncSession
 from app.core.config import get_settings
 from app.core.database import get_db
@@ -33,11 +34,14 @@ from app.routers import (
     notifications,
     audit,
     backup,
+    dashboard,
     medications,
     vaccinations,
     smart_entry,
     smart_search,
     health_alerts,
+    export,
+    reports,
 )
 
 logger = logging.getLogger(__name__)
@@ -266,6 +270,13 @@ app.include_router(vaccinations.router, prefix="/api/v1")
 app.include_router(smart_entry.router, prefix="/api/v1")
 app.include_router(smart_search.router, prefix="/api/v1")
 app.include_router(health_alerts.router, prefix="/api/v1")
+app.include_router(dashboard.router, prefix="/api/v1")
+app.include_router(dashboard.risk_router, prefix="/api/v1")
+app.include_router(export.router, prefix="/api/v1")
+app.include_router(reports.router, prefix="/api/v1")
+
+# Prometheus metrics
+Instrumentator().instrument(app).expose(app, endpoint="/metrics")
 
 
 @app.get("/health")

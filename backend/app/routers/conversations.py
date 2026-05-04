@@ -10,6 +10,7 @@ from sqlalchemy.orm import selectinload
 from app.core.config import get_settings
 from app.core.database import get_db
 from app.core.deps import get_household_from_token
+from app.core.sse import make_sse_stream
 from app.services.ai_service import AIService
 from app.services.verification_service import VerificationService
 from app.schemas.conversation import ConversationCreate, ConversationResponse
@@ -181,6 +182,79 @@ async def delete_conversation(
 
     await db.delete(conversation)
     await db.flush()
+
+
+@router.post("/{conversation_id}/messages/stream")
+async def send_message_stream(
+    conversation_id: UUID,
+    request: MessageCreate,
+    household: Household = Depends(get_household_from_token),
+    db: AsyncSession = Depends(get_db),
+):
+    """Send a message and stream the AI response token-by-token via SSE."""
+    result = await db.execute(
+        select(Conversation).where(
+            Conversation.id == conversation_id,
+            Conversation.household_id == household.id,
+        )
+    )
+    conversation = result.scalar_one_or_none()
+
+    if not conversation:
+        raise HTTPException(status_code=404, detail="Conversation not found")
+
+    service = AIService(db)
+    stream = service.chat_stream(
+        conversation_id=conversation_id,
+        user_message=request.content,
+        member_id=conversation.family_member_id,
+        household_id=household.id,
+    )
+
+    response = make_sse_stream(stream, db)
+
+    # Wrap to add post-stream verification
+    class VerificationSSEWrapper:
+        """Wraps SSE stream to fire verification after completion."""
+
+        def __init__(self, inner):
+            self.inner = inner
+
+        async def __aiter__(self):
+            provider = None
+            health_context = None
+            message_id = None
+            async for chunk in self.inner.body_iterator:
+                # Track the complete event for verification
+                if chunk.startswith("data: "):
+                    try:
+                        data = json.loads(chunk[6:].strip())
+                        if data.get("stage") == "complete":
+                            provider = data.get("provider")
+                            health_context = data.get("health_context")
+                            msg = data.get("assistant_message", {})
+                            message_id = msg.get("id")
+                    except (json.JSONDecodeError, AttributeError):
+                        pass
+                yield chunk
+
+            # Fire verification in background
+            if settings.AI_VERIFICATION_ENABLED and health_context and message_id:
+                try:
+                    verification_svc = VerificationService(db, service)
+                    verification_svc_spawn = verification_svc.verify(
+                        question=request.content,
+                        ai_response="",  # already in DB
+                        health_context=health_context,
+                        original_provider=provider or "",
+                        message_id=UUID(message_id),
+                    )
+                    asyncio.ensure_future(verification_svc_spawn)
+                except Exception as exc:
+                    logger.info("Post-stream verification skipped: %s", exc)
+
+    response.body_iterator = VerificationSSEWrapper(response)
+    return response
 
 
 @router.post("/{conversation_id}/messages")

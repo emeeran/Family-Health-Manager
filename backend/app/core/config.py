@@ -50,6 +50,14 @@ class Settings(BaseSettings):
     # AI Verification
     AI_VERIFICATION_ENABLED: bool = True
 
+    # Email notifications
+    SMTP_HOST: str = ""
+    SMTP_PORT: int = 587
+    SMTP_USER: str = ""
+    SMTP_PASSWORD: str = ""
+    SMTP_FROM: str = ""
+    EMAIL_ENABLED: bool = False
+
     def model_post_init(self, __context) -> None:
         """Validate settings after loading."""
         if self.APP_ENV == "production":

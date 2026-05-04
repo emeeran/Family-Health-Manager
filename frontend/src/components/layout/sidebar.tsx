@@ -120,7 +120,7 @@ export const Sidebar = memo(function Sidebar() {
             <DawnstarLogo variant="gradient" className="h-8 w-8 shrink-0" />
           )}
           {!collapsed && (
-            <span className="block text-[9px] font-bold tracking-[0.25em] text-(--brand-primary)/80 mt-0.5 ml-0.5">
+            <span className="block text-[11px] font-bold tracking-[0.25em] text-(--brand-primary)/80 mt-0.5 ml-0.5">
               FAMILY HEALTH KEEPER
             </span>
           )}
@@ -232,7 +232,7 @@ function SectionLabel({ collapsed, children }: { collapsed: boolean; children: R
   return (
     <div className="flex items-center gap-1.5 px-1.5 pb-1.5 pt-0.5">
       <div className="h-1.5 w-1.5 rounded-full bg-gradient-to-br from-(--brand-accent) to-(--brand-primary) opacity-60" />
-      <span className="text-[9px] font-extrabold uppercase tracking-[0.2em] text-muted-foreground/60 select-none">
+      <span className="text-[11px] font-extrabold uppercase tracking-[0.2em] text-muted-foreground/60 select-none">
         {children}
       </span>
       <div className="flex-1 h-px bg-gradient-to-r from-border to-transparent" />
@@ -287,7 +287,7 @@ const SidebarLink = memo(function SidebarLink({
 
       {/* Badge — expanded */}
       {!collapsed && badge !== undefined && badge > 0 && (
-        <span className="ml-auto flex h-4 min-w-4 items-center justify-center rounded-full bg-(--brand-accent) px-1 text-[9px] font-bold text-white shadow-sm">
+        <span className="ml-auto flex h-4 min-w-4 items-center justify-center rounded-full bg-(--brand-accent) px-1 text-[11px] font-bold text-white shadow-sm">
           {badge > 99 ? "99+" : badge}
         </span>
       )}

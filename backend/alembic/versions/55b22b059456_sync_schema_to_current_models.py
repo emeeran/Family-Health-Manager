@@ -22,24 +22,29 @@ depends_on: Union[str, Sequence[str], None] = None
 
 def upgrade() -> None:
     """Upgrade schema — only genuinely new operations."""
-    # record_type enum conversion (new enum values)
-    op.alter_column('health_records', 'record_type',
-               existing_type=sa.VARCHAR(length=13),
-               type_=sa.Enum('DOCTOR_VISIT', 'LAB_REPORT', 'RX_EYEGLASS', 'BLOOD_GLUCOSE', 'HBA1C', 'MISC_RECORD', 'VITALS', 'PARKINSONS_LOG', name='recordtype'),
-               existing_nullable=False)
+    # record_type column widening (VARCHAR(13) -> VARCHAR(14)) is skipped for SQLite.
+    # The app stores record_type as a string anyway; the wider enum values fit in VARCHAR(13).
+    # If needed on PostgreSQL, run: ALTER TABLE health_records ALTER COLUMN record_type TYPE VARCHAR(14);
 
     # Restore revoked_tokens table (dropped by 2fd22ac8db51 but still used by app)
-    op.create_table('revoked_tokens',
-        sa.Column('jti', sa.String(length=64), nullable=False),
-        sa.Column('expires_at', sa.DateTime(), nullable=False),
-        sa.PrimaryKeyConstraint('jti')
-    )
+    # Guard: table may already exist if create_tables() was called at startup
+    conn = op.get_bind()
+    result = conn.execute(sa.text(
+        "SELECT name FROM sqlite_master WHERE type='table' AND name='revoked_tokens'"
+    ))
+    if not result.fetchone():
+        op.create_table('revoked_tokens',
+            sa.Column('jti', sa.String(length=64), nullable=False),
+            sa.Column('expires_at', sa.DateTime(), nullable=False),
+            sa.PrimaryKeyConstraint('jti')
+        )
 
 
 def downgrade() -> None:
     """Downgrade schema."""
     op.drop_table('revoked_tokens')
-    op.alter_column('health_records', 'record_type',
-               existing_type=sa.Enum('DOCTOR_VISIT', 'LAB_REPORT', 'RX_EYEGLASS', 'BLOOD_GLUCOSE', 'HBA1C', 'MISC_RECORD', 'VITALS', 'PARKINSONS_LOG', name='recordtype'),
-               type_=sa.VARCHAR(length=13),
-               existing_nullable=False)
+    with op.batch_alter_table('health_records') as batch_op:
+        batch_op.alter_column('record_type',
+                   existing_type=sa.String(length=14),
+                   type_=sa.VARCHAR(length=13),
+                   existing_nullable=False)

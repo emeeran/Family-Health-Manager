@@ -118,7 +118,7 @@ export function ProviderDetailContent({ provider, assignedMembers }: ProviderDet
                   {a.uhid && (
                     <div className="text-right shrink-0 ml-4">
                       <p className="text-xs font-mono bg-muted px-2 py-0.5 rounded">{a.uhid}</p>
-                      <p className="text-[10px] text-muted-foreground mt-0.5">UHID</p>
+                      <p className="text-xs text-muted-foreground mt-0.5">UHID</p>
                     </div>
                   )}
                 </Link>

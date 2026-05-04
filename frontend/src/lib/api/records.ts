@@ -98,6 +98,13 @@ export function cleanupEmptyRecords(memberId: string) {
   });
 }
 
+export function batchDeleteRecords(memberId: string, recordIds: string[]) {
+  return apiRequest<{ deleted: number }>(`/members/${memberId}/records/batch-delete`, {
+    method: "POST",
+    body: { record_ids: recordIds },
+  });
+}
+
 export function getTimeline(memberId: string, params?: Record<string, string | undefined>) {
   return apiRequest<TimelineResponse>(`/members/${memberId}/records/timeline/list`, {
     params,

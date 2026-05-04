@@ -144,6 +144,12 @@ class BatchExtractionResponse(BaseModel):
     extractions: list[BatchExtractionItemSchema] = Field(..., description="Extraction results per file")
 
 
+class BatchDeleteRequest(BaseModel):
+    """Request body for batch-delete endpoint."""
+
+    record_ids: list[str] = Field(..., min_length=1, max_length=500, description="Record IDs to delete")
+
+
 class CheckFilenamesRequest(BaseModel):
     """Request body for check-filenames endpoint."""
 

@@ -1,6 +1,6 @@
 import { useState, useEffect } from "react";
 import { useLocation, Link, useNavigate } from "react-router-dom";
-import { ChevronRight, LogOut, Search, Settings } from "lucide-react";
+import { ChevronRight, LogOut, Search, Settings, Bell } from "lucide-react";
 import useSWR from "swr";
 import {
   DropdownMenu,
@@ -19,6 +19,7 @@ import { mutate } from "swr";
 import { UUID_RE } from "@/lib/utils";
 import { getMember } from "@/lib/api/members";
 import { getProvider } from "@/lib/api/providers";
+import { useNotifications } from "@/hooks/use-notifications";
 
 const STATIC_LABELS: Record<string, string> = {
   dashboard: "Dashboard",
@@ -132,6 +133,7 @@ export function Header() {
   );
 
   const initials = user?.username ? user.username.slice(0, 2).toUpperCase() : "U";
+  const { unreadCount } = useNotifications();
 
   useEffect(() => {
     function handleKeyDown(e: KeyboardEvent) {
@@ -168,6 +170,18 @@ export function Header() {
           >
             <Search className="h-4 w-4" />
           </button>
+          <Link
+            to="/notifications"
+            className="relative rounded-lg p-2 text-muted-foreground hover:bg-muted/50 hover:text-foreground transition-colors"
+            aria-label={`Notifications${unreadCount > 0 ? ` (${unreadCount} unread)` : ""}`}
+          >
+            <Bell className="h-4 w-4" />
+            {unreadCount > 0 && (
+              <span className="absolute -top-0.5 -right-0.5 flex h-4 min-w-4 items-center justify-center rounded-full bg-(--brand-accent) px-1 text-[11px] font-bold text-white ring-2 ring-background">
+                {unreadCount > 9 ? "9+" : unreadCount}
+              </span>
+            )}
+          </Link>
           <ThemeToggle />
           <DropdownMenu>
             <DropdownMenuTrigger className="focus:outline-none focus-visible:ring-2 focus-visible:ring-ring rounded-full">

@@ -214,7 +214,7 @@ function DiabetesSummaryCard({ items }: { items: HealthRecordResponse[] }) {
             <div className="flex items-center gap-1.5">
               <p className="text-lg font-bold leading-none">{latestMetrics.latestHba1c.value}%</p>
               <span
-                className={`text-[10px] font-semibold px-1.5 py-0.5 rounded-md ${
+                className={`text-xs font-semibold px-1.5 py-0.5 rounded-md ${
                   latestMetrics.latestHba1c.category === "Normal"
                     ? "bg-green-500/10 text-green-600"
                     : latestMetrics.latestHba1c.category === "Prediabetes"
@@ -243,7 +243,7 @@ function DiabetesSummaryCard({ items }: { items: HealthRecordResponse[] }) {
               <p className="text-lg font-bold leading-none">{latestMetrics.latestGlucose.value}</p>
               <span className="text-xs text-muted-foreground">mg/dL</span>
               {latestMetrics.latestGlucose.timing && (
-                <span className="text-[10px] text-muted-foreground">
+                <span className="text-xs text-muted-foreground">
                   ({latestMetrics.latestGlucose.timing})
                 </span>
               )}
@@ -262,7 +262,7 @@ function DiabetesSummaryCard({ items }: { items: HealthRecordResponse[] }) {
         <div>
           <p className="text-xs text-muted-foreground">Medications</p>
           <p className="text-lg font-bold leading-none">{latestMetrics.totalPrescriptions}</p>
-          <p className="text-[10px] text-muted-foreground">in latest visit</p>
+          <p className="text-xs text-muted-foreground">in latest visit</p>
         </div>
       </div>
 
@@ -274,7 +274,7 @@ function DiabetesSummaryCard({ items }: { items: HealthRecordResponse[] }) {
         <div>
           <p className="text-xs text-muted-foreground">Abnormal Tests</p>
           <p className="text-lg font-bold leading-none">{latestMetrics.totalAbnormals}</p>
-          <p className="text-[10px] text-muted-foreground">across all records</p>
+          <p className="text-xs text-muted-foreground">across all records</p>
         </div>
       </div>
     </div>
@@ -383,7 +383,7 @@ function StructuredPreview({ record }: { record: HealthRecordResponse }) {
             </div>
           ))}
           {metrics.abnormals.length > 4 && (
-            <span className="text-[10px] text-muted-foreground">
+            <span className="text-xs text-muted-foreground">
               +{metrics.abnormals.length - 4} more abnormal results
             </span>
           )}
@@ -573,7 +573,7 @@ function TimelineItem({
               <div className="flex items-center gap-2">
                 <RecordTypeBadge type={item.record_type} />
                 {item.next_review_date && (
-                  <span className="inline-flex items-center gap-1 rounded-md bg-emerald-500/10 px-1.5 py-0.5 text-[10px] font-semibold text-emerald-600">
+                  <span className="inline-flex items-center gap-1 rounded-md bg-emerald-500/10 px-1.5 py-0.5 text-xs font-semibold text-emerald-600">
                     Follow-up {formatDate(item.next_review_date)}
                   </span>
                 )}

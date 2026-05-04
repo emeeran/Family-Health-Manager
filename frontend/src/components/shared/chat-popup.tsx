@@ -71,7 +71,7 @@ function ChatMessage({ msg, showAvatar }: { msg: MessageResponse; showAvatar: bo
             <span className="text-[11px] font-medium text-foreground">
               {isUser ? "You" : "Health AI"}
             </span>
-            <span className="text-[10px] text-muted-foreground">
+            <span className="text-xs text-muted-foreground">
               {new Date(msg.created_at).toLocaleTimeString([], {
                 hour: "2-digit",
                 minute: "2-digit",
@@ -423,7 +423,7 @@ export function ChatPopup({ open, onOpenChange }: ChatPopupProps) {
               )}
             </Button>
           </div>
-          <p className="text-center mt-1 text-[10px] text-muted-foreground/50">
+          <p className="text-center mt-1 text-xs text-muted-foreground/50">
             AI may make mistakes. Verify important info.
           </p>
         </div>

@@ -82,7 +82,7 @@ export function AutoFillPicker({ batches, dataType, onSelect, disabled }: AutoFi
       >
         <WandSparkles className="h-3 w-3" />
         Auto-fill
-        <span className="ml-0.5 rounded-full bg-green-200 px-1.5 text-[10px] font-bold leading-none dark:bg-green-800">
+        <span className="ml-0.5 rounded-full bg-green-200 px-1.5 text-xs font-bold leading-none dark:bg-green-800">
           {batches.length}
         </span>
       </PopoverTrigger>
@@ -105,7 +105,7 @@ export function AutoFillPicker({ batches, dataType, onSelect, disabled }: AutoFi
                 <div className="flex-1 min-w-0">
                   <div className="flex items-center justify-between gap-1">
                     <span className="text-sm font-medium truncate">{batch.fileName}</span>
-                    <span className="text-[10px] text-muted-foreground whitespace-nowrap">
+                    <span className="text-xs text-muted-foreground whitespace-nowrap">
                       {timeAgo(batch.timestamp)}
                     </span>
                   </div>

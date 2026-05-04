@@ -9,7 +9,7 @@ export function AuthLayout() {
         <div className="flex items-center gap-0">
           <div className="flex flex-col leading-none">
             <span className="text-2xl font-extrabold tracking-tight text-white">DAWNSTAR</span>
-            <span className="text-[10px] font-semibold tracking-widest text-amber-400 mt-0.5">
+            <span className="text-xs font-semibold tracking-widest text-amber-400 mt-0.5">
               Family Health Keeper
             </span>
           </div>
@@ -56,7 +56,7 @@ export function AuthLayout() {
               <span className="text-xl font-extrabold tracking-tight text-foreground">
                 DAWNSTAR
               </span>
-              <span className="text-[9px] font-semibold tracking-widest text-amber-600 mt-0.5">
+              <span className="text-[11px] font-semibold tracking-widest text-amber-600 mt-0.5">
                 Family Health Keeper
               </span>
             </div>

@@ -35,7 +35,11 @@ export function LoginForm() {
     setError(null);
     setLoading(true);
     try {
-      await login({ username: data.username, password: data.password });
+      const response = await login({ username: data.username, password: data.password });
+      if (response.requires_2fa) {
+        navigate(`/login/2fa?username=${encodeURIComponent(data.username)}`);
+        return;
+      }
       navigate("/dashboard");
     } catch (e) {
       setError(e instanceof Error ? e.message : "Login failed");

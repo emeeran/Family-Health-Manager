@@ -131,7 +131,7 @@ export function QuickParkinsonsForm({ memberId, onSuccess, onCancel }: QuickPark
               }`}
             >
               <span className="text-sm font-bold block">{ms.label}</span>
-              <span className="text-[10px] opacity-70">{ms.desc}</span>
+              <span className="text-xs opacity-70">{ms.desc}</span>
             </button>
           ))}
         </div>

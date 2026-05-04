@@ -199,7 +199,7 @@ export function ProvidersUhidCard({
                           if (e.key === "Escape") setEditingId(null);
                         }}
                         placeholder="UHID"
-                        className="h-6 w-24 text-[10px] font-mono px-1.5"
+                        className="h-6 w-24 text-xs font-mono px-1.5"
                       />
                       <button
                         onClick={() => handleSave(a.id)}
@@ -217,11 +217,11 @@ export function ProvidersUhidCard({
                       className="shrink-0"
                     >
                       {a.uhid ? (
-                        <code className="bg-muted px-1.5 py-0.5 rounded text-[10px] font-mono">
+                        <code className="bg-muted px-1.5 py-0.5 rounded text-xs font-mono">
                           {a.uhid}
                         </code>
                       ) : (
-                        <span className="text-primary/60 text-[10px] border border-dashed border-primary/30 px-1.5 py-0.5 rounded hover:bg-primary/5">
+                        <span className="text-primary/60 text-xs border border-dashed border-primary/30 px-1.5 py-0.5 rounded hover:bg-primary/5">
                           + UHID
                         </span>
                       )}

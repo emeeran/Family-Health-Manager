@@ -21,9 +21,11 @@ from app.schemas.health_record import (
     ExtractionResponse, ExtractedFields, TimelineResponse,
     BatchExtractionItemSchema, BatchExtractionResponse,
     CheckFilenamesRequest, CheckFilenamesResponse,
+    BatchDeleteRequest,
 )
 from app.models.base import Household, FamilyMember, RecordType
 from app.models.attachment import Attachment
+from app.models.record import HealthRecord
 
 router = APIRouter(prefix="/members/{member_id}/records", tags=["Health Records"])
 logger = logging.getLogger(__name__)
@@ -364,6 +366,34 @@ async def cleanup_empty_records(
         cache.invalidate(f"household_records:{household.id}")
         AIService.invalidate_member_cache(member_id)
     return {"removed": count}
+
+
+@router.post("/batch-delete")
+async def batch_delete_records(
+    member_id: UUID,
+    body: BatchDeleteRequest,
+    household: Household = Depends(get_household_from_token),
+    _member: FamilyMember = Depends(require_member_in_household),
+    db: AsyncSession = Depends(get_db),
+):
+    """Soft-delete multiple health records by IDs."""
+    record_ids = [UUID(rid) for rid in body.record_ids]
+    result = await db.execute(
+        select(HealthRecord).where(
+            HealthRecord.id.in_(record_ids),
+            HealthRecord.family_member_id == member_id,
+            HealthRecord.is_deleted.is_(False),
+        )
+    )
+    records = result.scalars().all()
+    for record in records:
+        record.is_deleted = True
+    await db.flush()
+    count = len(records)
+    if count:
+        cache.invalidate(f"household_records:{household.id}")
+        AIService.invalidate_member_cache(member_id)
+    return {"deleted": count}
 
 
 @router.get("/{record_id}", response_model=HealthRecordResponse)

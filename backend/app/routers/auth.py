@@ -1,6 +1,9 @@
 """Authentication router."""
+import json
 import logging
+from pydantic import BaseModel
 from fastapi import APIRouter, Depends, HTTPException, Request, Response, status
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 from app.core.config import get_settings
 from app.core.database import get_db
@@ -13,6 +16,7 @@ from app.core.security import (
 )
 from app.core.deps import get_current_user
 from app.services.auth_service import AuthService
+from app.services.totp_service import TOTPService
 from app.schemas.auth import (
     LoginRequest,
     LoginResponse,
@@ -84,7 +88,7 @@ async def register(request: RegisterRequest, db: AsyncSession = Depends(get_db))
     return user
 
 
-@router.post("/login", response_model=LoginResponse)
+@router.post("/login")
 async def login(
     request: LoginRequest,
     response: Response,
@@ -96,6 +100,10 @@ async def login(
     user = await auth_service.authenticate(request.username, request.password)
     if not user:
         raise HTTPException(status_code=401, detail="Invalid credentials")
+
+    # If 2FA is enabled, return requires_2fa flag instead of tokens
+    if user.totp_enabled:
+        return {"requires_2fa": True, "username": user.username}
 
     access_token, expires = auth_service.create_session_token(user.id)
     refresh_token = await create_refresh_token(user.id, db)
@@ -173,3 +181,132 @@ async def logout(
 async def get_me(user: User = Depends(get_current_user)):
     """Get current user profile."""
     return user
+
+
+# ── 2FA endpoints ──
+
+
+class TwoFASetupResponse(BaseModel):
+    secret: str
+    qr_code_base64: str
+    backup_codes: list[str]
+
+
+class TwoFAVerifyRequest(BaseModel):
+    code: str
+
+
+class TwoFALoginRequest(BaseModel):
+    username: str
+    code: str
+
+
+@router.post("/2fa/setup", response_model=TwoFASetupResponse)
+async def setup_2fa(
+    user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """Begin 2FA setup — generates secret, QR code, and backup codes."""
+    if user.totp_enabled:
+        raise HTTPException(status_code=400, detail="2FA is already enabled")
+
+    secret = TOTPService.generate_secret()
+    qr_base64 = TOTPService.generate_qr_code_base64(secret, user.username)
+    backup_codes = TOTPService.generate_backup_codes()
+
+    # Store secret and backup codes (not yet enabled)
+    user.totp_secret = secret
+    user.backup_codes = json.dumps(backup_codes)
+    await db.flush()
+
+    return TwoFASetupResponse(
+        secret=secret,
+        qr_code_base64=qr_base64,
+        backup_codes=backup_codes,
+    )
+
+
+@router.post("/2fa/verify")
+async def verify_2fa_setup(
+    request: TwoFAVerifyRequest,
+    user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """Verify first TOTP code during setup to enable 2FA."""
+    if not user.totp_secret:
+        raise HTTPException(status_code=400, detail="2FA setup not initiated")
+    if user.totp_enabled:
+        raise HTTPException(status_code=400, detail="2FA is already enabled")
+
+    if not TOTPService.verify_code(user.totp_secret, request.code):
+        raise HTTPException(status_code=400, detail="Invalid code")
+
+    user.totp_enabled = True
+    await db.flush()
+
+    return {"enabled": True}
+
+
+@router.post("/2fa/disable")
+async def disable_2fa(
+    request: TwoFAVerifyRequest,
+    user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """Disable 2FA — requires current password or TOTP code."""
+    if not user.totp_enabled:
+        raise HTTPException(status_code=400, detail="2FA is not enabled")
+
+    # Accept either TOTP code or a backup code
+    if user.totp_secret and TOTPService.verify_code(user.totp_secret, request.code):
+        pass  # Valid TOTP code
+    else:
+        # Try backup code
+        valid, updated_codes = TOTPService.verify_backup_code(user.backup_codes, request.code)
+        if not valid:
+            raise HTTPException(status_code=400, detail="Invalid code")
+        user.backup_codes = updated_codes
+
+    user.totp_enabled = False
+    user.totp_secret = None
+    user.backup_codes = None
+    await db.flush()
+
+    return {"enabled": False}
+
+
+@router.post("/login/2fa")
+async def login_2fa(
+    request: TwoFALoginRequest,
+    response: Response,
+    db: AsyncSession = Depends(get_db),
+):
+    """Complete login with 2FA code."""
+    result = await db.execute(
+        select(User).where(User.username == request.username, User.is_active.is_(True))
+    )
+    user = result.scalar_one_or_none()
+
+    if not user or not user.totp_enabled or not user.totp_secret:
+        raise HTTPException(status_code=401, detail="Invalid request")
+
+    # Verify TOTP code or backup code
+    if TOTPService.verify_code(user.totp_secret, request.code):
+        pass
+    else:
+        valid, updated_codes = TOTPService.verify_backup_code(user.backup_codes, request.code)
+        if not valid:
+            raise HTTPException(status_code=401, detail="Invalid 2FA code")
+        user.backup_codes = updated_codes
+
+    auth_service = AuthService(db)
+    access_token, expires = auth_service.create_session_token(user.id)
+    refresh_token = await create_refresh_token(user.id, db)
+
+    _set_auth_cookies(response, access_token, refresh_token)
+
+    return LoginResponse(
+        access_token=access_token,
+        refresh_token=refresh_token,
+        expires_at=expires,
+    )

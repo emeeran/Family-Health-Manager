@@ -54,7 +54,7 @@ export function MobileBottomNav() {
                   <Icon className={cn("h-5 w-5", active ? "text-white" : "")} />
                 </div>
                 {item.showBadge && unreadCount > 0 && (
-                  <span className="absolute -top-1.5 -right-2.5 flex h-4 min-w-4 items-center justify-center rounded-full bg-(--brand-accent) px-1 text-[9px] font-bold text-white ring-2 ring-background">
+                  <span className="absolute -top-1.5 -right-2.5 flex h-4 min-w-4 items-center justify-center rounded-full bg-(--brand-accent) px-1 text-[11px] font-bold text-white ring-2 ring-background">
                     {unreadCount > 99 ? "99+" : unreadCount}
                   </span>
                 )}

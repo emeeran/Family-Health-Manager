@@ -11,6 +11,7 @@ import {
 } from "@/components/ui/select";
 import { Skeleton } from "@/components/ui/skeleton";
 import { EmptyState } from "@/components/shared/empty-state";
+import { ExportButton } from "@/components/shared/export-button";
 import { RecordsTable } from "@/components/records/records-table";
 import { useRecordQuickView } from "@/components/records/record-quick-view-provider";
 import { RECORD_TYPE_LABELS } from "@/lib/constants";
@@ -57,6 +58,7 @@ export function HouseholdRecordsContent({
             {records.length} record{records.length !== 1 ? "s" : ""} across all family members
           </p>
         </div>
+        <ExportButton />
       </div>
 
       {/* Filters */}

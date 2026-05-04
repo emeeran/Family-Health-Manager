@@ -1,6 +1,6 @@
-import { useState, useMemo } from "react";
+import { useState, useMemo, useEffect } from "react";
 import { Link, useNavigate } from "react-router-dom";
-import { Plus, FileText, Search, Upload, Trash2 } from "lucide-react";
+import { Plus, FileText, Search, Upload, Trash2, X } from "lucide-react";
 import { Card, CardContent } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
@@ -13,10 +13,11 @@ import {
 } from "@/components/ui/select";
 import { Label } from "@/components/ui/label";
 import { EmptyState } from "@/components/shared/empty-state";
+import { ExportButton } from "@/components/shared/export-button";
 import { ConfirmDialog } from "@/components/shared/confirm-dialog";
 import { RecordsTable } from "@/components/records/records-table";
 import { RECORD_TYPE_LABELS } from "@/lib/constants";
-import { cleanupEmptyRecords } from "@/lib/api/records";
+import { cleanupEmptyRecords, batchDeleteRecords } from "@/lib/api/records";
 import type { HealthRecordResponse } from "@/lib/types/health-record";
 import type { FamilyMemberResponse } from "@/lib/types/member";
 import type { RecordType } from "@/lib/types/enums";
@@ -35,6 +36,9 @@ export function RecordsListContent({ records, member, onRefresh }: RecordsListCo
   const [dateTo, setDateTo] = useState("");
   const [tagFilter, setTagFilter] = useState("");
   const [showCleanup, setShowCleanup] = useState(false);
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
+  const [isDeleting, setIsDeleting] = useState(false);
+  const [showBatchDelete, setShowBatchDelete] = useState(false);
 
   const allTags = useMemo(() => {
     const set = new Set<string>();
@@ -43,6 +47,11 @@ export function RecordsListContent({ records, member, onRefresh }: RecordsListCo
     }
     return Array.from(set).sort();
   }, [records]);
+
+  // Clear selection when filters change
+  useEffect(() => {
+    setSelectedIds(new Set());
+  }, [typeFilter, dateFrom, dateTo, searchText, tagFilter]);
 
   const filtered = useMemo(() => {
     return records.filter((r) => {
@@ -91,6 +100,7 @@ export function RecordsListContent({ records, member, onRefresh }: RecordsListCo
               Batch Upload
             </Button>
           </Link>
+          <ExportButton memberId={member.id} />
           <Link to={`/members/${member.id}/records/new`}>
             <Button>
               <Plus className="h-4 w-4 mr-1" />
@@ -192,6 +202,8 @@ export function RecordsListContent({ records, member, onRefresh }: RecordsListCo
         <RecordsTable
           records={filtered}
           onRowClick={(r) => navigate(`/members/${member.id}/records/${r.id}`)}
+          selectedIds={selectedIds}
+          onSelectionChange={setSelectedIds}
         />
       )}
 
@@ -209,6 +221,50 @@ export function RecordsListContent({ records, member, onRefresh }: RecordsListCo
           }
         }}
       />
+
+      <ConfirmDialog
+        open={showBatchDelete}
+        onOpenChange={setShowBatchDelete}
+        title="Delete selected records"
+        description={`Are you sure you want to delete ${selectedIds.size} record${selectedIds.size !== 1 ? "s" : ""}? This cannot be undone.`}
+        confirmLabel="Delete"
+        onConfirm={async () => {
+          if (!member.id) return;
+          setIsDeleting(true);
+          try {
+            await batchDeleteRecords(member.id, Array.from(selectedIds));
+          } finally {
+            setIsDeleting(false);
+          }
+          setSelectedIds(new Set());
+          onRefresh?.();
+        }}
+      />
+
+      {selectedIds.size > 0 && (
+        <div className="fixed bottom-0 left-0 right-0 z-50 border-t bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60">
+          <div className="container mx-auto flex h-14 max-w-screen-xl items-center justify-between px-4">
+            <span className="text-sm font-medium">
+              {selectedIds.size} record{selectedIds.size !== 1 ? "s" : ""} selected
+            </span>
+            <div className="flex items-center gap-2">
+              <Button variant="outline" size="sm" onClick={() => setSelectedIds(new Set())}>
+                <X className="mr-1 h-4 w-4" />
+                Clear
+              </Button>
+              <Button
+                variant="destructive"
+                size="sm"
+                disabled={isDeleting}
+                onClick={() => setShowBatchDelete(true)}
+              >
+                <Trash2 className="mr-1 h-4 w-4" />
+                Delete
+              </Button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

@@ -8,6 +8,7 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
+import { Checkbox } from "@/components/ui/checkbox";
 import { RecordTypeBadge } from "@/components/records/record-type-badge";
 import { extractReason, extractSummary } from "@/lib/record-utils";
 import { formatDate } from "@/lib/utils";
@@ -17,14 +18,47 @@ interface RecordsTableProps {
   records: HealthRecordResponse[];
   memberNames?: Record<string, string>;
   onRowClick?: (record: HealthRecordResponse) => void;
+  selectedIds?: Set<string>;
+  onSelectionChange?: (ids: Set<string>) => void;
 }
 
 type SortKey = "record_date" | "record_type" | "provider_name" | "reason";
 type SortDir = "asc" | "desc";
 
-export function RecordsTable({ records, memberNames, onRowClick }: RecordsTableProps) {
+export function RecordsTable({
+  records,
+  memberNames,
+  onRowClick,
+  selectedIds,
+  onSelectionChange,
+}: RecordsTableProps) {
   const [sortKey, setSortKey] = useState<SortKey>("record_date");
   const [sortDir, setSortDir] = useState<SortDir>("desc");
+
+  const hasSelection = !!selectedIds && !!onSelectionChange;
+  const allSelected =
+    hasSelection && records.length > 0 && records.every((r) => selectedIds.has(r.id));
+  const someSelected = hasSelection && records.some((r) => selectedIds.has(r.id)) && !allSelected;
+
+  function toggleAll() {
+    if (!onSelectionChange) return;
+    if (allSelected) {
+      onSelectionChange(new Set());
+    } else {
+      onSelectionChange(new Set(records.map((r) => r.id)));
+    }
+  }
+
+  function toggleRow(id: string) {
+    if (!onSelectionChange || !selectedIds) return;
+    const next = new Set(selectedIds);
+    if (next.has(id)) {
+      next.delete(id);
+    } else {
+      next.add(id);
+    }
+    onSelectionChange(next);
+  }
 
   function toggleSort(key: SortKey) {
     if (sortKey === key) setSortDir((d) => (d === "asc" ? "desc" : "asc"));
@@ -69,6 +103,24 @@ export function RecordsTable({ records, memberNames, onRowClick }: RecordsTableP
       <Table>
         <TableHeader>
           <TableRow className="hover:bg-transparent">
+            {hasSelection && (
+              <TableHead className="w-[40px] px-2">
+                <Checkbox
+                  checked={allSelected}
+                  ref={(el) => {
+                    if (el) {
+                      (el as HTMLButtonElement & { indeterminate?: boolean }).dataset.state =
+                        someSelected ? "indeterminate" : allSelected ? "checked" : "unchecked";
+                      if (someSelected) {
+                        el.setAttribute("data-state", "indeterminate");
+                      }
+                    }
+                  }}
+                  onCheckedChange={toggleAll}
+                  aria-label="Select all rows"
+                />
+              </TableHead>
+            )}
             <TableHead className="w-[110px]">
               <button
                 onClick={() => toggleSort("record_type")}
@@ -120,6 +172,15 @@ export function RecordsTable({ records, memberNames, onRowClick }: RecordsTableP
                 className="cursor-pointer"
                 onClick={() => onRowClick?.(record)}
               >
+                {hasSelection && (
+                  <TableCell className="py-2 px-2" onClick={(e) => e.stopPropagation()}>
+                    <Checkbox
+                      checked={selectedIds?.has(record.id) ?? false}
+                      onCheckedChange={() => toggleRow(record.id)}
+                      aria-label={`Select record ${record.id}`}
+                    />
+                  </TableCell>
+                )}
                 <TableCell className="py-2">
                   <RecordTypeBadge type={record.record_type} />
                 </TableCell>

@@ -211,7 +211,7 @@ export function ChronicConditionCharts({ memberId }: { memberId: string }) {
             <CardTitle className="text-base font-semibold">Glucose Trend</CardTitle>
           </CardHeader>
           <CardContent>
-            <div className="flex items-center gap-3 text-[10px] text-muted-foreground mb-2">
+            <div className="flex items-center gap-3 text-xs text-muted-foreground mb-2">
               <span className="flex items-center gap-1">
                 <span className="inline-block w-2 h-2 rounded-full bg-emerald-500" /> Normal
               </span>
@@ -235,7 +235,7 @@ export function ChronicConditionCharts({ memberId }: { memberId: string }) {
             <CardTitle className="text-base font-semibold">PD Symptom Pattern</CardTitle>
           </CardHeader>
           <CardContent>
-            <div className="flex items-center gap-3 text-[10px] text-muted-foreground mb-2">
+            <div className="flex items-center gap-3 text-xs text-muted-foreground mb-2">
               <span className="flex items-center gap-1">
                 <span className="inline-block w-2 h-2 rounded-full bg-emerald-500" /> ON
               </span>

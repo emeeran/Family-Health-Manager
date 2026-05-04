@@ -34,6 +34,7 @@ import {
   getLatestInsight,
 } from "@/lib/api/members";
 import { listReminders } from "@/lib/api/reminders";
+import { getRiskAssessment } from "@/lib/api/dashboard";
 import { formatDate } from "@/lib/utils";
 import { toast } from "sonner";
 
@@ -618,20 +619,26 @@ export function MemberDashboardContent({ dashboard }: MemberDashboardContentProp
   const [hba1cHistory, setHba1cHistory] = useState<Hba1cHistoryEntry[]>([]);
   const [memberReminders, setMemberReminders] = useState<ReminderResponse[]>([]);
   const [drugInteractions, setDrugInteractions] = useState<DrugInteraction[]>([]);
+  const [riskAssessment, setRiskAssessment] = useState<{
+    risk_level: string;
+    factors: { factor: string; severity: string; description: string }[];
+  } | null>(null);
 
   useEffect(() => {
     let cancelled = false;
     Promise.all([
       getBmiHistory(member.id),
+      getRiskAssessment(member.id).catch(() => null),
       getHba1cHistory(member.id),
       listReminders().catch(() => []),
       getLatestDrugInteractions(member.id).catch(() => ({ interactions: [] })),
       getLatestPreConsultationNote(member.id).catch(() => ({ note: null })),
       getLatestInsight(member.id).catch(() => null),
     ])
-      .then(([bmi, hba1c, reminders, drugResult, preConsultResult, insightResult]) => {
+      .then(([bmi, risk, hba1c, reminders, drugResult, preConsultResult, insightResult]) => {
         if (cancelled) return;
         setBmiHistory(bmi);
+        if (risk) setRiskAssessment(risk);
         setHba1cHistory(hba1c);
         if (drugResult?.interactions) setDrugInteractions(drugResult.interactions);
         if (preConsultResult?.note) setPreConsultNote(preConsultResult.note);
@@ -950,7 +957,7 @@ ${sectionHtml}
 
       {/* ── SECTION 1: Profile Header with Medical History ── */}
       <div className="rounded-2xl border bg-card shadow-sm overflow-hidden">
-        <div className="h-2 bg-gradient-to-r from-(--brand-accent) to-(--brand-primary)" />
+        <div className="h-1.5 bg-gradient-to-r from-(--brand-accent) to-(--brand-primary)" />
         <div className="px-6 py-5">
           {/* Top row: breadcrumb + actions */}
           <div className="flex items-center justify-between gap-4 flex-wrap mb-4">
@@ -1105,23 +1112,84 @@ ${sectionHtml}
             </div>
           </div>
 
-          {/* Health Score — bottom of card */}
-          <div className="mt-4 pt-3 border-t flex items-center justify-between print:hidden">
-            <button
-              onClick={() => setShowScoreBreakdown(!showScoreBreakdown)}
-              className="flex items-center gap-2.5 rounded-xl border bg-background px-3 py-1.5 cursor-pointer hover:bg-muted/50 transition-colors"
-            >
-              <HealthScoreRing score={health_score} size={28} strokeWidth={2.5} />
-              <div className="text-left">
-                <p className="text-sm font-bold leading-none tabular-nums">
-                  {health_score}
-                  <span className="text-[10px] text-muted-foreground font-normal">/100</span>
-                </p>
-                <p className="text-[10px] text-muted-foreground mt-0.5">Health Score</p>
+          {/* Health Score + Risk — bottom of card */}
+          <div className="mt-5 pt-4 border-t print:hidden">
+            <div className="flex items-center justify-between gap-4">
+              {/* Health Score with breakdown */}
+              <div className="flex items-center gap-4 flex-1">
+                <button
+                  onClick={() => setShowScoreBreakdown(!showScoreBreakdown)}
+                  className="flex items-center gap-2.5 rounded-xl border bg-background px-4 py-2 cursor-pointer hover:bg-muted/50 transition-colors shadow-sm"
+                >
+                  <HealthScoreRing score={health_score} size={36} strokeWidth={3} />
+                  <div className="text-left">
+                    <p className="text-base font-bold leading-none tabular-nums">
+                      {health_score}
+                      <span className="text-sm text-muted-foreground font-normal">/100</span>
+                    </p>
+                    <p className="text-xs text-muted-foreground mt-0.5">Health Score</p>
+                  </div>
+                </button>
+                {/* Score breakdown inline */}
+                {dashboard.score_breakdown &&
+                  Object.keys(dashboard.score_breakdown).length > 0 &&
+                  !showScoreBreakdown && (
+                    <div className="hidden md:flex items-center gap-3">
+                      {Object.entries(dashboard.score_breakdown)
+                        .slice(0, 4)
+                        .map(([key, val]) => {
+                          const pct = Math.round((val.score / val.max) * 100);
+                          return (
+                            <div key={key} className="flex items-center gap-1.5">
+                              <div className="h-1.5 w-12 bg-muted rounded-full overflow-hidden">
+                                <div
+                                  className={`h-full rounded-full ${pct >= 80 ? "bg-green-500" : pct >= 50 ? "bg-amber-500" : "bg-red-500"}`}
+                                  style={{ width: `${pct}%` }}
+                                />
+                              </div>
+                              <span className="text-[11px] text-muted-foreground font-medium capitalize">
+                                {key.replace(/_/g, " ")}
+                              </span>
+                            </div>
+                          );
+                        })}
+                    </div>
+                  )}
               </div>
-            </button>
+              {/* Risk assessment */}
+              {riskAssessment && (
+                <div className="flex items-center gap-3">
+                  <span
+                    className={`inline-flex items-center gap-1.5 rounded-xl border px-3 py-1.5 text-sm font-bold ${riskAssessment.risk_level === "high" ? "bg-red-50 text-red-700 border-red-200" : riskAssessment.risk_level === "moderate" ? "bg-amber-50 text-amber-700 border-amber-200" : "bg-emerald-50 text-emerald-700 border-emerald-200"}`}
+                  >
+                    <span
+                      className={`inline-block h-2 w-2 rounded-full ${riskAssessment.risk_level === "high" ? "bg-red-500" : riskAssessment.risk_level === "moderate" ? "bg-amber-500" : "bg-emerald-500"}`}
+                    />
+                    {riskAssessment.risk_level === "high"
+                      ? "High Risk"
+                      : riskAssessment.risk_level === "moderate"
+                        ? "Moderate Risk"
+                        : "Low Risk"}
+                  </span>
+                  {riskAssessment.factors.length > 0 && (
+                    <div className="flex items-center gap-1.5">
+                      {riskAssessment.factors.slice(0, 3).map((f, i) => (
+                        <Badge
+                          key={i}
+                          variant="outline"
+                          className={`text-[11px] font-semibold ${f.severity === "high" ? "text-red-600 border-red-200" : f.severity === "moderate" ? "text-amber-600 border-amber-200" : "text-blue-600 border-blue-200"}`}
+                        >
+                          {f.factor}
+                        </Badge>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              )}
+            </div>
+            {/* Expanded score breakdown */}
             {dashboard.score_breakdown && showScoreBreakdown && (
-              <div className="absolute left-6 bottom-2 z-10 w-72 bg-card border rounded-xl p-4 shadow-xl">
+              <div className="mt-4 p-4 bg-muted/30 rounded-xl border">
                 <ScoreBreakdown breakdown={dashboard.score_breakdown} />
               </div>
             )}
@@ -1133,15 +1201,15 @@ ${sectionHtml}
       <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-5 lg:grid-cols-6 gap-3">
         {member.bmi && (
           <div
-            className={`rounded-xl border p-3.5 text-center shadow-sm transition-shadow hover:shadow-md ${member.bmi_category ? BMI_CATEGORY_COLORS[member.bmi_category] || "" : "bg-muted"}`}
+            className={`rounded-xl border p-4 text-center shadow-sm transition-shadow hover:shadow-md ${member.bmi_category ? BMI_CATEGORY_COLORS[member.bmi_category] || "" : "bg-muted"}`}
           >
-            <Activity className="h-3.5 w-3.5 mx-auto mb-1.5 opacity-50" />
+            <Activity className="h-4 w-4 mx-auto mb-2 opacity-50" />
             <p className="text-2xl font-bold tracking-tight">{member.bmi.toFixed(1)}</p>
-            <p className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground mt-0.5">
+            <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground mt-0.5">
               BMI
             </p>
             {member.bmi_category && (
-              <p className="text-[10px] font-semibold mt-1 opacity-80">{member.bmi_category}</p>
+              <p className="text-xs font-semibold mt-1 opacity-80">{member.bmi_category}</p>
             )}
           </div>
         )}
@@ -1151,33 +1219,33 @@ ${sectionHtml}
             const cat = getHba1cCategory(latest);
             return (
               <div
-                className={`rounded-xl border p-3.5 text-center shadow-sm transition-shadow hover:shadow-md ${HBA1C_CATEGORY_COLORS[cat] || ""}`}
+                className={`rounded-xl border p-4 text-center shadow-sm transition-shadow hover:shadow-md ${HBA1C_CATEGORY_COLORS[cat] || ""}`}
               >
-                <FlaskConical className="h-3.5 w-3.5 mx-auto mb-1.5 opacity-50" />
+                <FlaskConical className="h-4 w-4 mx-auto mb-2 opacity-50" />
                 <p className="text-2xl font-bold tracking-tight">{latest}%</p>
-                <p className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground mt-0.5">
+                <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground mt-0.5">
                   HbA1c
                 </p>
-                <p className="text-[10px] font-semibold mt-1 opacity-80">{cat}</p>
+                <p className="text-xs font-semibold mt-1 opacity-80">{cat}</p>
               </div>
             );
           })()}
-        <div className="rounded-xl border bg-violet-50 border-violet-200 p-3.5 text-center shadow-sm transition-shadow hover:shadow-md">
-          <Activity className="h-3.5 w-3.5 mx-auto mb-1.5 text-violet-400" />
+        <div className="rounded-xl border bg-violet-50 border-violet-200 p-4 text-center shadow-sm transition-shadow hover:shadow-md">
+          <Activity className="h-4 w-4 mx-auto mb-2 text-violet-400" />
           <p className="text-2xl font-bold tracking-tight text-violet-700">
             {active_medications_count}
           </p>
-          <p className="text-[10px] font-semibold uppercase tracking-wider text-violet-500 mt-0.5">
+          <p className="text-xs font-semibold uppercase tracking-wider text-violet-500 mt-0.5">
             Medications
           </p>
         </div>
         {active_conditions_count > 0 && (
-          <div className="rounded-xl border bg-rose-50 border-rose-200 p-3.5 text-center shadow-sm transition-shadow hover:shadow-md">
-            <Activity className="h-3.5 w-3.5 mx-auto mb-1.5 text-rose-400" />
+          <div className="rounded-xl border bg-rose-50 border-rose-200 p-4 text-center shadow-sm transition-shadow hover:shadow-md">
+            <Activity className="h-4 w-4 mx-auto mb-2 text-rose-400" />
             <p className="text-2xl font-bold tracking-tight text-rose-700">
               {active_conditions_count}
             </p>
-            <p className="text-[10px] font-semibold uppercase tracking-wider text-rose-500 mt-0.5">
+            <p className="text-xs font-semibold uppercase tracking-wider text-rose-500 mt-0.5">
               Conditions
             </p>
           </div>
@@ -1186,21 +1254,21 @@ ${sectionHtml}
           member.allergies!.map((a, i) => (
             <div
               key={i}
-              className={`rounded-xl border p-3.5 text-center shadow-sm transition-shadow hover:shadow-md ${ALLERGY_SEVERITY_COLORS[a.severity] ?? ALLERGY_SEVERITY_COLORS.mild}`}
+              className={`rounded-xl border p-4 text-center shadow-sm transition-shadow hover:shadow-md ${ALLERGY_SEVERITY_COLORS[a.severity] ?? ALLERGY_SEVERITY_COLORS.mild}`}
             >
               <p className="text-sm font-bold">{a.name}</p>
-              <p className="text-[10px] font-semibold mt-1 uppercase tracking-wider opacity-70">
+              <p className="text-xs font-semibold mt-1 uppercase tracking-wider opacity-70">
                 {a.severity} allergy
               </p>
             </div>
           ))}
         {hasEmergency && (
-          <div className="rounded-xl border border-blue-200 bg-blue-50 p-3.5 text-center shadow-sm">
-            <Phone className="h-3.5 w-3.5 mx-auto mb-1.5 text-blue-500" />
+          <div className="rounded-xl border border-blue-200 bg-blue-50 p-4 text-center shadow-sm">
+            <Phone className="h-4 w-4 mx-auto mb-2 text-blue-500" />
             <p className="text-sm font-bold text-blue-800 truncate">
               {member.emergency_contact_name}
             </p>
-            <p className="text-[10px] text-blue-600/70 mt-0.5">{member.emergency_contact_phone}</p>
+            <p className="text-xs text-blue-600/70 mt-0.5">{member.emergency_contact_phone}</p>
           </div>
         )}
       </div>
@@ -1213,7 +1281,7 @@ ${sectionHtml}
             <Link
               key={action.hrefSuffix}
               to={`/members/${member.id}${action.hrefSuffix}`}
-              className={`inline-flex items-center gap-1.5 rounded-lg border px-3 py-2 text-sm font-semibold transition-colors ${action.color}`}
+              className={`inline-flex items-center gap-1.5 rounded-xl border px-3.5 py-2 text-sm font-semibold transition-colors shadow-sm ${action.color}`}
             >
               <Icon className="h-4 w-4" />
               {action.label}
@@ -1224,10 +1292,10 @@ ${sectionHtml}
 
       {/* ── SECTION 4: Reminders + HbA1c Trend ── */}
       {(memberReminders.length > 0 || hba1cHistory.length >= 1) && (
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
           {hba1cHistory.length >= 1 && (
-            <Card>
-              <CardHeader className="pb-2">
+            <Card className="shadow-sm">
+              <CardHeader className="pb-3">
                 <CardTitle className="text-base font-semibold">HbA1c Trend</CardTitle>
               </CardHeader>
               <CardContent>
@@ -1236,10 +1304,10 @@ ${sectionHtml}
             </Card>
           )}
           {memberReminders.length > 0 && (
-            <Card className="overflow-hidden">
+            <Card className="overflow-hidden shadow-sm">
               <div className="h-1 bg-gradient-to-r from-amber-400 to-blue-500" />
-              <CardHeader className="pb-2">
-                <CardTitle className="text-sm font-semibold flex items-center gap-2">
+              <CardHeader className="pb-3">
+                <CardTitle className="text-base font-semibold flex items-center gap-2">
                   <Bell className="h-4 w-4 text-blue-500" />
                   Upcoming
                   <Badge variant="secondary" className="text-xs">
@@ -1252,7 +1320,7 @@ ${sectionHtml}
                   {memberReminders.map((rem) => (
                     <div
                       key={rem.id}
-                      className="flex items-center justify-between rounded-lg bg-muted/40 px-3 py-2.5"
+                      className="flex items-center justify-between rounded-xl bg-muted/40 px-3 py-2.5"
                     >
                       <div className="min-w-0">
                         <p className="text-sm font-semibold truncate">{rem.title}</p>
@@ -1279,7 +1347,7 @@ ${sectionHtml}
       <ChronicConditionCharts memberId={member.id} />
 
       {/* ── SECTION 6: AI Cards Row ── */}
-      <div className="grid gap-4 md:grid-cols-2">
+      <div className="grid gap-5 md:grid-cols-2">
         <PreConsultationCard
           memberId={member.id}
           memberFirstName={member.first_name}
@@ -1297,7 +1365,7 @@ ${sectionHtml}
       </div>
 
       {/* ── SECTION 7: Care Cards ── */}
-      <div className="grid gap-4 md:grid-cols-2 print:hidden">
+      <div className="grid gap-5 md:grid-cols-2 print:hidden">
         <DrugInteractionReport
           memberId={member.id}
           medicationCount={active_medications?.length ?? 0}

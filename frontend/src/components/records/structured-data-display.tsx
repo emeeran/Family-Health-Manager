@@ -613,7 +613,7 @@ function DoctorVisitDisplay({
         <div className="lab-report-container">
           {/* Patient info bar */}
           <div className="flex items-center justify-between mb-4">
-            <p className="text-[10px] text-muted-foreground/60">
+            <p className="text-xs text-muted-foreground/60">
               DAWNSTAR Family Health Keeper
               {recordDate && ` · ${formatDate(recordDate)}`}
             </p>
@@ -802,7 +802,7 @@ function ConsolidatedLabReport({
           informational purposes only. Values should be reviewed by a qualified healthcare
           professional.
         </p>
-        <div className="flex items-center justify-between mt-2 text-[10px] text-muted-foreground/60">
+        <div className="flex items-center justify-between mt-2 text-xs text-muted-foreground/60">
           <span>DAWNSTAR Family Health Keeper</span>
           <span>
             {reportId} &middot; {dateStr}

@@ -109,7 +109,7 @@ function RxForm({
     <div className="border border-primary/30 rounded-lg bg-primary/5 p-3 space-y-2">
       <div className="grid grid-cols-[60px_1fr_80px_120px_1fr] gap-2 items-end">
         <div>
-          <label className="text-[10px] font-medium text-muted-foreground uppercase tracking-wider mb-1 block">
+          <label className="text-xs font-medium text-muted-foreground uppercase tracking-wider mb-1 block">
             Type
           </label>
           <Select value={form.type} onValueChange={(v) => setForm({ ...form, type: v ?? "" })}>
@@ -126,7 +126,7 @@ function RxForm({
           </Select>
         </div>
         <div>
-          <label className="text-[10px] font-medium text-muted-foreground uppercase tracking-wider mb-1 block">
+          <label className="text-xs font-medium text-muted-foreground uppercase tracking-wider mb-1 block">
             Medicine + Strength
           </label>
           <Input
@@ -137,7 +137,7 @@ function RxForm({
           />
         </div>
         <div>
-          <label className="text-[10px] font-medium text-muted-foreground uppercase tracking-wider mb-1 block">
+          <label className="text-xs font-medium text-muted-foreground uppercase tracking-wider mb-1 block">
             Dosage
           </label>
           <Input
@@ -148,7 +148,7 @@ function RxForm({
           />
         </div>
         <div>
-          <label className="text-[10px] font-medium text-muted-foreground uppercase tracking-wider mb-1 block">
+          <label className="text-xs font-medium text-muted-foreground uppercase tracking-wider mb-1 block">
             Timing
           </label>
           {!customTiming ? (
@@ -185,7 +185,7 @@ function RxForm({
               />
               <button
                 type="button"
-                className="h-8 px-2 text-[10px] text-muted-foreground hover:text-foreground border rounded-md hover:bg-muted/50 shrink-0"
+                className="h-8 px-2 text-xs text-muted-foreground hover:text-foreground border rounded-md hover:bg-muted/50 shrink-0"
                 onClick={() => {
                   setCustomTiming(false);
                   setForm({ ...form, timing: "" });
@@ -197,7 +197,7 @@ function RxForm({
           )}
         </div>
         <div>
-          <label className="text-[10px] font-medium text-muted-foreground uppercase tracking-wider mb-1 block">
+          <label className="text-xs font-medium text-muted-foreground uppercase tracking-wider mb-1 block">
             Note
           </label>
           <Input
@@ -569,7 +569,7 @@ export function ActiveMedicationsTable({
                     {/* actions */}
                   </colgroup>
                   <thead className="sticky top-0 bg-card z-10 border-b border-border">
-                    <tr className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wider">
+                    <tr className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">
                       <th className="py-1" />
                       <th className="py-1">
                         <Checkbox
@@ -635,12 +635,12 @@ export function ActiveMedicationsTable({
                           <td className="py-0.5">
                             {med.type ? (
                               <span
-                                className={`inline-block px-1 py-px text-[9px] font-bold rounded ${TYPE_COLORS[med.type] || "bg-gray-100 text-gray-600 dark:bg-gray-800 dark:text-gray-400"}`}
+                                className={`inline-block px-1 py-px text-[11px] font-bold rounded ${TYPE_COLORS[med.type] || "bg-gray-100 text-gray-600 dark:bg-gray-800 dark:text-gray-400"}`}
                               >
                                 {med.type}
                               </span>
                             ) : (
-                              <span className="text-[9px] text-muted-foreground">--</span>
+                              <span className="text-[11px] text-muted-foreground">--</span>
                             )}
                           </td>
                           <td className="py-0.5 px-1.5">
@@ -690,7 +690,7 @@ export function ActiveMedicationsTable({
                                   .toUpperCase()}
                               </span>
                             ) : (
-                              <span className="text-[9px] text-muted-foreground">--</span>
+                              <span className="text-[11px] text-muted-foreground">--</span>
                             )}
                           </td>
                           <td className="py-0.5 px-1 whitespace-nowrap text-[11px] text-muted-foreground tabular-nums">
