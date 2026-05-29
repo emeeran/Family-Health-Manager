@@ -39,6 +39,9 @@ node_modules/
 # App data (SQLite DB, uploads, etc.)
 backend/data/
 
+# Scripts
+scripts/
+
 # Trash
 trash2review/
 
