@@ -35,7 +35,7 @@ import {
 import { listReminders } from "@/lib/api/reminders";
 import { listRecords } from "@/lib/api/records";
 import { getRiskAssessment } from "@/lib/api/dashboard";
-import { formatDate } from "@/lib/utils";
+import { formatDate, formatRelativeTime } from "@/lib/utils";
 import { toast } from "sonner";
 
 import {
@@ -147,20 +147,6 @@ function scoreTextColor(score: number): string {
   if (score >= 75) return "text-green-600";
   if (score >= 50) return "text-amber-600";
   return "text-red-600";
-}
-
-function formatRelativeTime(iso: string): string {
-  const d = new Date(iso);
-  const now = new Date();
-  const diffMs = d.getTime() - now.getTime();
-  const absDays = Math.abs(Math.round(diffMs / (1000 * 60 * 60 * 24)));
-  if (absDays === 0) return "Today";
-  if (diffMs < 0) {
-    if (absDays === 1) return "Yesterday";
-    return `${absDays}d ago`;
-  }
-  if (absDays === 1) return "Tomorrow";
-  return `In ${absDays} days`;
 }
 
 /* ── Health Score Ring ── */

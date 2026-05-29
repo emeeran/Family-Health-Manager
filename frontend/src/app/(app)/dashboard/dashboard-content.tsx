@@ -19,7 +19,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
 import { RELATIONSHIP_LABELS, RECORD_TYPE_LABELS, HBA1C_CATEGORY_COLORS } from "@/lib/constants";
-import { formatDate } from "@/lib/utils";
+import { formatDate, formatRelativeTime } from "@/lib/utils";
 import { QuickAddRecordDialog } from "@/components/records/quick-add-record-dialog";
 import { QuickLogInput } from "@/components/records/quick-log-input";
 import { useRecordQuickView } from "@/components/records/record-quick-view-provider";
@@ -51,20 +51,6 @@ import type { ReminderResponse } from "@/lib/types/reminder";
 import type { HealthRecordResponse } from "@/lib/types/health-record";
 
 /* ── Helpers ── */
-
-function formatRelativeTime(iso: string): string {
-  const d = new Date(iso);
-  const now = new Date();
-  const diffMs = d.getTime() - now.getTime();
-  const absDays = Math.abs(Math.round(diffMs / (1000 * 60 * 60 * 24)));
-  if (absDays === 0) return "Today";
-  if (diffMs < 0) {
-    if (absDays === 1) return "Yesterday";
-    return `${absDays}d ago`;
-  }
-  if (absDays === 1) return "Tomorrow";
-  return `In ${absDays} days`;
-}
 
 function extractPreview(
   clinicalData: string | null | undefined,

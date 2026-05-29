@@ -29,3 +29,26 @@ export function toDisplayDate(val: string): string {
   if (iso) return `${iso[3]}-${iso[2]}-${iso[1]}`;
   return val;
 }
+
+/** Format an ISO date string as a human-friendly relative label. */
+export function formatRelativeTime(iso: string): string {
+  const d = new Date(iso);
+  const now = new Date();
+  const diffMs = d.getTime() - now.getTime();
+  const absDays = Math.abs(Math.round(diffMs / (1000 * 60 * 60 * 24)));
+
+  if (absDays === 0) {
+    const hours = Math.abs(Math.round(diffMs / (1000 * 60 * 60)));
+    if (hours === 0) {
+      const mins = Math.abs(Math.round(diffMs / (1000 * 60)));
+      return mins <= 1 ? "Just now" : `${mins}m ago`;
+    }
+    return diffMs < 0 ? (hours === 1 ? "1h ago" : `${hours}h ago`) : "Today";
+  }
+  if (diffMs < 0) {
+    if (absDays === 1) return "Yesterday";
+    return `${absDays}d ago`;
+  }
+  if (absDays === 1) return "Tomorrow";
+  return `In ${absDays} days`;
+}

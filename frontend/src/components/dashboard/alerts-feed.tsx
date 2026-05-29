@@ -2,28 +2,12 @@ import { AlertTriangle, CheckCircle2, X, Bell } from "lucide-react";
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { formatRelativeTime } from "@/lib/utils";
 import type { DashboardAlert } from "@/lib/types/dashboard";
 
 interface AlertsFeedProps {
   alerts: DashboardAlert[];
   onDismiss: (id: string) => void;
-}
-
-function formatRelativeTime(iso: string): string {
-  const d = new Date(iso);
-  const now = new Date();
-  const diffMs = now.getTime() - d.getTime();
-  const absDays = Math.abs(Math.round(diffMs / (1000 * 60 * 60 * 24)));
-  if (absDays === 0) {
-    const hours = Math.abs(Math.round(diffMs / (1000 * 60 * 60)));
-    if (hours === 0) {
-      const mins = Math.abs(Math.round(diffMs / (1000 * 60)));
-      return mins <= 1 ? "Just now" : `${mins}m ago`;
-    }
-    return hours === 1 ? "1h ago" : `${hours}h ago`;
-  }
-  if (absDays === 1) return "Yesterday";
-  return `${absDays}d ago`;
 }
 
 const severityConfig = {
