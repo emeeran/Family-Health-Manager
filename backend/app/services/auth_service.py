@@ -25,7 +25,16 @@ class AuthService:
         if existing_user:
             raise ValueError("Username already exists")
 
-        user = User(username=username, password_hash=hash_password(password))
+        # Auto-promote first registered user to admin
+        from sqlalchemy import func
+        count_result = await self.db.execute(select(func.count()).select_from(User))
+        is_first_user = count_result.scalar() == 0
+
+        user = User(
+            username=username,
+            password_hash=hash_password(password),
+            role="admin" if is_first_user else "user",
+        )
         self.db.add(user)
         await self.db.flush()
 

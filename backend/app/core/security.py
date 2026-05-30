@@ -3,7 +3,8 @@ import hashlib
 import secrets as _secrets
 from datetime import datetime, timedelta, timezone
 from uuid import UUID
-from jose import jwt, JWTError
+import jwt
+from jwt.exceptions import PyJWTError as JWTError
 from passlib.context import CryptContext
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession

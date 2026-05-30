@@ -68,6 +68,11 @@ _config: dict = {
 
 settings = get_settings()
 
+# Initialize Sentry if DSN configured
+if settings.SENTRY_DSN:
+    from app.core.sentry import init_sentry
+    init_sentry(settings.SENTRY_DSN, environment=settings.APP_ENV)
+
 # Use JSON logging in production if python-json-logger is available
 if settings.APP_ENV == "production":
     try:
@@ -107,12 +112,22 @@ async def lifespan(app: FastAPI):
                 logger.info("Pruned %d expired tokens", count)
 
     register_job("prune_tokens", 86400, _prune_tokens)
-    await start_scheduler()
+
+    # Database backup job
+    register_job("backup_database", 86400, _jobs.backup_database)
+
+    # Only start scheduler in designated container
+    if settings.RUN_SCHEDULER:
+        await start_scheduler()
+    else:
+        logger.info("Scheduler disabled (RUN_SCHEDULER=false)")
 
     logger.info("Application startup complete!")
     yield
     # Shutdown
     await stop_scheduler()
+    from app.core.redis import close_redis
+    await close_redis()
     from app.core.database import engine
     await engine.dispose()
     logger.info("Shutting down application...")
@@ -180,7 +195,7 @@ async def rate_limit_middleware(request: Request, call_next):
 
     # Stricter rate limit for auth endpoints
     if request.url.path.startswith("/api/v1/auth/login") or request.url.path.startswith("/api/v1/auth/register"):
-        allowed, retry_after = auth_rate_limiter.check_limit(f"auth:{client_ip}")
+        allowed, retry_after = await auth_rate_limiter.check_limit_async(f"auth:{client_ip}")
         if not allowed:
             return JSONResponse(
                 status_code=429,
@@ -193,7 +208,7 @@ async def rate_limit_middleware(request: Request, call_next):
                 headers={"Retry-After": str(retry_after)},
             )
 
-    allowed, retry_after = rate_limiter.check_limit(f"ip:{client_ip}")
+    allowed, retry_after = await rate_limiter.check_limit_async(f"ip:{client_ip}")
 
     if not allowed:
         return JSONResponse(
@@ -296,7 +311,8 @@ async def health_detail(
 ):
     """Detailed health check with DB connectivity test (requires shared secret)."""
     health_key = request.headers.get("x-health-key")
-    if not health_key or health_key != settings.SECRET_KEY[:16]:
+    expected = settings.HEALTH_CHECK_SECRET or settings.SECRET_KEY[:16]
+    if not health_key or health_key != expected:
         return JSONResponse(status_code=403, content={"error": "forbidden"})
 
     import shutil

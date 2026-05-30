@@ -17,7 +17,7 @@ class FamilyMember(Base):
     __tablename__ = "family_members"
 
     id: Mapped[UUID] = mapped_column(primary_key=True, default=uuid4)
-    household_id: Mapped[UUID] = mapped_column(ForeignKey("households.id"), nullable=False, index=True)
+    household_id: Mapped[UUID] = mapped_column(ForeignKey("households.id", ondelete="CASCADE"), nullable=False, index=True)
     first_name: Mapped[str] = mapped_column(String(50), nullable=False)
     last_name: Mapped[str] = mapped_column(String(50), nullable=False)
     date_of_birth: Mapped[date] = mapped_column(Date, nullable=False)

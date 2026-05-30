@@ -50,7 +50,7 @@ async def list_household_records(
 ):
     """List records for all members in the household in a single query."""
     cache_key = f"household_records:{household.id}:{limit}"
-    cached = cache.get(cache_key)
+    cached = await cache.get_async(cache_key)
     if cached is not None:
         return cached
 
@@ -68,7 +68,7 @@ async def list_household_records(
     )
     rows = await db.execute(stmt)
     records = list(rows.scalars().unique().all())
-    cache.set(cache_key, records, ttl=60)
+    await cache.set_async(cache_key, records, ttl=60)
     return records
 
 

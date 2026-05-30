@@ -49,3 +49,4 @@ class UserResponse(BaseModel):
     id: UUID = Field(..., description="User ID")
     username: str = Field(..., description="Username")
     is_active: bool = Field(..., description="Active status")
+    role: str = Field("user", description="User role")

@@ -58,6 +58,29 @@ async def create_tables():
         sync_db_url = settings.DATABASE_URL.replace("sqlite+aiosqlite:///", "sqlite:///")
         sync_engine = create_engine(sync_db_url, echo=settings.DEBUG)
         Base.metadata.create_all(sync_engine)
+
+        # Patch: add columns that may be missing from prior schema versions
+        import sqlalchemy.inspection as sa_inspect
+        with sync_engine.connect() as conn:
+            inspector = sa_inspect.inspect(sync_engine)
+            if "users" in inspector.get_table_names():
+                existing_cols = {c["name"] for c in inspector.get_columns("users")}
+                if "role" not in existing_cols:
+                    conn.execute(
+                        __import__("sqlalchemy").text(
+                            "ALTER TABLE users ADD COLUMN role VARCHAR(20) NOT NULL DEFAULT 'user'"
+                        )
+                    )
+                    # Promote first user to admin
+                    conn.execute(
+                        __import__("sqlalchemy").text(
+                            "UPDATE users SET role = 'admin' WHERE id = "
+                            "(SELECT id FROM users ORDER BY created_at ASC LIMIT 1)"
+                        )
+                    )
+                    conn.commit()
+                    logger.info("Added 'role' column to users table")
+
         sync_engine.dispose()
     else:
         # Production: migrations should be run separately (docker-entrypoint.sh handles this)

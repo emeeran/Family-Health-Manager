@@ -17,7 +17,7 @@ class HealthRecord(Base):
     __tablename__ = "health_records"
 
     id: Mapped[UUID] = mapped_column(primary_key=True, default=uuid4)
-    family_member_id: Mapped[UUID] = mapped_column(ForeignKey("family_members.id"), nullable=False, index=True)
+    family_member_id: Mapped[UUID] = mapped_column(ForeignKey("family_members.id", ondelete="CASCADE"), nullable=False, index=True)
     provider_id: Mapped[UUID | None] = mapped_column(ForeignKey("providers.id"), nullable=True, index=True)
     record_type: Mapped[RecordType] = mapped_column(Enum(RecordType), nullable=False, index=True)
     record_date: Mapped[date] = mapped_column(Date, nullable=False, index=True)

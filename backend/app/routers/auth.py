@@ -145,9 +145,9 @@ async def refresh_token(
     _set_auth_cookies(response, new_access, new_refresh)
 
     # Get expiry from the new access token
-    from jose import jwt
-    payload = jwt.decode(new_access, settings.SECRET_KEY, algorithms=["HS256"])
+    import jwt as _jwt
     from datetime import datetime, timezone
+    payload = _jwt.decode(new_access, settings.SECRET_KEY, algorithms=["HS256"])
     expires = datetime.fromtimestamp(payload["exp"], tz=timezone.utc)
 
     return RefreshResponse(

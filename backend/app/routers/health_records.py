@@ -3,7 +3,7 @@ import asyncio
 import logging
 from datetime import date, datetime, time
 from uuid import UUID
-from fastapi import APIRouter, Depends, HTTPException, Query, UploadFile, File
+from fastapi import APIRouter, Depends, HTTPException, Query, UploadFile, File, Response
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
 import json
@@ -202,6 +202,7 @@ async def check_filenames(
 @router.get("", response_model=list[HealthRecordResponse])
 async def list_records(
     member_id: UUID,
+    response: Response,
     _member: FamilyMember = Depends(require_member_in_household),
     db: AsyncSession = Depends(get_db),
     record_type: RecordType | None = Query(None),
@@ -217,6 +218,8 @@ async def list_records(
     records, next_cursor, has_more = await record_service.list_records(
         member_id, record_type, date_from, date_to, search, cursor_dict, limit
     )
+    if next_cursor:
+        response.headers["X-Next-Cursor"] = next_cursor
     return records
 
 
@@ -314,7 +317,7 @@ async def create_record(
         except Exception:
             logger.warning("Failed to create follow-up reminder for record %s", record.id)
 
-    cache.invalidate(f"household_records:{household.id}")
+    await cache.invalidate_async(f"household_records:{household.id}")
     return record
 
 
@@ -363,7 +366,7 @@ async def cleanup_empty_records(
     empty_ids = await record_service.find_empty_records(member_id)
     count = await record_service.bulk_soft_delete(empty_ids)
     if count:
-        cache.invalidate(f"household_records:{household.id}")
+        await cache.invalidate_async(f"household_records:{household.id}")
         AIService.invalidate_member_cache(member_id)
     return {"removed": count}
 
@@ -391,7 +394,7 @@ async def batch_delete_records(
     await db.flush()
     count = len(records)
     if count:
-        cache.invalidate(f"household_records:{household.id}")
+        await cache.invalidate_async(f"household_records:{household.id}")
         AIService.invalidate_member_cache(member_id)
     return {"deleted": count}
 
@@ -456,7 +459,7 @@ async def update_record(
         except Exception:
             logger.warning("Failed to create follow-up reminder on update for record %s", record_id)
 
-    cache.invalidate(f"household_records:{household.id}")
+    await cache.invalidate_async(f"household_records:{household.id}")
     return record
 
 
@@ -475,7 +478,7 @@ async def delete_record(
         await record_service.soft_delete_record(member_id, record_id)
     except ValueError:
         raise HTTPException(status_code=404, detail="Record not found")
-    cache.invalidate(f"household_records:{household.id}")
+    await cache.invalidate_async(f"household_records:{household.id}")
     AIService.invalidate_member_cache(member_id)
 
 

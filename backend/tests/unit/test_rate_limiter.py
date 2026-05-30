@@ -1,7 +1,6 @@
 """Unit tests for rate limiter."""
 import pytest
 from unittest.mock import patch
-from datetime import datetime, timedelta
 from app.core.rate_limiter import RateLimiter
 
 
@@ -45,12 +44,11 @@ def test_check_limit_different_keys(rate_limiter):
 
 def test_check_limit_window_expires():
     """Test that old requests expire from window."""
-    with patch("app.core.rate_limiter.datetime") as mock_datetime:
+    with patch("app.core.rate_limiter.time") as mock_time:
         limiter = RateLimiter(limit=2, window_seconds=60)
 
         # Set initial time
-        initial_time = datetime(2024, 1, 1, 12, 0, 0)
-        mock_datetime.now.return_value = initial_time
+        mock_time.monotonic.return_value = 1000.0
 
         # Make 2 requests (at limit)
         limiter.check_limit("test_key")
@@ -61,7 +59,7 @@ def test_check_limit_window_expires():
         assert allowed is False
 
         # Advance time past window
-        mock_datetime.now.return_value = initial_time + timedelta(seconds=61)
+        mock_time.monotonic.return_value = 1061.0
 
         # Should be allowed again
         allowed, _ = limiter.check_limit("test_key")
@@ -70,17 +68,16 @@ def test_check_limit_window_expires():
 
 def test_retry_after_calculation():
     """Test retry after is calculated correctly."""
-    with patch("app.core.rate_limiter.datetime") as mock_datetime:
+    with patch("app.core.rate_limiter.time") as mock_time:
         limiter = RateLimiter(limit=1, window_seconds=60)
 
-        initial_time = datetime(2024, 1, 1, 12, 0, 0)
-        mock_datetime.now.return_value = initial_time
+        mock_time.monotonic.return_value = 1000.0
 
         # Make 1 request (at limit)
         limiter.check_limit("test_key")
 
         # Advance time by 30 seconds
-        mock_datetime.now.return_value = initial_time + timedelta(seconds=30)
+        mock_time.monotonic.return_value = 1030.0
 
         # Should be blocked with ~30 second retry
         allowed, retry_after = limiter.check_limit("test_key")

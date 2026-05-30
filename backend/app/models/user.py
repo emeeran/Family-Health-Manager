@@ -24,6 +24,7 @@ class User(Base):
     totp_secret: Mapped[str | None] = mapped_column(String(32), nullable=True)
     totp_enabled: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
     backup_codes: Mapped[str | None] = mapped_column(Text, nullable=True)  # JSON array
+    role: Mapped[str] = mapped_column(String(20), default="user", nullable=False)
 
     households: Mapped[list["Household"]] = relationship(back_populates="primary_user")
     audit_logs: Mapped[list["AuditLog"]] = relationship(back_populates="user")

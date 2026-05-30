@@ -34,6 +34,18 @@ class Settings(BaseSettings):
     RATE_LIMIT_REQUESTS: int = 100
     RATE_LIMIT_WINDOW: int = 60
 
+    # Redis
+    REDIS_URL: str = ""  # Empty = in-memory fallback (dev mode)
+
+    # Health check
+    HEALTH_CHECK_SECRET: str = ""  # Required in prod; falls back to SECRET_KEY[:16] in dev
+
+    # Sentry
+    SENTRY_DSN: str = ""  # Empty = disabled
+
+    # Scheduler
+    RUN_SCHEDULER: bool = True  # Set false when scheduler runs in separate container
+
     # AI Providers
     OPENAI_API_KEY: str = ""
     GEMINI_API_KEY: str = ""
@@ -67,6 +79,13 @@ class Settings(BaseSettings):
                     "DATABASE_URL must use PostgreSQL in production! "
                     "Set DATABASE_URL=postgresql+asyncpg://user:pass@host/db in .env"
                 )
+            if not self.HEALTH_CHECK_SECRET:
+                raise ValueError(
+                    "HEALTH_CHECK_SECRET must be set in production! "
+                    "Generate one with: python -c \"import secrets; print(secrets.token_urlsafe(24))\""
+                )
+            if not self.REDIS_URL:
+                logger.warning("REDIS_URL not set — rate limiting and cache will use in-memory fallback")
             logger.info("Running in PRODUCTION mode")
 
 

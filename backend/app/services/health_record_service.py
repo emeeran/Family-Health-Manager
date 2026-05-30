@@ -1,4 +1,5 @@
 """Health record service."""
+from pathlib import Path
 from datetime import date, datetime, timedelta, time, timezone
 from uuid import UUID
 from sqlalchemy import select, tuple_
@@ -151,8 +152,17 @@ class HealthRecordService:
         return await update_model(self.db, record, allowed_fields=allowed, **kwargs)
 
     async def soft_delete_record(self, member_id: UUID, record_id: UUID) -> None:
-        """Soft-delete a health record."""
+        """Soft-delete a health record and clean up associated attachment files."""
         record = await self.get_record(member_id, record_id)
+
+        # Delete physical files for all attachments
+        from app.core.storage import delete_file
+        for attachment in record.attachments:
+            try:
+                await delete_file(Path(attachment.file_path))
+            except Exception:
+                pass  # File may already be gone
+
         record.is_deleted = True
         await self.db.flush()
 

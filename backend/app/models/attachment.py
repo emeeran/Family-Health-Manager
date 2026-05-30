@@ -17,7 +17,7 @@ class Attachment(Base):
     __tablename__ = "attachments"
 
     id: Mapped[UUID] = mapped_column(primary_key=True, default=uuid4)
-    health_record_id: Mapped[UUID] = mapped_column(ForeignKey("health_records.id"), nullable=False, index=True)
+    health_record_id: Mapped[UUID] = mapped_column(ForeignKey("health_records.id", ondelete="CASCADE"), nullable=False, index=True)
     file_path: Mapped[str] = mapped_column(String(500), nullable=False)
     file_name: Mapped[str] = mapped_column(String(255), nullable=False)
     mime_type: Mapped[str] = mapped_column(String(50), nullable=False)

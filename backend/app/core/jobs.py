@@ -3,7 +3,9 @@ import json
 import logging
 import os
 import re
+import subprocess
 import time
+from datetime import datetime, timezone
 from pathlib import Path
 
 import httpx
@@ -259,3 +261,46 @@ async def detect_anomalies():
         except Exception:
             await db.rollback()
             logger.exception("Failed to run anomaly detection")
+
+
+async def backup_database():
+    """Create a gzipped database backup using pg_dump.
+
+    Only runs when DATABASE_URL is PostgreSQL. Skips silently otherwise.
+    Saves backups to data/backups/ with timestamp filename.
+    """
+    db_url = settings.DATABASE_URL
+    if not db_url.startswith("postgresql"):
+        logger.debug("Backup skipped — not using PostgreSQL")
+        return
+
+    backup_dir = Path("data/backups")
+    backup_dir.mkdir(parents=True, exist_ok=True)
+
+    timestamp = datetime.now(timezone.utc).strftime("%Y%m%d_%H%M%S")
+    backup_file = backup_dir / f"health_{timestamp}.sql.gz"
+
+    try:
+        # pg_dump doesn't accept asyncpg driver, convert to standard psycopg format
+        pg_url = db_url.replace("+asyncpg", "")
+        result = subprocess.run(
+            ["pg_dump", pg_url],
+            capture_output=True,
+            text=True,
+            timeout=300,
+        )
+        if result.returncode != 0:
+            logger.error("pg_dump failed: %s", result.stderr)
+            return
+
+        import gzip
+        with gzip.open(backup_file, "wt") as f:
+            f.write(result.stdout)
+
+        logger.info("Database backup created: %s (%d bytes)", backup_file.name, backup_file.stat().st_size)
+    except FileNotFoundError:
+        logger.warning("pg_dump not found — database backup skipped")
+    except subprocess.TimeoutExpired:
+        logger.error("pg_dump timed out after 300s")
+    except Exception:
+        logger.exception("Database backup failed")

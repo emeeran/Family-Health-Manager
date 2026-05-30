@@ -1,4 +1,5 @@
 """File storage abstraction."""
+import logging
 import uuid
 from pathlib import Path
 from fastapi import UploadFile
@@ -7,6 +8,7 @@ import aiofiles.os
 from app.core.config import get_settings
 
 settings = get_settings()
+logger = logging.getLogger(__name__)
 
 ALLOWED_MIME_TYPES = {"application/pdf", "image/jpeg", "image/png"}
 MAX_FILE_SIZE = 25 * 1024 * 1024  # 25 MB
@@ -25,6 +27,32 @@ def _validate_storage_path(file_path: Path) -> None:
     resolved = file_path.resolve()
     if not str(resolved).startswith(str(storage_root)):
         raise ValueError("Invalid file path: escapes storage root")
+
+
+def scan_file(file_path: Path) -> bool:
+    """Scan file for viruses using ClamAV (if available).
+
+    Returns True if the file is clean (or ClamAV is not installed).
+    Returns False if a virus is detected.
+    """
+    try:
+        import clamd
+
+        cd = clamd.ClamdUnixSocket()
+        result = cd.scan(str(file_path))
+        # Result format: {filepath: ('FOUND', 'virus_name') or ('OK', None)}
+        for _, (status, _) in result.items():
+            if status == "FOUND":
+                logger.warning("Virus detected in file: %s", file_path)
+                return False
+        return True
+    except ImportError:
+        # clamd not installed — skip scanning
+        return True
+    except Exception:
+        # ClamAV not running or socket not available — skip scanning
+        logger.debug("ClamAV scan skipped for %s", file_path)
+        return True
 
 
 def validate_file(file: UploadFile) -> None:
@@ -67,6 +95,11 @@ async def save_file(file: UploadFile, prefix: str = "attachments") -> tuple[Path
 
     async with aiofiles.open(file_path, "wb") as f:
         await f.write(content)
+
+    # Virus scan (no-op if ClamAV not installed)
+    if not scan_file(file_path):
+        await aiofiles.os.remove(file_path)
+        raise ValueError("File failed virus scan")
 
     return file_path, unique_filename
 

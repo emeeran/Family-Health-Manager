@@ -107,13 +107,13 @@ async def list_members(
 ):
     """List all family members in household."""
     cache_key = f"members:{household.id}:{is_active}"
-    cached = cache.get(cache_key)
+    cached = await cache.get_async(cache_key)
     if cached is not None:
         return cached
 
     service = MemberService(db)
     members = await service.list_members(household.id, is_active)
-    cache.set(cache_key, members, ttl=120)
+    await cache.set_async(cache_key, members, ttl=120)
     return members
 
 
@@ -140,7 +140,7 @@ async def create_member(
         height_cm=request.height_cm,
         weight_kg=request.weight_kg,
     )
-    cache.invalidate(f"members:{household.id}")
+    await cache.invalidate_async(f"members:{household.id}")
     return member
 
 
@@ -290,7 +290,7 @@ async def update_member(
             update_data["allergies_json"] = None
 
     member = await service.update_member(member_id, **update_data)
-    cache.invalidate(f"members:{household.id}")
+    await cache.invalidate_async(f"members:{household.id}")
     return member
 
 
@@ -307,8 +307,8 @@ async def delete_member(
         await service.soft_delete_member(household.id, member_id)
     except ValueError:
         raise HTTPException(status_code=404, detail="Member not found")
-    cache.invalidate(f"members:{household.id}")
-    cache.invalidate(f"household_records:{household.id}")
+    await cache.invalidate_async(f"members:{household.id}")
+    await cache.invalidate_async(f"household_records:{household.id}")
 
 
 @router.get("/{member_id}/bmi-history")
@@ -1418,7 +1418,7 @@ async def add_medication(
         await med_svc.remove_outdated_prescriptions(member_id, [med_name])
 
     await db.commit()
-    cache.invalidate(f"dashboard:{member_id}")
+    await cache.invalidate_async(f"dashboard:{member_id}")
     return {
         "id": str(record.id),
         "prescription": rx,
@@ -1463,7 +1463,7 @@ async def update_medication(
     except (json.JSONDecodeError, TypeError, AttributeError):
         raise HTTPException(status_code=400, detail="Cannot edit unstructured record")
 
-    cache.invalidate(f"dashboard:{member_id}")
+    await cache.invalidate_async(f"dashboard:{member_id}")
     return {"updated": True}
 
 
@@ -1511,7 +1511,7 @@ async def delete_medication(
     except (json.JSONDecodeError, TypeError, AttributeError):
         raise HTTPException(status_code=400, detail="Cannot edit unstructured record")
 
-    cache.invalidate(f"dashboard:{member_id}")
+    await cache.invalidate_async(f"dashboard:{member_id}")
     return {"deleted": True}
 
 
@@ -1594,7 +1594,7 @@ async def bulk_delete_medications(
             logger.exception("bulk-delete: failed to process record %s", record_id_str)
             continue
 
-    cache.invalidate(f"dashboard:{member_id}")
+    await cache.invalidate_async(f"dashboard:{member_id}")
     return {"deleted": deleted}
 
 
@@ -1650,5 +1650,5 @@ async def apply_medication_sync(
     )
     await db.commit()
 
-    cache.invalidate(f"dashboard:{member_id}")
+    await cache.invalidate_async(f"dashboard:{member_id}")
     return result
