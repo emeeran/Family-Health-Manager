@@ -1,7 +1,7 @@
 import useSWR from "swr";
 import { listConversations } from "@/lib/api/conversations";
 import { listMembers } from "@/lib/api/members";
-import { ConversationsContent } from "@/app/(app)/conversations/conversations-content";
+import { ConversationsContent } from "@/components/content/conversations-content";
 import { ErrorState } from "@/components/shared/error-state";
 
 export default function ConversationsPage() {

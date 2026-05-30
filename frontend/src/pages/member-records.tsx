@@ -2,7 +2,7 @@ import useSWR from "swr";
 import { useParams } from "react-router-dom";
 import { listRecords } from "@/lib/api/records";
 import { getMember } from "@/lib/api/members";
-import { RecordsListContent } from "@/app/(app)/members/[memberId]/records/records-list-content";
+import { RecordsListContent } from "@/components/content/records-list-content";
 import { ErrorState } from "@/components/shared/error-state";
 export default function MemberRecordsPage() {
   const { memberId } = useParams<{ memberId: string }>();

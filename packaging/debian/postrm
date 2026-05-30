@@ -1,0 +1,65 @@
+#!/bin/bash
+set -e
+
+# Post-remove script for health-manager
+
+case "$1" in
+    purge)
+        echo "Purging health-manager data..."
+
+        # Disable and remove systemd service files
+        systemctl disable health-manager-caddy.service 2>/dev/null || true
+        systemctl disable health-manager.service 2>/dev/null || true
+
+        # Remove data directory
+        if [ -d /var/lib/health-manager ]; then
+            echo "Removing /var/lib/health-manager (contains database and uploads)..."
+            rm -rf /var/lib/health-manager
+        fi
+
+        # Remove log directory
+        rm -rf /var/log/health-manager
+
+        # Remove installed application files
+        rm -rf /opt/health-manager
+
+        # Remove config files (only on purge, not on remove)
+        rm -rf /etc/health-manager
+
+        # Remove systemd unit files installed by the package
+        rm -f /etc/systemd/system/health-manager.service
+        rm -f /etc/systemd/system/health-manager-caddy.service
+
+        # Remove system user
+        if id -u health-manager &>/dev/null; then
+            userdel health-manager 2>/dev/null || true
+        fi
+
+        systemctl daemon-reload
+
+        # Update desktop icon cache
+        gtk-update-icon-cache -f /usr/share/icons/hicolor 2>/dev/null || true
+        update-desktop-database /usr/share/applications 2>/dev/null || true
+        ;;
+
+    remove)
+        # Stop and disable services but keep config and data
+        systemctl disable health-manager-caddy.service 2>/dev/null || true
+        systemctl disable health-manager.service 2>/dev/null || true
+        rm -f /etc/systemd/system/health-manager.service
+        rm -f /etc/systemd/system/health-manager-caddy.service
+        systemctl daemon-reload
+
+        # Update desktop databases
+        update-desktop-database /usr/share/applications 2>/dev/null || true
+        ;;
+
+    upgrade|failed-upgrade|abort-install|abort-upgrade|disappear)
+        ;;
+
+    *)
+        echo "postrm called with unknown argument \`$1'" >&2
+        ;;
+esac
+
+exit 0

@@ -3,7 +3,7 @@ import { useParams } from "react-router-dom";
 import { listAssignments } from "@/lib/api/provider-assignments";
 import { listProviders } from "@/lib/api/providers";
 import { getMember } from "@/lib/api/members";
-import { MemberProvidersContent } from "@/app/(app)/members/[memberId]/providers/member-providers-content";
+import { MemberProvidersContent } from "@/components/content/member-providers-content";
 import { ErrorState } from "@/components/shared/error-state";
 
 export default function MemberProvidersPage() {

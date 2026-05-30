@@ -1,0 +1,69 @@
+#!/bin/bash
+set -e
+
+# Post-install script for health-manager
+
+case "$1" in
+    configure)
+        # Create health-manager system user if it doesn't exist
+        if ! id -u health-manager &>/dev/null; then
+            useradd --system --no-create-home --shell /usr/sbin/nologin \
+                --comment "Health Manager Service" health-manager
+        fi
+
+        # Create data directories
+        mkdir -p /var/lib/health-manager/data/attachments
+        mkdir -p /var/lib/health-manager/data/backups
+        chown -R health-manager:health-manager /var/lib/health-manager
+
+        # Create log directory
+        mkdir -p /var/log/health-manager
+        chown -R health-manager:health-manager /var/log/health-manager
+
+        # Set ownership on installed files
+        chown -R health-manager:health-manager /opt/health-manager
+
+        # Create symlink so relative paths in the codebase resolve
+        # to the persistent data directory:
+        #   ./data/health.db      → /var/lib/health-manager/data/health.db
+        #   ./data/scheduler.db   → /var/lib/health-manager/data/scheduler.db
+        #   ./data/attachments/   → /var/lib/health-manager/data/attachments/
+        #   ./data/backups/       → /var/lib/health-manager/data/backups/
+        rm -f /opt/health-manager/backend/data
+        ln -s /var/lib/health-manager/data /opt/health-manager/backend/data
+        chown -h health-manager:health-manager /opt/health-manager/backend/data
+
+        # Generate SECRET_KEY if not already set in config.env
+        if grep -q '<generate-on-install>' /etc/health-manager/config.env; then
+            SECRET_KEY=$(python3 -c "import secrets; print(secrets.token_urlsafe(48))")
+            sed -i "s|<generate-on-install>|${SECRET_KEY}|" /etc/health-manager/config.env
+            chmod 600 /etc/health-manager/config.env
+            chown health-manager:health-manager /etc/health-manager/config.env
+        fi
+
+        # Make caddy binary executable
+        chmod +x /opt/health-manager/caddy
+
+        # Update desktop icon cache
+        gtk-update-icon-cache -f /usr/share/icons/hicolor 2>/dev/null || true
+        update-desktop-database /usr/share/applications 2>/dev/null || true
+
+        # Reload systemd daemon
+        systemctl daemon-reload
+
+        # Enable and start services
+        systemctl enable health-manager.service
+        systemctl enable health-manager-caddy.service
+        systemctl start health-manager.service || echo "WARNING: health-manager.service failed to start. Check: journalctl -eu health-manager.service"
+        systemctl start health-manager-caddy.service || echo "WARNING: health-manager-caddy.service failed to start. Check: journalctl -eu health-manager-caddy.service"
+        ;;
+
+    abort-upgrade|abort-remove|abort-deconfigure)
+        ;;
+
+    *)
+        echo "postinst called with unknown argument \`$1'" >&2
+        ;;
+esac
+
+exit 0

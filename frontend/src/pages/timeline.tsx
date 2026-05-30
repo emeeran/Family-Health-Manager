@@ -3,7 +3,7 @@ import useSWR from "swr";
 import { useParams } from "react-router-dom";
 import { getTimeline } from "@/lib/api/records";
 import { getMember } from "@/lib/api/members";
-import { TimelineContent } from "@/app/(app)/members/[memberId]/timeline/timeline-content";
+import { TimelineContent } from "@/components/content/timeline-content";
 import type { RecordType } from "@/lib/types/enums";
 import type { HealthRecordResponse } from "@/lib/types/health-record";
 import { ErrorState } from "@/components/shared/error-state";

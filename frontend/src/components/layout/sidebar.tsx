@@ -7,7 +7,6 @@ import {
   MessageSquare,
   BellDot,
   Settings,
-  FileText,
   CalendarClock,
   Sparkles,
   ClipboardList,
@@ -59,7 +58,6 @@ export const Sidebar = memo(function Sidebar() {
   const toolsNav: NavItem[] = [
     { label: "AI Chat", href: "/conversations", icon: MessageSquare },
     { label: "Settings", href: "/settings", icon: Settings },
-    { label: "Audit Log", href: "/audit", icon: FileText },
   ];
 
   function handleNavKeyDown(e: React.KeyboardEvent<HTMLElement>) {

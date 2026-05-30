@@ -1,5 +1,5 @@
-const CACHE_NAME = "health-keeper-v1";
-const API_CACHE_NAME = "health-api-v1";
+const CACHE_NAME = "health-keeper-v2";
+const API_CACHE_NAME = "health-api-v2";
 const _API_CACHE_TTL = 5 * 60 * 1000; // 5 minutes
 const PRECACHE_URLS = ["/dashboard", "/members", "/providers"];
 
@@ -29,8 +29,9 @@ self.addEventListener("activate", (event) => {
 self.addEventListener("fetch", (event) => {
   const { request } = event;
 
-  // Skip non-GET requests
+  // Skip non-GET and cross-origin requests (e.g. Google Fonts)
   if (request.method !== "GET") return;
+  if (!request.url.startsWith(self.location.origin)) return;
 
   // API requests — network-first with 5-minute cache
   if (request.url.includes("/api/")) {

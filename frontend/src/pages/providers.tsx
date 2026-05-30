@@ -1,6 +1,6 @@
 import useSWR from "swr";
 import { listProviders } from "@/lib/api/providers";
-import { ProvidersContent } from "@/app/(app)/providers/providers-content";
+import { ProvidersContent } from "@/components/content/providers-content";
 import { ErrorState } from "@/components/shared/error-state";
 
 export default function ProvidersPage() {

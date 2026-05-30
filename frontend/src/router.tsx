@@ -36,7 +36,6 @@ const ConversationsPage = lazy(() => import("@/pages/conversations"));
 const ConversationDetailPage = lazy(() => import("@/pages/conversation-detail"));
 const NotificationsPage = lazy(() => import("@/pages/notifications"));
 const SettingsPage = lazy(() => import("@/pages/settings"));
-const AuditPage = lazy(() => import("@/pages/audit"));
 const OnboardingPage = lazy(() => import("@/pages/onboarding"));
 
 function PageLoader() {
@@ -122,7 +121,6 @@ export const router = createBrowserRouter([
       { path: "conversations/:conversationId", element: withSuspense(ConversationDetailPage) },
       { path: "notifications", element: withSuspense(NotificationsPage) },
       { path: "settings", element: withSuspense(SettingsPage) },
-      { path: "audit", element: withSuspense(AuditPage) },
       { path: "onboarding", element: withSuspense(OnboardingPage) },
       { path: "*", element: <NotFoundPage /> },
     ],

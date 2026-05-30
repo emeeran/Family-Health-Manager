@@ -1,7 +1,7 @@
 import useSWR from "swr";
 import { useParams } from "react-router-dom";
 import { getProvider, getProviderMembers } from "@/lib/api/providers";
-import { ProviderDetailContent } from "@/app/(app)/providers/[providerId]/provider-detail-content";
+import { ProviderDetailContent } from "@/components/content/provider-detail-content";
 import { ErrorState } from "@/components/shared/error-state";
 
 export default function ProviderDetailPage() {

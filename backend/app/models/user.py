@@ -27,4 +27,3 @@ class User(Base):
     role: Mapped[str] = mapped_column(String(20), default="user", nullable=False)
 
     households: Mapped[list["Household"]] = relationship(back_populates="primary_user")
-    audit_logs: Mapped[list["AuditLog"]] = relationship(back_populates="user")

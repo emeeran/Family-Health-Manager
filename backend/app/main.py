@@ -8,7 +8,6 @@ from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.middleware.gzip import GZipMiddleware
 from fastapi.responses import JSONResponse
-from prometheus_fastapi_instrumentator import Instrumentator
 from sqlalchemy.ext.asyncio import AsyncSession
 from app.core.config import get_settings
 from app.core.database import get_db
@@ -32,7 +31,6 @@ from app.routers import (
     conversations,
     reminders,
     notifications,
-    audit,
     backup,
     dashboard,
     medications,
@@ -40,8 +38,6 @@ from app.routers import (
     smart_entry,
     smart_search,
     health_alerts,
-    export,
-    reports,
 )
 
 logger = logging.getLogger(__name__)
@@ -67,11 +63,6 @@ _config: dict = {
 }
 
 settings = get_settings()
-
-# Initialize Sentry if DSN configured
-if settings.SENTRY_DSN:
-    from app.core.sentry import init_sentry
-    init_sentry(settings.SENTRY_DSN, environment=settings.APP_ENV)
 
 # Use JSON logging in production if python-json-logger is available
 if settings.APP_ENV == "production":
@@ -168,14 +159,15 @@ auth_rate_limiter = RateLimiter(limit=10, window_seconds=60)  # Stricter for aut
 @app.middleware("http")
 async def rate_limit_middleware(request: Request, call_next):
     """Rate limiting and request size middleware."""
-    # Reject oversized payloads (50MB max)
+    # Reject oversized payloads (50MB for general, 500MB for backup)
     content_length = request.headers.get("content-length")
     if content_length:
         try:
-            if int(content_length) > 50 * 1024 * 1024:
+            limit = 500 * 1024 * 1024 if request.url.path.startswith("/api/v1/backup") else 50 * 1024 * 1024
+            if int(content_length) > limit:
                 return JSONResponse(
                     status_code=413,
-                    content={"status_code": 413, "error": "payload_too_large", "message": "Request body exceeds 50MB limit"},
+                    content={"status_code": 413, "error": "payload_too_large", "message": f"Request body exceeds {limit // (1024*1024)}MB limit"},
                 )
         except (ValueError, TypeError):
             pass
@@ -278,7 +270,6 @@ app.include_router(ai.router, prefix="/api/v1")
 app.include_router(conversations.router, prefix="/api/v1")
 app.include_router(reminders.router, prefix="/api/v1")
 app.include_router(notifications.router, prefix="/api/v1")
-app.include_router(audit.router, prefix="/api/v1")
 app.include_router(backup.router, prefix="/api/v1")
 app.include_router(medications.router, prefix="/api/v1")
 app.include_router(vaccinations.router, prefix="/api/v1")
@@ -287,11 +278,6 @@ app.include_router(smart_search.router, prefix="/api/v1")
 app.include_router(health_alerts.router, prefix="/api/v1")
 app.include_router(dashboard.router, prefix="/api/v1")
 app.include_router(dashboard.risk_router, prefix="/api/v1")
-app.include_router(export.router, prefix="/api/v1")
-app.include_router(reports.router, prefix="/api/v1")
-
-# Prometheus metrics
-Instrumentator().instrument(app).expose(app, endpoint="/metrics")
 
 
 @app.get("/health")

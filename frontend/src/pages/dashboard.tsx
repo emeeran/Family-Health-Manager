@@ -6,7 +6,7 @@ import { listProviders } from "@/lib/api/providers";
 import { listReminders } from "@/lib/api/reminders";
 import { listNotifications } from "@/lib/api/notifications";
 import { listConversations } from "@/lib/api/conversations";
-import { DashboardContent, DashboardSkeleton } from "@/app/(app)/dashboard/dashboard-content";
+import { DashboardContent, DashboardSkeleton } from "@/components/content/dashboard-content";
 import { UniversalQuickEntry } from "@/components/records/universal-quick-entry";
 import { useEffect } from "react";
 

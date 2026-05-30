@@ -1,0 +1,13 @@
+Package: health-manager
+Version: 0.1.0
+Architecture: amd64
+Maintainer: Family Health Manager <health-manager@localhost>
+Depends: python3 (>= 3.11), python3-venv, xdg-utils
+Section: web
+Priority: optional
+Provides: health-manager
+Description: Family Health Manager
+ Self-hosted family health record manager with AI-powered
+ document extraction, medication tracking, and conversational
+ health Q&A. Includes backend (FastAPI), frontend (React),
+ and Caddy reverse proxy.

@@ -5,7 +5,7 @@ import { ThemeProvider } from "next-themes";
 import { router } from "./router";
 import { ErrorBoundary } from "./components/shared/error-boundary";
 import { ServiceWorkerRegistrar } from "./components/shared/register-sw";
-import "./app/globals.css";
+import "./globals.css";
 
 const root = document.getElementById("root");
 if (!root) throw new Error("Root element not found");

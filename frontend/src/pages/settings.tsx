@@ -7,7 +7,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { getHousehold, updateHousehold } from "@/lib/api/household";
 import { getMe } from "@/lib/api/auth";
 import { PasswordInput } from "@/components/shared/password-input";
-import { BackupRestoreSection } from "@/app/(app)/settings/backup-restore";
+import { BackupRestoreSection } from "@/components/content/backup-restore";
 import { toast } from "sonner";
 
 export default function SettingsPage() {

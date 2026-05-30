@@ -83,10 +83,10 @@ async def create_tables():
 
         sync_engine.dispose()
     else:
-        # Production: migrations should be run separately (docker-entrypoint.sh handles this)
+        # Production: migrations should be run separately
         logger.info(
             "PostgreSQL detected — ensure migrations are run before startup "
-            "(docker-entrypoint.sh handles this automatically)"
+            "(use: alembic upgrade head)"
         )
 
     logger.info("Database tables ready!")

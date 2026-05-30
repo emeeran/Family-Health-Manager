@@ -4,7 +4,7 @@ import { listMembers } from "@/lib/api/members";
 import {
   HouseholdRecordsContent,
   HouseholdRecordsSkeleton,
-} from "@/app/(app)/records/household-records-content";
+} from "@/components/content/household-records-content";
 import { ErrorState } from "@/components/shared/error-state";
 
 export default function HouseholdRecordsPage() {

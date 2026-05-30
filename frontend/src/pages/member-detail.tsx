@@ -1,7 +1,7 @@
 import useSWR from "swr";
 import { useParams, useNavigate } from "react-router-dom";
 import { getMemberDashboard } from "@/lib/api/members";
-import { MemberDashboardContent } from "@/app/(app)/members/[memberId]/dashboard-content";
+import { MemberDashboardContent } from "@/components/content/member-dashboard-content";
 import { Link } from "react-router-dom";
 import { useEffect } from "react";
 

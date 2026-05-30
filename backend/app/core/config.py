@@ -40,9 +40,6 @@ class Settings(BaseSettings):
     # Health check
     HEALTH_CHECK_SECRET: str = ""  # Required in prod; falls back to SECRET_KEY[:16] in dev
 
-    # Sentry
-    SENTRY_DSN: str = ""  # Empty = disabled
-
     # Scheduler
     RUN_SCHEDULER: bool = True  # Set false when scheduler runs in separate container
 

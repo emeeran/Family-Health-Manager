@@ -1,7 +1,7 @@
 import useSWR from "swr";
 import { listReminders } from "@/lib/api/reminders";
 import { listMembers } from "@/lib/api/members";
-import { RemindersContent } from "@/app/(app)/reminders/reminders-content";
+import { RemindersContent } from "@/components/content/reminders-content";
 import { ErrorState } from "@/components/shared/error-state";
 
 export default function RemindersPage() {

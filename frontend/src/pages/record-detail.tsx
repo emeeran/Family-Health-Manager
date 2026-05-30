@@ -2,7 +2,7 @@ import useSWR from "swr";
 import { useParams } from "react-router-dom";
 import { getRecord } from "@/lib/api/records";
 import { getMember } from "@/lib/api/members";
-import { RecordDetailContent } from "@/app/(app)/members/[memberId]/records/[recordId]/record-detail-content";
+import { RecordDetailContent } from "@/components/content/record-detail-content";
 import { ErrorState } from "@/components/shared/error-state";
 
 export default function RecordDetailPage() {

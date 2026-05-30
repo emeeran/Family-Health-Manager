@@ -2,7 +2,7 @@ import useSWR from "swr";
 import { useNavigate } from "react-router-dom";
 import { getHousehold } from "@/lib/api/household";
 import { listMembers } from "@/lib/api/members";
-import { OnboardingWizard } from "@/app/(app)/onboarding/onboarding-wizard";
+import { OnboardingWizard } from "@/components/content/onboarding-wizard";
 import { useEffect } from "react";
 import { ErrorState } from "@/components/shared/error-state";
 

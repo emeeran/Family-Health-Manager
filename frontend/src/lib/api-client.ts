@@ -56,7 +56,7 @@ export async function apiRequest<T>(path: string, options: ApiOptions = {}): Pro
       credentials: "include",
     });
 
-    if (response.status === 401) handleUnauthorized();
+    if (response.status === 401 && !path.startsWith("/auth/login")) handleUnauthorized();
 
     if (!response.ok) {
       const text = await response.text().catch(() => "");
@@ -122,7 +122,7 @@ export async function streamRequest(
       credentials: "include",
     });
 
-    if (response.status === 401) handleUnauthorized();
+    if (response.status === 401 && !path.startsWith("/auth/login")) handleUnauthorized();
 
     if (!response.ok) {
       const text = await response.text().catch(() => "");

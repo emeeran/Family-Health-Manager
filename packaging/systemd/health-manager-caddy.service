@@ -1,0 +1,30 @@
+[Unit]
+Description=Health Manager Web Server (Caddy)
+After=network.target health-manager.service
+Requires=health-manager.service
+
+[Service]
+Type=simple
+User=health-manager
+Group=health-manager
+ExecStart=/opt/health-manager/caddy run --config /etc/health-manager/Caddyfile
+Restart=on-failure
+RestartSec=5
+
+# Security hardening
+NoNewPrivileges=true
+ProtectSystem=strict
+ProtectHome=true
+ReadWritePaths=/var/lib/health-manager
+PrivateTmp=true
+
+# Caddy needs to bind to privileged ports if configured
+AmbientCapabilities=CAP_NET_BIND_SERVICE
+
+# Logging
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=health-manager-caddy
+
+[Install]
+WantedBy=multi-user.target

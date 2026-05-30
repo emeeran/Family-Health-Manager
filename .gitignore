@@ -35,9 +35,11 @@ Thumbs.db
 
 # Node
 node_modules/
+frontend/dist/
 
 # App data (SQLite DB, uploads, etc.)
 backend/data/
+backend/openapi.json
 
 # Scripts
 scripts/
@@ -47,6 +49,10 @@ trash2review/
 
 # Claude Code
 .claude/
+
+# Packaging build output
+staging/
+*.deb
 
 # AI tool caches
 .cache_ggshield

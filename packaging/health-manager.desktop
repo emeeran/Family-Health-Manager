@@ -1,0 +1,10 @@
+[Desktop Entry]
+Type=Application
+Name=Health Manager
+Comment=Family Health Record Manager
+Icon=health-manager
+Exec=xdg-open http://localhost:8080
+Categories=Office;Medical;
+Terminal=false
+StartupNotify=true
+Keywords=health;medical;records;family;
