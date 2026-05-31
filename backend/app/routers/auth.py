@@ -193,6 +193,11 @@ async def change_password(
     """Change the current user's password."""
     from app.core.security import verify_password, hash_password, validate_password_strength
 
+    # Re-fetch user on this session — the object from get_current_user
+    # is bound to a different DB session (FastAPI creates one per Depends(get_db))
+    result = await db.execute(select(User).where(User.id == user.id))
+    user = result.scalar_one()
+
     if not verify_password(request.current_password, user.password_hash):
         raise HTTPException(status_code=400, detail="Current password is incorrect")
 
@@ -207,6 +212,7 @@ async def change_password(
 
     user.password_hash = hash_password(request.new_password)
     await db.flush()
+    await db.commit()
 
     logger.info("Password changed for user %s", user.username)
     return {"message": "Password changed successfully"}
