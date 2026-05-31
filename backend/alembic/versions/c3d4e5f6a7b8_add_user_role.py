@@ -19,13 +19,17 @@ depends_on: Union[str, Sequence[str], None] = None
 
 
 def upgrade() -> None:
-    # Add role column with default 'user'
-    op.add_column('users', sa.Column('role', sa.String(20), nullable=False, server_default='user'))
+    # Add role column with default 'user' (skip if already present)
+    conn = op.get_bind()
+    inspector = sa.inspect(conn)
+    columns = [col['name'] for col in inspector.get_columns('users')]
+    if 'role' not in columns:
+        op.add_column('users', sa.Column('role', sa.String(20), nullable=False, server_default='user'))
 
-    # Promote the first registered user to admin
-    op.execute(
-        "UPDATE users SET role = 'admin' WHERE id = (SELECT id FROM users ORDER BY created_at ASC LIMIT 1)"
-    )
+        # Promote the first registered user to admin
+        op.execute(
+            "UPDATE users SET role = 'admin' WHERE id = (SELECT id FROM users ORDER BY created_at ASC LIMIT 1)"
+        )
 
 
 def downgrade() -> None:

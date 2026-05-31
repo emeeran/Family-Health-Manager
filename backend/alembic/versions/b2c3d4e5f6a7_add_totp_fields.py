@@ -20,10 +20,16 @@ depends_on: Union[str, Sequence[str], None] = None
 
 def upgrade() -> None:
     """Add TOTP 2FA fields to users table."""
+    conn = op.get_bind()
+    inspector = sa.inspect(conn)
+    existing_cols = [col['name'] for col in inspector.get_columns('users')]
     with op.batch_alter_table('users') as batch_op:
-        batch_op.add_column(sa.Column('totp_secret', sa.String(32), nullable=True))
-        batch_op.add_column(sa.Column('totp_enabled', sa.Boolean(), nullable=False, server_default='0'))
-        batch_op.add_column(sa.Column('backup_codes', sa.Text(), nullable=True))
+        if 'totp_secret' not in existing_cols:
+            batch_op.add_column(sa.Column('totp_secret', sa.String(32), nullable=True))
+        if 'totp_enabled' not in existing_cols:
+            batch_op.add_column(sa.Column('totp_enabled', sa.Boolean(), nullable=False, server_default='0'))
+        if 'backup_codes' not in existing_cols:
+            batch_op.add_column(sa.Column('backup_codes', sa.Text(), nullable=True))
 
 
 def downgrade() -> None:
