@@ -1,19 +1,18 @@
 import { Link } from "react-router-dom";
 import { useLocation } from "react-router-dom";
-import { Home, Users, Sparkles, Bell } from "lucide-react";
+import { Home, Users, MessageSquare, Bot } from "lucide-react";
 import { cn } from "@/lib/utils";
-import { useNotificationCount } from "@/hooks/use-notification-count";
+import { useBotBox } from "@/components/conversations/bot-box-provider";
 
 const navItems = [
   { label: "Home", href: "/dashboard", icon: Home },
   { label: "Members", href: "/members", icon: Users },
-  { label: "AI", href: "/conversations", icon: Sparkles },
-  { label: "Alerts", href: "/notifications", icon: Bell, showBadge: true },
+  { label: "AI Chat", href: "/conversations", icon: MessageSquare },
 ];
 
 export function MobileBottomNav() {
   const { pathname } = useLocation();
-  const unreadCount = useNotificationCount();
+  const { open: openBotBox } = useBotBox();
 
   return (
     <nav
@@ -52,11 +51,6 @@ export function MobileBottomNav() {
                 >
                   <Icon className={cn("h-5 w-5", active ? "text-white" : "")} />
                 </div>
-                {item.showBadge && unreadCount > 0 && (
-                  <span className="absolute -top-1.5 -right-2.5 flex h-4 min-w-4 items-center justify-center rounded-full bg-(--brand-accent) px-1 text-[11px] font-bold text-white ring-2 ring-background">
-                    {unreadCount > 99 ? "99+" : unreadCount}
-                  </span>
-                )}
               </div>
               <span
                 className={cn(
@@ -71,6 +65,22 @@ export function MobileBottomNav() {
             </Link>
           );
         })}
+
+        {/* AI Assistant button */}
+        <button
+          onClick={openBotBox}
+          aria-label="AI Assistant"
+          className={cn(
+            "relative flex flex-col items-center justify-center gap-1 min-w-0 flex-1 py-1.5 rounded-xl transition-all duration-200 text-muted-foreground/70 active:text-foreground"
+          )}
+        >
+          <div className="relative">
+            <div className="flex items-center justify-center rounded-lg h-7 w-7">
+              <Bot className="h-5 w-5" />
+            </div>
+          </div>
+          <span className="text-[10px] truncate font-medium">Assistant</span>
+        </button>
       </div>
     </nav>
   );

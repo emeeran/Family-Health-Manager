@@ -1,5 +1,5 @@
 import { useState, useMemo } from "react";
-import { Plus, Trash2, MessageSquare, User } from "lucide-react";
+import { Plus, Trash2, MessageSquare, User, PanelLeftClose, PanelLeftOpen } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { deleteConversation } from "@/lib/api/conversations";
 import { ConfirmDialog } from "@/components/shared/confirm-dialog";
@@ -8,6 +8,7 @@ import { toast } from "sonner";
 import type { ConversationResponse } from "@/lib/types/conversation";
 import type { FamilyMemberResponse } from "@/lib/types/member";
 import { cn, formatRelativeTime } from "@/lib/utils";
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 
 type ScopeFilter = "all" | "general" | "member";
 
@@ -18,6 +19,8 @@ interface ConversationSidebarPanelProps {
   onSelectConversation: (id: string) => void;
   onNewChat: () => void;
   onActiveDeleted?: () => void;
+  collapsed?: boolean;
+  onToggleCollapse?: () => void;
 }
 
 export function ConversationSidebarPanel({
@@ -27,6 +30,8 @@ export function ConversationSidebarPanel({
   onSelectConversation,
   onNewChat,
   onActiveDeleted,
+  collapsed = false,
+  onToggleCollapse,
 }: ConversationSidebarPanelProps) {
   const { mutate } = useSWRConfig();
   const [scopeFilter, setScopeFilter] = useState<ScopeFilter>("all");
@@ -69,10 +74,104 @@ export function ConversationSidebarPanel({
     { value: "member", label: "Members" },
   ];
 
+  /* ── Collapsed: icon rail ── */
+  if (collapsed) {
+    return (
+      <div className="flex flex-col h-full overflow-hidden items-center py-2 gap-1">
+        <TooltipProvider delay={300}>
+          <Tooltip>
+            <TooltipTrigger>
+              <button
+                onClick={onNewChat}
+                className="flex items-center justify-center w-9 h-9 rounded-lg hover:bg-muted/60 transition-colors"
+                aria-label="New chat"
+              >
+                <Plus className="h-4 w-4 text-muted-foreground" />
+              </button>
+            </TooltipTrigger>
+            <TooltipContent side="right">New chat</TooltipContent>
+          </Tooltip>
+        </TooltipProvider>
+
+        <div className="w-6 border-t border-border/40 my-1" />
+
+        <div className="flex-1 min-h-0 overflow-y-auto overflow-x-hidden w-full flex flex-col items-center gap-0.5 px-1.5">
+          {filteredConversations.map((conv) => {
+            const isActive = conv.id === activeConvId;
+            const isMember = conv.scope === "member";
+            const Icon = isMember ? User : MessageSquare;
+
+            return (
+              <TooltipProvider key={conv.id} delay={300}>
+                <Tooltip>
+                  <TooltipTrigger>
+                    <button
+                      onClick={() => onSelectConversation(conv.id)}
+                      className={cn(
+                        "flex items-center justify-center w-9 h-9 rounded-lg transition-colors",
+                        isActive
+                          ? "bg-muted text-foreground"
+                          : "text-muted-foreground/50 hover:bg-muted/40 hover:text-foreground"
+                      )}
+                      aria-label={conv.title || "Untitled"}
+                    >
+                      <Icon className="h-4 w-4" />
+                    </button>
+                  </TooltipTrigger>
+                  <TooltipContent side="right" className="max-w-[200px]">
+                    <p className="truncate text-xs font-medium">{conv.title || "Untitled"}</p>
+                  </TooltipContent>
+                </Tooltip>
+              </TooltipProvider>
+            );
+          })}
+        </div>
+
+        <div className="w-6 border-t border-border/40 my-1" />
+
+        <TooltipProvider delay={300}>
+          <Tooltip>
+            <TooltipTrigger>
+              <button
+                onClick={onToggleCollapse}
+                className="flex items-center justify-center w-9 h-9 rounded-lg hover:bg-muted/60 transition-colors"
+                aria-label="Expand sidebar"
+              >
+                <PanelLeftOpen className="h-4 w-4 text-muted-foreground" />
+              </button>
+            </TooltipTrigger>
+            <TooltipContent side="right">Expand sidebar</TooltipContent>
+          </Tooltip>
+        </TooltipProvider>
+
+        <ConfirmDialog
+          open={deleteOpen}
+          onOpenChange={setDeleteOpen}
+          title="Delete Conversation"
+          description="Are you sure you want to delete this conversation?"
+          onConfirm={handleDelete}
+        />
+      </div>
+    );
+  }
+
+  /* ── Expanded: full panel ── */
   return (
-    <div className="flex flex-col h-full">
+    <div className="flex flex-col h-full overflow-hidden">
+      {/* Header with toggle */}
+      <div className="px-3 pt-3 pb-1 shrink-0 flex items-center justify-between">
+        <span className="text-xs font-semibold text-foreground">Conversations</span>
+        <button
+          onClick={onToggleCollapse}
+          className="flex items-center justify-center h-6 w-6 rounded-md hover:bg-muted/60 transition-colors"
+          aria-label="Collapse sidebar"
+        >
+          <PanelLeftClose className="h-3.5 w-3.5 text-muted-foreground" />
+        </button>
+      </div>
+
       {/* New chat + filter */}
-      <div className="px-3 pt-3 pb-2 shrink-0 space-y-2">
+      <div className="px-3 pb-2 shrink-0 space-y-2">
         <Button
           variant="outline"
           onClick={onNewChat}
@@ -100,7 +199,7 @@ export function ConversationSidebarPanel({
       </div>
 
       {/* Conversation list */}
-      <div className="flex-1 overflow-y-auto px-2 pb-2">
+      <div className="flex-1 min-h-0 overflow-y-auto overflow-x-hidden px-2 pb-2">
         {filteredConversations.length === 0 ? (
           <div className="py-10 text-center">
             <p className="text-[11px] text-muted-foreground/40">No conversations</p>

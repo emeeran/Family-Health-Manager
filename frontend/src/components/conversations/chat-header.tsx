@@ -27,8 +27,8 @@ export function ChatHeader({
   onToggleSidebar,
 }: ChatHeaderProps) {
   return (
-    <div className="flex items-center gap-2 px-4 py-2.5 shrink-0">
-      {/* Mobile hamburger */}
+    <div className="flex items-center gap-2 px-4 py-2.5 shrink-0 border-b border-border/30">
+      {/* Mobile sidebar toggle */}
       <button
         onClick={onToggleSidebar}
         className="touch-compact flex md:hidden items-center justify-center h-8 w-8 rounded-lg hover:bg-muted/60 transition-colors"

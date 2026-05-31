@@ -165,7 +165,7 @@ export function ChatArea({
   const isEmpty = messages.length === 0 && !sending;
 
   return (
-    <div className="flex flex-col h-full">
+    <div className="flex flex-col h-full overflow-hidden">
       {/* ── Scrollable message area ── */}
       <div className="relative flex-1 min-h-0">
         <div ref={setScrollRef} className="absolute inset-0 overflow-y-auto scroll-smooth">
@@ -192,7 +192,7 @@ export function ChatArea({
               </div>
             </div>
           ) : (
-            <div className="mx-auto max-w-3xl px-4 sm:px-6 py-6">
+            <div className="mx-auto max-w-3xl px-4 sm:px-6 py-6 pb-2">
               <div className="space-y-6">
                 {messages.map((msg) => (
                   <ChatMessage key={msg.id} msg={msg} />

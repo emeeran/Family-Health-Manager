@@ -6,15 +6,17 @@ import {
   BellDot,
   Settings,
   CalendarClock,
-  Sparkles,
   ClipboardList,
   PanelLeftClose,
   PanelLeftOpen,
+  MessageSquare,
+  Bot,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { Tooltip, TooltipTrigger, TooltipContent, TooltipProvider } from "@/components/ui/tooltip";
 import { useNotificationCount } from "@/hooks/use-notification-count";
 import { DawnstarLogo } from "@/components/shared/dawnstar-logo";
+import { useBotBox } from "@/components/conversations/bot-box-provider";
 
 interface NavItem {
   label: string;
@@ -176,41 +178,126 @@ export const Sidebar = memo(function Sidebar() {
         </div>
       </nav>
 
-      {/* ── AI button (bottom) ── */}
-      <div className={cn("px-2 pb-2", collapsed && "flex flex-col items-center")}>
-        {collapsed ? (
-          <TooltipProvider delay={300}>
-            <Tooltip>
-              {/* @ts-expect-error Radix TooltipTrigger supports asChild */}
-              <TooltipTrigger asChild>
-                <Link
-                  to="/conversations"
-                  className="group flex items-center justify-center w-10 h-10 rounded-lg bg-gradient-to-br from-(--brand-accent)/15 to-(--brand-primary)/10 border border-(--brand-accent)/20 hover:from-(--brand-accent)/25 hover:to-(--brand-primary)/20 hover:border-(--brand-accent)/40 transition-all duration-300"
-                >
-                  <Sparkles className="h-4 w-4 text-(--brand-accent)" />
-                </Link>
-              </TooltipTrigger>
-              <TooltipContent side="right">AI Assistant</TooltipContent>
-            </Tooltip>
-          </TooltipProvider>
-        ) : (
-          <Link
-            to="/conversations"
-            className="group block w-full text-left rounded-lg bg-gradient-to-r from-(--brand-accent)/12 via-(--brand-primary)/8 to-(--brand-accent)/12 border border-(--brand-accent)/15 px-3 py-2 hover:from-(--brand-accent)/20 hover:via-(--brand-primary)/15 hover:to-(--brand-accent)/20 hover:border-(--brand-accent)/30 transition-all duration-300"
-          >
-            <div className="flex items-center gap-2">
-              <div className="flex h-7 w-7 items-center justify-center rounded-md bg-gradient-to-br from-(--brand-accent) to-orange-600 shadow-sm shadow-(--brand-accent)/20">
-                <Sparkles className="h-3.5 w-3.5 text-white" />
-              </div>
-              <div>
-                <p className="text-xs font-semibold text-foreground">AI Assistant</p>
-                <p className="text-[9px] text-muted-foreground">Chat & health tools</p>
-              </div>
-            </div>
-          </Link>
-        )}
-      </div>
+      {/* ── AI section (bottom) ── */}
+      <div className="mx-2 border-t border-border/40" />
+      <AISection collapsed={collapsed} pathname={pathname} />
     </aside>
+  );
+});
+
+/* ── AI Section ── */
+const AISection = memo(function AISection({
+  collapsed,
+  pathname,
+}: {
+  collapsed: boolean;
+  pathname: string;
+}) {
+  const { open: openBotBox, isOpen: botBoxOpen } = useBotBox();
+  const isChatActive = pathname === "/conversations" || pathname.startsWith("/conversations");
+
+  if (collapsed) {
+    return (
+      <div className="flex flex-col items-center gap-1.5 px-2 pb-2">
+        <TooltipProvider delay={300}>
+          <Tooltip>
+            <TooltipTrigger>
+              <Link
+                to="/conversations"
+                className={cn(
+                  "group flex items-center justify-center w-10 h-10 rounded-lg transition-all duration-300",
+                  isChatActive
+                    ? "bg-gradient-to-br from-(--brand-accent) to-(--brand-primary) shadow-sm shadow-(--brand-accent)/20"
+                    : "bg-gradient-to-br from-(--brand-accent)/15 to-(--brand-primary)/10 border border-(--brand-accent)/20 hover:from-(--brand-accent)/25 hover:to-(--brand-primary)/20 hover:border-(--brand-accent)/40"
+                )}
+              >
+                <MessageSquare
+                  className={cn("h-4 w-4", isChatActive ? "text-white" : "text-(--brand-accent)")}
+                />
+              </Link>
+            </TooltipTrigger>
+            <TooltipContent side="right">AI Chat</TooltipContent>
+          </Tooltip>
+        </TooltipProvider>
+
+        <TooltipProvider delay={300}>
+          <Tooltip>
+            <TooltipTrigger>
+              <button
+                onClick={openBotBox}
+                className={cn(
+                  "group flex items-center justify-center w-10 h-10 rounded-lg transition-all duration-300",
+                  botBoxOpen
+                    ? "bg-gradient-to-br from-(--brand-primary) to-indigo-600 shadow-sm shadow-(--brand-primary)/20"
+                    : "bg-gradient-to-br from-(--brand-primary)/15 to-(--brand-accent)/10 border border-(--brand-primary)/20 hover:from-(--brand-primary)/25 hover:to-(--brand-accent)/20 hover:border-(--brand-primary)/40"
+                )}
+              >
+                <Bot
+                  className={cn("h-4 w-4", botBoxOpen ? "text-white" : "text-(--brand-primary)")}
+                />
+              </button>
+            </TooltipTrigger>
+            <TooltipContent side="right">AI Assistant</TooltipContent>
+          </Tooltip>
+        </TooltipProvider>
+      </div>
+    );
+  }
+
+  return (
+    <div className="px-2 pb-2 space-y-1.5">
+      {/* AI Chat */}
+      <Link
+        to="/conversations"
+        className={cn(
+          "group flex items-center gap-2 rounded-lg px-3 py-2 transition-all duration-200",
+          isChatActive
+            ? "bg-gradient-to-r from-(--brand-primary)/15 to-(--brand-accent)/10 text-(--brand-primary) dark:text-(--brand-accent) shadow-sm"
+            : "bg-gradient-to-r from-(--brand-accent)/12 via-(--brand-primary)/8 to-(--brand-accent)/12 border border-(--brand-accent)/15 hover:from-(--brand-accent)/20 hover:via-(--brand-primary)/15 hover:to-(--brand-accent)/20 hover:border-(--brand-accent)/30"
+        )}
+      >
+        <div
+          className={cn(
+            "flex h-7 w-7 items-center justify-center rounded-md transition-all duration-200",
+            isChatActive
+              ? "bg-gradient-to-br from-(--brand-accent) to-(--brand-primary) shadow-sm shadow-(--brand-accent)/20"
+              : "bg-gradient-to-br from-(--brand-accent) to-orange-600 shadow-sm shadow-(--brand-accent)/20"
+          )}
+        >
+          <MessageSquare className="h-3.5 w-3.5 text-white" />
+        </div>
+        <div className="min-w-0">
+          <p className="text-xs font-semibold text-foreground">AI Chat</p>
+          <p className="text-[9px] text-muted-foreground">Chat & health tools</p>
+        </div>
+      </Link>
+
+      {/* AI Assistant */}
+      <button
+        onClick={openBotBox}
+        className={cn(
+          "group w-full flex items-center gap-2 rounded-lg px-3 py-2 transition-all duration-200 text-left",
+          botBoxOpen
+            ? "bg-gradient-to-r from-(--brand-primary)/15 to-(--brand-accent)/10 text-(--brand-primary) dark:text-(--brand-accent) shadow-sm"
+            : "bg-gradient-to-r from-(--brand-primary)/10 via-(--brand-accent)/6 to-(--brand-primary)/10 border border-(--brand-primary)/12 hover:from-(--brand-primary)/18 hover:via-(--brand-accent)/12 hover:to-(--brand-primary)/18 hover:border-(--brand-primary)/25"
+        )}
+      >
+        <div
+          className={cn(
+            "flex h-7 w-7 items-center justify-center rounded-md transition-all duration-200",
+            botBoxOpen
+              ? "bg-gradient-to-br from-(--brand-primary) to-indigo-600 shadow-sm shadow-(--brand-primary)/20"
+              : "bg-gradient-to-br from-(--brand-primary) to-indigo-600 shadow-sm shadow-(--brand-primary)/20"
+          )}
+        >
+          <Bot className="h-3.5 w-3.5 text-white" />
+        </div>
+        <div className="min-w-0">
+          <p className="text-xs font-semibold text-foreground">AI Assistant</p>
+          <p className="text-[9px] text-muted-foreground">Quick Q&A panel</p>
+        </div>
+      </button>
+    </div>
   );
 });
 

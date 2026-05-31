@@ -10,21 +10,37 @@ import { ChatArea } from "./chat-area";
 import { ConversationSidebarPanel } from "./conversation-sidebar-panel";
 import { Sheet, SheetContent } from "@/components/ui/sheet";
 import { Skeleton } from "@/components/ui/skeleton";
+import { cn } from "@/lib/utils";
+
+const SIDEBAR_COLLAPSED_KEY = "chat-sidebar-collapsed";
 
 interface UnifiedChatLayoutProps {
   initialConversationId?: string;
   initialMemberId?: string;
+  initialScope?: "general" | "member";
 }
 
 export function UnifiedChatLayout({
   initialConversationId,
   initialMemberId,
+  initialScope,
 }: UnifiedChatLayoutProps) {
-  const [mode, setMode] = useState<"general" | "member">(initialMemberId ? "member" : "general");
+  const [mode, setMode] = useState<"general" | "member">(
+    initialScope === "member" || initialMemberId ? "member" : "general"
+  );
   const [selectedMemberId, setSelectedMemberId] = useState<string | null>(initialMemberId ?? null);
   const [activeConvId, setActiveConvId] = useState<string | null>(initialConversationId ?? null);
-  const [sidebarOpen, setSidebarOpen] = useState(false);
+  const [mobileSidebarOpen, setMobileSidebarOpen] = useState(false);
   const [convMessages, setConvMessages] = useState<MessageResponse[]>([]);
+
+  const [sidebarCollapsed, setSidebarCollapsed] = useState(() => {
+    if (typeof window === "undefined") return false;
+    return localStorage.getItem(SIDEBAR_COLLAPSED_KEY) === "true";
+  });
+
+  useEffect(() => {
+    localStorage.setItem(SIDEBAR_COLLAPSED_KEY, String(sidebarCollapsed));
+  }, [sidebarCollapsed]);
 
   const { data: pageData, mutate: mutatePageData } = useSWR("conversations-page", async () => {
     const [conversations, members] = await Promise.all([
@@ -109,7 +125,7 @@ export function UnifiedChatLayout({
 
   function handleSelectConversation(id: string) {
     setActiveConvId(id);
-    setSidebarOpen(false);
+    setMobileSidebarOpen(false);
     const conv = conversations.find((c) => c.id === id);
     if (conv) {
       if (conv.scope === "member") {
@@ -152,17 +168,35 @@ export function UnifiedChatLayout({
 
   return (
     <div className="flex h-full">
-      {/* Desktop sidebar — card background for contrast */}
-      <div className="hidden md:flex w-[280px] shrink-0 bg-card">{sidebarContent}</div>
+      {/* Desktop sidebar — ChatGPT-style collapsible */}
+      <div
+        className={cn(
+          "hidden md:flex shrink-0 flex-col bg-card transition-[width] duration-300 ease-[cubic-bezier(0.4,0,0.2,1)] overflow-hidden",
+          sidebarCollapsed ? "w-[52px]" : "w-[280px]"
+        )}
+      >
+        <div className={cn("h-full", sidebarCollapsed ? "w-[52px]" : "w-[280px]")}>
+          <ConversationSidebarPanel
+            conversations={conversations}
+            members={members}
+            activeConvId={activeConvId}
+            onSelectConversation={handleSelectConversation}
+            onNewChat={handleNewChat}
+            onActiveDeleted={clearChat}
+            collapsed={sidebarCollapsed}
+            onToggleCollapse={() => setSidebarCollapsed((c) => !c)}
+          />
+        </div>
+      </div>
 
       {/* Mobile sidebar Sheet */}
-      <Sheet open={sidebarOpen} onOpenChange={setSidebarOpen}>
+      <Sheet open={mobileSidebarOpen} onOpenChange={setMobileSidebarOpen}>
         <SheetContent side="left" className="w-[280px] p-0">
           {sidebarContent}
         </SheetContent>
       </Sheet>
 
-      {/* Chat area — transparent so main background shows */}
+      {/* Chat area */}
       <div className="flex flex-col flex-1 min-w-0">
         <ChatHeader
           mode={mode}
@@ -170,7 +204,7 @@ export function UnifiedChatLayout({
           selectedMemberId={selectedMemberId}
           onMemberChange={handleMemberChange}
           members={members}
-          onToggleSidebar={() => setSidebarOpen(true)}
+          onToggleSidebar={() => setMobileSidebarOpen(true)}
         />
         <ChatArea
           conversationId={activeConvId}

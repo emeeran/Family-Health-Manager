@@ -235,7 +235,7 @@ export const ProvidersUhidCard = memo(function ProvidersUhidCard({
               ))}
             </div>
             <Link
-              to={`/members/${memberId}/providers`}
+              to="/providers"
               className="flex items-center justify-center gap-1 pt-2 text-[11px] font-medium text-primary hover:underline"
             >
               Manage

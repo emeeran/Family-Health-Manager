@@ -5,6 +5,9 @@ interface BotBoxContextValue {
   open: () => void;
   close: () => void;
   toggle: () => void;
+  initialScope: "general" | "member" | null;
+  initialMemberId: string | null;
+  openForMember: (memberId: string) => void;
 }
 
 const BotBoxContext = createContext<BotBoxContextValue>({
@@ -12,6 +15,9 @@ const BotBoxContext = createContext<BotBoxContextValue>({
   open: () => {},
   close: () => {},
   toggle: () => {},
+  initialScope: null,
+  initialMemberId: null,
+  openForMember: () => {},
 });
 
 export function useBotBox() {
@@ -20,13 +26,31 @@ export function useBotBox() {
 
 export function BotBoxProvider({ children }: { children: React.ReactNode }) {
   const [isOpen, setIsOpen] = useState(false);
+  const [initialScope, setInitialScope] = useState<"general" | "member" | null>(null);
+  const [initialMemberId, setInitialMemberId] = useState<string | null>(null);
 
-  const open = useCallback(() => setIsOpen(true), []);
-  const close = useCallback(() => setIsOpen(false), []);
+  const open = useCallback(() => {
+    setInitialScope(null);
+    setInitialMemberId(null);
+    setIsOpen(true);
+  }, []);
+
+  const close = useCallback(() => {
+    setIsOpen(false);
+  }, []);
+
   const toggle = useCallback(() => setIsOpen((prev) => !prev), []);
 
+  const openForMember = useCallback((memberId: string) => {
+    setInitialScope("member");
+    setInitialMemberId(memberId);
+    setIsOpen(true);
+  }, []);
+
   return (
-    <BotBoxContext.Provider value={{ isOpen, open, close, toggle }}>
+    <BotBoxContext.Provider
+      value={{ isOpen, open, close, toggle, initialScope, initialMemberId, openForMember }}
+    >
       {children}
     </BotBoxContext.Provider>
   );
