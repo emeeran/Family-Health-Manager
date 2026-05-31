@@ -29,7 +29,7 @@ import {
   parseSections,
 } from "@/components/members/insight-report-viewer";
 import { createPreventiveReminder } from "@/lib/api/members";
-import { GENDER_LABELS, RELATIONSHIP_LABELS, HBA1C_CATEGORY_COLORS } from "@/lib/constants";
+import { GENDER_LABELS, RELATIONSHIP_LABELS } from "@/lib/constants";
 import { deleteMember } from "@/lib/api/members";
 import { formatDate, formatRelativeTime } from "@/lib/utils";
 import { toast } from "sonner";
