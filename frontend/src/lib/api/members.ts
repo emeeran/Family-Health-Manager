@@ -4,6 +4,7 @@ import type {
   FamilyMemberUpdate,
   FamilyMemberResponse,
   MemberDashboardResponse,
+  MemberDetailResponse,
   DrugInteractionResponse,
   ActiveMedication,
   BmiHistoryEntry,
@@ -40,6 +41,10 @@ export function deleteMember(memberId: string) {
 
 export function getMemberDashboard(memberId: string) {
   return apiRequest<MemberDashboardResponse>(`/members/${memberId}/dashboard`);
+}
+
+export function getMemberDetail(memberId: string) {
+  return apiRequest<MemberDetailResponse>(`/members/${memberId}/detail`);
 }
 
 export function getDrugInteractions(memberId: string) {

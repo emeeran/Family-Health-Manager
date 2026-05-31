@@ -15,15 +15,10 @@ const MembersPage = lazy(() => import("@/pages/members"));
 const NewMemberPage = lazy(() => import("@/pages/member-new"));
 const MemberDetailPage = lazy(() => import("@/pages/member-detail"));
 const EditMemberPage = lazy(() => import("@/pages/member-edit"));
-const MemberRecordsPage = lazy(() => import("@/pages/member-records"));
 const NewRecordPage = lazy(() => import("@/pages/record-new"));
 const RecordDetailPage = lazy(() => import("@/pages/record-detail"));
 const EditRecordPage = lazy(() => import("@/pages/record-edit"));
 const RecordBatchPage = lazy(() => import("@/pages/record-batch"));
-const TimelinePage = lazy(() => import("@/pages/timeline"));
-const LabRecordsPage = lazy(() => import("@/pages/lab-records"));
-const MemberProvidersPage = lazy(() => import("@/pages/member-providers"));
-const AIPage = lazy(() => import("@/pages/ai"));
 const ProvidersPage = lazy(() => import("@/pages/providers"));
 const NewProviderPage = lazy(() => import("@/pages/provider-new"));
 const ProviderDetailPage = lazy(() => import("@/pages/provider-detail"));
@@ -33,7 +28,6 @@ const NewReminderPage = lazy(() => import("@/pages/reminder-new"));
 const EditReminderPage = lazy(() => import("@/pages/reminder-edit"));
 const HouseholdRecordsPage = lazy(() => import("@/pages/household-records"));
 const ConversationsPage = lazy(() => import("@/pages/conversations"));
-const ConversationDetailPage = lazy(() => import("@/pages/conversation-detail"));
 const NotificationsPage = lazy(() => import("@/pages/notifications"));
 const SettingsPage = lazy(() => import("@/pages/settings"));
 const OnboardingPage = lazy(() => import("@/pages/onboarding"));
@@ -100,15 +94,42 @@ export const router = createBrowserRouter([
       { path: "members/new", element: withSuspense(NewMemberPage) },
       { path: "members/:memberId", element: withSuspense(MemberDetailPage) },
       { path: "members/:memberId/edit", element: withSuspense(EditMemberPage) },
-      { path: "members/:memberId/records", element: withSuspense(MemberRecordsPage) },
+      // Sub-route redirects → unified member detail with tab param
+      {
+        path: "members/:memberId/records",
+        loader: ({ params }: { params: { memberId?: string } }) => {
+          throw redirect(`/members/${params.memberId}?tab=records`);
+        },
+      },
+      {
+        path: "members/:memberId/timeline",
+        loader: ({ params }: { params: { memberId?: string } }) => {
+          throw redirect(`/members/${params.memberId}?tab=timeline`);
+        },
+      },
+      {
+        path: "members/:memberId/lab-records",
+        loader: ({ params }: { params: { memberId?: string } }) => {
+          throw redirect(`/members/${params.memberId}?tab=records`);
+        },
+      },
+      {
+        path: "members/:memberId/providers",
+        loader: ({ params }: { params: { memberId?: string } }) => {
+          throw redirect(`/members/${params.memberId}?tab=overview`);
+        },
+      },
+      {
+        path: "members/:memberId/ai",
+        loader: ({ params }: { params: { memberId?: string } }) => {
+          throw redirect(`/conversations?memberId=${params.memberId}`);
+        },
+      },
+      // Record CRUD routes (still separate pages)
       { path: "members/:memberId/records/new", element: withSuspense(NewRecordPage) },
       { path: "members/:memberId/records/batch", element: withSuspense(RecordBatchPage) },
       { path: "members/:memberId/records/:recordId", element: withSuspense(RecordDetailPage) },
       { path: "members/:memberId/records/:recordId/edit", element: withSuspense(EditRecordPage) },
-      { path: "members/:memberId/timeline", element: withSuspense(TimelinePage) },
-      { path: "members/:memberId/lab-records", element: withSuspense(LabRecordsPage) },
-      { path: "members/:memberId/providers", element: withSuspense(MemberProvidersPage) },
-      { path: "members/:memberId/ai", element: withSuspense(AIPage) },
       { path: "providers", element: withSuspense(ProvidersPage) },
       { path: "providers/new", element: withSuspense(NewProviderPage) },
       { path: "providers/:providerId", element: withSuspense(ProviderDetailPage) },
@@ -118,7 +139,12 @@ export const router = createBrowserRouter([
       { path: "reminders/:reminderId/edit", element: withSuspense(EditReminderPage) },
       { path: "records", element: withSuspense(HouseholdRecordsPage) },
       { path: "conversations", element: withSuspense(ConversationsPage) },
-      { path: "conversations/:conversationId", element: withSuspense(ConversationDetailPage) },
+      {
+        path: "conversations/:conversationId",
+        loader: ({ params }: { params: { conversationId?: string } }) => {
+          throw redirect(`/conversations?conversationId=${params.conversationId}`);
+        },
+      },
       { path: "notifications", element: withSuspense(NotificationsPage) },
       { path: "settings", element: withSuspense(SettingsPage) },
       { path: "onboarding", element: withSuspense(OnboardingPage) },

@@ -1,4 +1,4 @@
-import { useState, useMemo } from "react";
+import { useState, useMemo, useRef } from "react";
 import { ArrowUpDown, ArrowUp, ArrowDown } from "lucide-react";
 import {
   Table,
@@ -25,6 +25,10 @@ interface RecordsTableProps {
 type SortKey = "record_date" | "record_type" | "provider_name" | "reason";
 type SortDir = "asc" | "desc";
 
+const VIRTUALIZE_THRESHOLD = 80;
+const MAX_VISIBLE_ROWS = 60;
+const ROW_HEIGHT_PX = 44;
+
 export function RecordsTable({
   records,
   memberNames,
@@ -34,6 +38,7 @@ export function RecordsTable({
 }: RecordsTableProps) {
   const [sortKey, setSortKey] = useState<SortKey>("record_date");
   const [sortDir, setSortDir] = useState<SortDir>("desc");
+  const scrollRef = useRef<HTMLDivElement>(null);
 
   const hasSelection = !!selectedIds && !!onSelectionChange;
   const allSelected =
@@ -42,21 +47,15 @@ export function RecordsTable({
 
   function toggleAll() {
     if (!onSelectionChange) return;
-    if (allSelected) {
-      onSelectionChange(new Set());
-    } else {
-      onSelectionChange(new Set(records.map((r) => r.id)));
-    }
+    if (allSelected) onSelectionChange(new Set());
+    else onSelectionChange(new Set(records.map((r) => r.id)));
   }
 
   function toggleRow(id: string) {
     if (!onSelectionChange || !selectedIds) return;
     const next = new Set(selectedIds);
-    if (next.has(id)) {
-      next.delete(id);
-    } else {
-      next.add(id);
-    }
+    if (next.has(id)) next.delete(id);
+    else next.add(id);
     onSelectionChange(next);
   }
 
@@ -98,6 +97,12 @@ export function RecordsTable({
     );
   }
 
+  // For very large record sets, use CSS containment with max-height scroll
+  const needsScroll = sorted.length > VIRTUALIZE_THRESHOLD;
+  const scrollStyle = needsScroll
+    ? { maxHeight: `${MAX_VISIBLE_ROWS * ROW_HEIGHT_PX}px`, overflowY: "auto" as const }
+    : undefined;
+
   return (
     <div className="rounded-lg border bg-card">
       <Table>
@@ -108,13 +113,7 @@ export function RecordsTable({
                 <Checkbox
                   checked={allSelected}
                   ref={(el) => {
-                    if (el) {
-                      (el as HTMLButtonElement & { indeterminate?: boolean }).dataset.state =
-                        someSelected ? "indeterminate" : allSelected ? "checked" : "unchecked";
-                      if (someSelected) {
-                        el.setAttribute("data-state", "indeterminate");
-                      }
-                    }
+                    if (el && someSelected) el.setAttribute("data-state", "indeterminate");
                   }}
                   onCheckedChange={toggleAll}
                   aria-label="Select all rows"
@@ -162,58 +161,67 @@ export function RecordsTable({
             )}
           </TableRow>
         </TableHeader>
-        <TableBody>
-          {sorted.map((record) => {
-            const reason = extractReason(record);
-            const summary = extractSummary(record);
-            return (
-              <TableRow
-                key={record.id}
-                className="cursor-pointer"
-                onClick={() => onRowClick?.(record)}
-              >
-                {hasSelection && (
-                  <TableCell className="py-2 px-2" onClick={(e) => e.stopPropagation()}>
-                    <Checkbox
-                      checked={selectedIds?.has(record.id) ?? false}
-                      onCheckedChange={() => toggleRow(record.id)}
-                      aria-label={`Select record ${record.id}`}
-                    />
+      </Table>
+      <div ref={scrollRef} style={scrollStyle} className={needsScroll ? "contain-content" : ""}>
+        <Table>
+          <TableBody>
+            {sorted.map((record) => {
+              const reason = extractReason(record);
+              const summary = extractSummary(record);
+              return (
+                <TableRow
+                  key={record.id}
+                  className="cursor-pointer"
+                  onClick={() => onRowClick?.(record)}
+                >
+                  {hasSelection && (
+                    <TableCell className="py-2 px-2 w-[40px]" onClick={(e) => e.stopPropagation()}>
+                      <Checkbox
+                        checked={selectedIds?.has(record.id) ?? false}
+                        onCheckedChange={() => toggleRow(record.id)}
+                        aria-label={`Select record ${record.id}`}
+                      />
+                    </TableCell>
+                  )}
+                  <TableCell className="py-2 w-[110px]">
+                    <RecordTypeBadge type={record.record_type} />
                   </TableCell>
-                )}
-                <TableCell className="py-2">
-                  <RecordTypeBadge type={record.record_type} />
-                </TableCell>
-                <TableCell className="py-2">
-                  <span className="text-sm tabular-nums">{formatDate(record.record_date)}</span>
-                </TableCell>
-                <TableCell className="py-2">
-                  <span className="text-sm text-muted-foreground">
-                    {record.provider_name || "—"}
-                  </span>
-                </TableCell>
-                <TableCell className="py-2 max-w-[300px]">
-                  {reason ? (
-                    <p className="text-sm font-medium truncate">{reason}</p>
-                  ) : (
-                    <p className="text-sm text-muted-foreground">—</p>
-                  )}
-                  {summary && (
-                    <p className="text-xs text-muted-foreground/70 truncate mt-0.5">{summary}</p>
-                  )}
-                </TableCell>
-                {memberNames && (
-                  <TableCell className="py-2">
+                  <TableCell className="py-2 w-[100px]">
+                    <span className="text-sm tabular-nums">{formatDate(record.record_date)}</span>
+                  </TableCell>
+                  <TableCell className="py-2 w-[130px]">
                     <span className="text-sm text-muted-foreground">
-                      {memberNames[record.family_member_id] || "—"}
+                      {record.provider_name || "—"}
                     </span>
                   </TableCell>
-                )}
-              </TableRow>
-            );
-          })}
-        </TableBody>
-      </Table>
+                  <TableCell className="py-2 max-w-[300px]">
+                    {reason ? (
+                      <p className="text-sm font-medium truncate">{reason}</p>
+                    ) : (
+                      <p className="text-sm text-muted-foreground">—</p>
+                    )}
+                    {summary && (
+                      <p className="text-xs text-muted-foreground/70 truncate mt-0.5">{summary}</p>
+                    )}
+                  </TableCell>
+                  {memberNames && (
+                    <TableCell className="py-2 w-[120px]">
+                      <span className="text-sm text-muted-foreground">
+                        {memberNames[record.family_member_id] || "—"}
+                      </span>
+                    </TableCell>
+                  )}
+                </TableRow>
+              );
+            })}
+          </TableBody>
+        </Table>
+      </div>
+      {needsScroll && (
+        <div className="px-3 py-1.5 border-t text-xs text-muted-foreground text-center">
+          Showing {sorted.length} records — scroll to see more
+        </div>
+      )}
     </div>
   );
 }

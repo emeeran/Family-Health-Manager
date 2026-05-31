@@ -441,7 +441,7 @@ interface DoctorVisitDisplayProps {
   nextReviewDate?: string;
 }
 
-function DoctorVisitDisplay({
+const DoctorVisitDisplay = React.memo(function DoctorVisitDisplay({
   fields,
   tableData,
   notes,
@@ -677,7 +677,7 @@ function DoctorVisitDisplay({
       ))}
     </div>
   );
-}
+});
 
 /* ──────────────────────────────────────────────
    Consolidated Lab Report (standalone)
@@ -695,7 +695,7 @@ interface ConsolidatedLabReportProps {
   recordTime?: string;
 }
 
-function ConsolidatedLabReport({
+const ConsolidatedLabReport = React.memo(function ConsolidatedLabReport({
   tableRows,
   notes,
   memberName,
@@ -811,13 +811,19 @@ function ConsolidatedLabReport({
       </div>
     </div>
   );
-}
+});
 
 /* ──────────────────────────────────────────────
    Eyeglass Display
    ────────────────────────────────────────────── */
 
-function EyeglassDisplay({ fields, notes }: { fields: Record<string, string>; notes: string }) {
+const EyeglassDisplay = React.memo(function EyeglassDisplay({
+  fields,
+  notes,
+}: {
+  fields: Record<string, string>;
+  notes: string;
+}) {
   return (
     <div className="space-y-4">
       <table className="w-full text-sm">
@@ -860,13 +866,17 @@ function EyeglassDisplay({ fields, notes }: { fields: Record<string, string>; no
       {notes && <p className="text-sm text-muted-foreground whitespace-pre-wrap">{notes}</p>}
     </div>
   );
-}
+});
 
 /* ──────────────────────────────────────────────
    Blood Glucose Display
    ────────────────────────────────────────────── */
 
-function BloodGlucoseDisplay({ fields }: { fields: Record<string, string> }) {
+const BloodGlucoseDisplay = React.memo(function BloodGlucoseDisplay({
+  fields,
+}: {
+  fields: Record<string, string>;
+}) {
   return (
     <div className="space-y-4">
       <div className="flex items-baseline gap-2">
@@ -882,13 +892,13 @@ function BloodGlucoseDisplay({ fields }: { fields: Record<string, string> }) {
       )}
     </div>
   );
-}
+});
 
 /* ──────────────────────────────────────────────
    Main Display Component
    ────────────────────────────────────────────── */
 
-export function StructuredDataDisplay({
+export const StructuredDataDisplay = React.memo(function StructuredDataDisplay({
   recordType,
   clinicalData,
   memberName,
@@ -958,4 +968,4 @@ export function StructuredDataDisplay({
         </div>
       );
   }
-}
+});

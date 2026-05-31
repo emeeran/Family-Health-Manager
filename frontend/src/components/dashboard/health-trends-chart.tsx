@@ -8,7 +8,7 @@ import {
   Tooltip,
   Legend,
 } from "recharts";
-import { useMemo } from "react";
+import { useMemo, memo } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import type { HealthRecordResponse } from "@/lib/types/health-record";
 
@@ -57,7 +57,10 @@ const COLORS = [
   "hsl(var(--chart-4))",
 ];
 
-export function HealthTrendsChart({ records, memberNames }: HealthTrendsChartProps) {
+export const HealthTrendsChart = memo(function HealthTrendsChart({
+  records,
+  memberNames,
+}: HealthTrendsChartProps) {
   const { chartData, members } = useMemo(() => {
     const dataByDate: Record<string, ChartRow> = {};
 
@@ -127,4 +130,4 @@ export function HealthTrendsChart({ records, memberNames }: HealthTrendsChartPro
       </CardContent>
     </Card>
   );
-}
+});

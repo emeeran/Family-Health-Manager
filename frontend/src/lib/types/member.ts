@@ -143,3 +143,69 @@ export interface BatchMemberScore {
 export interface BatchScoresResponse {
   members: BatchMemberScore[];
 }
+
+export interface MemberDetailResponse {
+  member: FamilyMemberResponse;
+  health_score: number;
+  score_breakdown: Record<string, { score: number; max: number; label: string }> | null;
+  brief_medical_history: string | null;
+  active_medications: ActiveMedication[];
+  active_medications_count: number;
+  active_conditions_count: number;
+  age: number;
+  provider_assignments: ProviderAssignmentResponse[];
+  risk_assessment: { level: string; score: number } | null;
+  hba1c_history: Hba1cHistoryEntry[];
+  drug_interactions: DrugInteraction[];
+  latest_insight: {
+    id: string;
+    response: string;
+    provider_used: string;
+    generated_at: string;
+    verification: {
+      status: string;
+      claims_checked?: number | null;
+      verifier_provider?: string | null;
+      summary?: string | null;
+      warnings?: string[] | null;
+      verified_at?: string | null;
+    } | null;
+  } | null;
+  latest_preconsult_note: {
+    id: string;
+    response: string;
+    provider_used: string;
+    generated_at: string;
+    verification: {
+      status: string;
+      claims_checked?: number | null;
+      verifier_provider?: string | null;
+      summary?: string | null;
+      warnings?: string[] | null;
+      verified_at?: string | null;
+    } | null;
+  } | null;
+  recent_records: {
+    id: string;
+    record_type: string;
+    record_date: string | null;
+    diagnosis: string | null;
+    provider_name: string | null;
+    summary: string | null;
+  }[];
+  upcoming_reminders: {
+    id: string;
+    title: string;
+    description: string | null;
+    start_datetime: string | null;
+    reminder_type: string;
+  }[];
+  vaccinations: {
+    id: string;
+    name: string;
+    date_administered: string | null;
+    booster_due_date: string | null;
+    notes: string | null;
+  }[];
+  preventive_recommendations: PreventiveRecommendation[];
+}

@@ -23,6 +23,11 @@ from app.routers import (
     auth,
     household,
     members,
+    member_history,
+    member_insights,
+    member_preconsultation,
+    member_drug_interactions,
+    member_preventive,
     providers,
     provider_assignments,
     health_records,
@@ -262,6 +267,11 @@ async def generic_exception_handler(request: Request, exc: Exception):
 app.include_router(auth.router, prefix="/api/v1")
 app.include_router(household.router, prefix="/api/v1")
 app.include_router(members.router, prefix="/api/v1")
+app.include_router(member_history.router, prefix="/api/v1")
+app.include_router(member_insights.router, prefix="/api/v1")
+app.include_router(member_preconsultation.router, prefix="/api/v1")
+app.include_router(member_drug_interactions.router, prefix="/api/v1")
+app.include_router(member_preventive.router, prefix="/api/v1")
 app.include_router(providers.router, prefix="/api/v1")
 app.include_router(provider_assignments.router, prefix="/api/v1")
 app.include_router(health_records.router, prefix="/api/v1")

@@ -1,6 +1,11 @@
-import { useState, useEffect, lazy, Suspense } from "react";
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-type RechartsFormatter = (value: any, name: any, props: any) => any;
+import { useState, useEffect, lazy, Suspense, memo } from "react";
+// Recharts Tooltip formatter callback — typed to satisfy Formatter<ValueType, NameType>
+type RechartsFormatter = (
+  value: string | number | readonly (string | number)[] | undefined,
+  name: string | number | undefined,
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  item: any
+) => [string, string];
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { listRecords } from "@/lib/api/records";
 import type { HealthRecordResponse } from "@/lib/types/health-record";
@@ -186,7 +191,11 @@ function parsePDRecords(records: HealthRecordResponse[]): PDPoint[] {
   return points;
 }
 
-export function ChronicConditionCharts({ memberId }: { memberId: string }) {
+export const ChronicConditionCharts = memo(function ChronicConditionCharts({
+  memberId,
+}: {
+  memberId: string;
+}) {
   const [glucoseData, setGlucoseData] = useState<GlucosePoint[]>([]);
   const [pdData, setPdData] = useState<PDPoint[]>([]);
 
@@ -257,4 +266,4 @@ export function ChronicConditionCharts({ memberId }: { memberId: string }) {
       )}
     </>
   );
-}
+});

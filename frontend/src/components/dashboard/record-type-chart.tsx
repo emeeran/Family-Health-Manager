@@ -1,5 +1,5 @@
 import { ResponsiveContainer, PieChart, Pie, Cell, Tooltip, Legend } from "recharts";
-import { useMemo } from "react";
+import { useMemo, memo } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { RECORD_TYPE_LABELS } from "@/lib/constants";
 import type { HealthRecordResponse } from "@/lib/types/health-record";
@@ -55,7 +55,7 @@ function renderLegend(value: string, entry: { color?: string }) {
   );
 }
 
-export function RecordTypeChart({ records }: RecordTypeChartProps) {
+export const RecordTypeChart = memo(function RecordTypeChart({ records }: RecordTypeChartProps) {
   const data = useMemo(() => {
     const counts: Record<string, number> = {};
     for (const r of records) {
@@ -104,4 +104,4 @@ export function RecordTypeChart({ records }: RecordTypeChartProps) {
       </CardContent>
     </Card>
   );
-}
+});

@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, memo } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { AlertTriangle, CheckCircle2, Loader2, ShieldAlert, Shield, ShieldOff } from "lucide-react";
@@ -34,7 +34,10 @@ const SEVERITY = {
   },
 };
 
-export function DrugInteractionReport({ memberId, medicationCount }: DrugInteractionReportProps) {
+export const DrugInteractionReport = memo(function DrugInteractionReport({
+  memberId,
+  medicationCount,
+}: DrugInteractionReportProps) {
   const [interactions, setInteractions] = useState<DrugInteraction[] | null>(null);
   const [loading, setLoading] = useState(false);
   const [initialLoading, setInitialLoading] = useState(true);
@@ -204,4 +207,4 @@ export function DrugInteractionReport({ memberId, medicationCount }: DrugInterac
       </CardContent>
     </Card>
   );
-}
+});

@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { memo, useState } from "react";
 
 interface ScoreBreakdownProps {
   breakdown: Record<string, { score: number; max: number; label: string }>;
@@ -52,7 +52,11 @@ function healthGrade(score: number): { label: string; color: string } {
   return { label: "Critical", color: "text-red-600" };
 }
 
-export function ScoreBreakdown({ breakdown, total, compact }: ScoreBreakdownProps) {
+export const ScoreBreakdown = memo(function ScoreBreakdown({
+  breakdown,
+  total,
+  compact,
+}: ScoreBreakdownProps) {
   const [tooltip, setTooltip] = useState<TooltipState>(null);
   const [activeKey, setActiveKey] = useState<string | null>(null);
 
@@ -181,4 +185,4 @@ export function ScoreBreakdown({ breakdown, total, compact }: ScoreBreakdownProp
       )}
     </div>
   );
-}
+});

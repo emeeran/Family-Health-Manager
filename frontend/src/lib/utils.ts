@@ -30,6 +30,23 @@ export function toDisplayDate(val: string): string {
   return val;
 }
 
+/** Compute age in years from a date-of-birth string. */
+export function computeAge(dob: string): number {
+  const today = new Date();
+  const birth = new Date(dob);
+  let age = today.getFullYear() - birth.getFullYear();
+  const m = today.getMonth() - birth.getMonth();
+  if (m < 0 || (m === 0 && today.getDate() < birth.getDate())) age--;
+  return age;
+}
+
+/** Format age as `"42y"` from an optional DOB string, or `null` if absent/invalid. */
+export function formatAge(dob: string | null | undefined): string | null {
+  if (!dob) return null;
+  const age = computeAge(dob);
+  return age >= 0 ? `${age}y` : null;
+}
+
 /** Format an ISO date string as a human-friendly relative label. */
 export function formatRelativeTime(iso: string): string {
   const d = new Date(iso);

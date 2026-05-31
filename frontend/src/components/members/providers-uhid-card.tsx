@@ -1,4 +1,4 @@
-import { useState, useRef, useEffect } from "react";
+import { useState, useRef, useEffect, memo } from "react";
 import { Link } from "react-router-dom";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -25,7 +25,7 @@ interface ProvidersUhidCardProps {
   assignments: ProviderAssignmentResponse[];
 }
 
-export function ProvidersUhidCard({
+export const ProvidersUhidCard = memo(function ProvidersUhidCard({
   memberId,
   assignments: initialAssignments,
 }: ProvidersUhidCardProps) {
@@ -242,4 +242,4 @@ export function ProvidersUhidCard({
       </CardContent>
     </Card>
   );
-}
+});

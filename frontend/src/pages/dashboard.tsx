@@ -1,32 +1,15 @@
 import useSWR from "swr";
 import { useNavigate } from "react-router-dom";
-import { listMembers } from "@/lib/api/members";
-import { getHousehold, listHouseholdRecords } from "@/lib/api/household";
-import { listProviders } from "@/lib/api/providers";
-import { listReminders } from "@/lib/api/reminders";
-import { listNotifications } from "@/lib/api/notifications";
-import { listConversations } from "@/lib/api/conversations";
+import { getDashboardSummary } from "@/lib/api/dashboard";
 import { DashboardContent, DashboardSkeleton } from "@/components/content/dashboard-content";
 import { UniversalQuickEntry } from "@/components/records/universal-quick-entry";
-import { useEffect } from "react";
-
-async function fetchDashboardData() {
-  const [members, household, providers, reminders, notifications, records, conversations] =
-    await Promise.all([
-      listMembers(),
-      getHousehold(),
-      listProviders().catch(() => []),
-      listReminders().catch(() => []),
-      listNotifications().catch(() => []),
-      listHouseholdRecords(30).catch(() => []),
-      listConversations().catch(() => []),
-    ]);
-  return { members, household, providers, reminders, notifications, records, conversations };
-}
+import { useEffect, useMemo } from "react";
+import type { FamilyMemberResponse } from "@/lib/types/member";
+import type { HealthRecordResponse } from "@/lib/types/health-record";
 
 export default function DashboardPage() {
   const navigate = useNavigate();
-  const { data, error } = useSWR("dashboard", fetchDashboardData, {
+  const { data: summary, error } = useSWR("dashboard", () => getDashboardSummary(), {
     revalidateOnFocus: false,
     dedupingInterval: 30_000,
   });
@@ -55,41 +38,32 @@ export default function DashboardPage() {
     );
   }
 
-  if (!data) return <DashboardSkeleton />;
+  if (!summary) return <DashboardSkeleton />;
 
   // Redirect to onboarding if no members
-  if (data.members.length === 0) {
+  if (!summary.members || summary.members.length === 0) {
     navigate("/onboarding");
     return null;
   }
 
-  const unreadNotifications = data.notifications.filter((n) => !n.is_read).length;
-  const seen = new Set<string>();
-  const upcomingReminders = data.reminders
-    .filter((r) => r.is_active && new Date(r.start_datetime) > new Date())
-    .filter((r) => {
-      const key = `${r.title}|${r.start_datetime}|${r.reminder_type}`;
-      if (seen.has(key)) return false;
-      seen.add(key);
-      return true;
-    })
-    .sort((a, b) => new Date(a.start_datetime).getTime() - new Date(b.start_datetime).getTime())
-    .slice(0, 5);
+  // Derive stats from summary — single API call replaces 7 separate calls
+  const members = summary.members as unknown as FamilyMemberResponse[];
+  const records = (summary.recent_records || []) as unknown as HealthRecordResponse[];
 
   return (
     <>
       <DashboardContent
-        members={data.members}
-        householdName={data.household.name}
+        members={members}
+        householdName={summary.household_name || "My Family"}
         stats={{
-          providersCount: data.providers.length,
-          conversationsCount: data.conversations.length,
-          unreadNotifications,
-          upcomingReminders,
+          providersCount: summary.providers_count || 0,
+          conversationsCount: summary.conversations_count || 0,
+          unreadNotifications: summary.unread_notifications || 0,
+          upcomingReminders: summary.upcoming_reminders || [],
         }}
-        records={data.records}
+        records={records}
       />
-      <UniversalQuickEntry members={data.members} />
+      <UniversalQuickEntry members={members} />
     </>
   );
 }

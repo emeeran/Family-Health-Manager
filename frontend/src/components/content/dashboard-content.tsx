@@ -1,19 +1,14 @@
 import React, { useState, useMemo, useEffect, Suspense } from "react";
 import { Link } from "react-router-dom";
 import {
-  Users,
-  Stethoscope,
-  CalendarClock,
   Plus,
-  UserPlus,
-  Activity,
-  FileText,
   Bell,
-  AlertTriangle,
   ChevronRight,
   ShieldCheck,
+  UserPlus,
+  Stethoscope,
+  CalendarClock,
   Clock,
-  Syringe,
 } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -21,15 +16,16 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { RELATIONSHIP_LABELS, RECORD_TYPE_LABELS, HBA1C_CATEGORY_COLORS } from "@/lib/constants";
 import { formatDate, formatRelativeTime } from "@/lib/utils";
 import { QuickAddRecordDialog } from "@/components/records/quick-add-record-dialog";
-import { QuickLogInput } from "@/components/records/quick-log-input";
 import { useRecordQuickView } from "@/components/records/record-quick-view-provider";
-import { getLastUsedMember, setLastUsedMember } from "@/lib/member-context";
 import { Hba1cModernChart } from "@/components/dashboard/hba1c-modern-chart";
-import { getMemberDashboard } from "@/lib/api/members";
 import { AlertsFeed } from "@/components/dashboard/alerts-feed";
 import { MedicationSummaryWidget } from "@/components/dashboard/medication-summary";
 import { FamilyComparisonChart } from "@/components/dashboard/family-comparison-chart";
+import { DashboardStatCards } from "@/components/dashboard/dashboard-stat-cards";
+import { FamilyHealthGrid } from "@/components/dashboard/family-health-grid";
+import { QuickLogBar } from "@/components/dashboard/quick-log-bar";
 import { useDashboardSummary } from "@/hooks/use-dashboard";
+import { useHba1cChartData } from "@/lib/hba1c-utils";
 import { dismissHealthAlert } from "@/lib/api/health-alerts";
 import { toast } from "sonner";
 import type { DashboardAlert } from "@/lib/types/dashboard";
@@ -46,7 +42,6 @@ const RecordTypeChart = React.lazy(() =>
 );
 
 import type { FamilyMemberResponse } from "@/lib/types/member";
-import type { ReminderResponse } from "@/lib/types/reminder";
 import type { HealthRecordResponse } from "@/lib/types/health-record";
 
 /* ── Helpers ── */
@@ -74,83 +69,21 @@ function extractPreview(
   return "";
 }
 
-function scoreColor(score: number): string {
-  if (score >= 75) return "#16a34a";
-  if (score >= 50) return "#d97706";
-  return "#dc2626";
-}
-
-function memberAge(dob: string | null | undefined): string | null {
-  if (!dob) return null;
-  const d = new Date(dob);
-  const now = new Date();
-  let age = now.getFullYear() - d.getFullYear();
-  const m = now.getMonth() - d.getMonth();
-  if (m < 0 || (m === 0 && now.getDate() < d.getDate())) age--;
-  return age >= 0 ? `${age}y` : null;
-}
-
-/* ── Health Score Ring ── */
-
-function HealthScoreRing({
-  score,
-  size = 56,
-  strokeWidth = 4,
-}: {
-  score: number;
-  size?: number;
-  strokeWidth?: number;
-  riskLevel?: string;
-}) {
-  const r = (size - strokeWidth * 2) / 2;
-  const circ = 2 * Math.PI * r;
-  const offset = circ - (score / 100) * circ;
-  const color = scoreColor(score);
-  const cx = size / 2;
-
-  return (
-    <div className="relative shrink-0" style={{ width: size, height: size }}>
-      <svg width={size} height={size}>
-        <circle
-          cx={cx}
-          cy={cx}
-          r={r}
-          fill="none"
-          stroke="currentColor"
-          strokeWidth={strokeWidth}
-          className="text-muted/20"
-        />
-        <circle
-          cx={cx}
-          cy={cx}
-          r={r}
-          fill="none"
-          stroke={color}
-          strokeWidth={strokeWidth}
-          strokeDasharray={circ}
-          strokeDashoffset={offset}
-          strokeLinecap="round"
-          transform={`rotate(-90 ${cx} ${cx})`}
-          className="transition-all duration-700 ease-out"
-        />
-      </svg>
-      <div className="absolute inset-0 flex flex-col items-center justify-center">
-        <span className="font-bold leading-none" style={{ color, fontSize: size * 0.28 }}>
-          {score}
-        </span>
-        <span className="text-[8px] text-muted-foreground">/100</span>
-      </div>
-    </div>
-  );
-}
-
 /* ── Props ── */
+
+interface DashboardReminder {
+  id: string;
+  title: string;
+  start_datetime: string | null;
+  reminder_type: string;
+  family_member_id: string | null;
+}
 
 interface DashboardStats {
   providersCount: number;
   conversationsCount: number;
   unreadNotifications: number;
-  upcomingReminders: ReminderResponse[];
+  upcomingReminders: DashboardReminder[];
 }
 
 interface DashboardContentProps {
@@ -169,7 +102,6 @@ export function DashboardContent({
   records,
 }: DashboardContentProps) {
   const [quickAddOpen, setQuickAddOpen] = useState(false);
-  const [quickLogMemberId, setQuickLogMemberId] = useState<string | null>(null);
   const { openQuickView } = useRecordQuickView();
   const activeMembers = useMemo(() => members.filter((m) => m.is_active), [members]);
   const activeCount = activeMembers.length;
@@ -197,46 +129,10 @@ export function DashboardContent({
       }
       setMemberScores(map);
       setScoresLoading(false);
-    } else if (!summaryLoading && activeMembers.length > 0) {
-      Promise.all(
-        activeMembers.map((m) =>
-          getMemberDashboard(m.id)
-            .then((d) => ({
-              id: m.id,
-              data: {
-                score: d.health_score,
-                medications: d.active_medications_count,
-                conditions: d.active_conditions_count,
-                riskLevel: d.health_score < 40 ? "high" : d.health_score <= 65 ? "moderate" : "low",
-              },
-            }))
-            .catch(() => ({
-              id: m.id,
-              data: { score: 0, medications: 0, conditions: 0, riskLevel: "low" },
-            }))
-        )
-      ).then((results) => {
-        const map: Record<
-          string,
-          { score: number; medications: number; conditions: number; riskLevel: string }
-        > = {};
-        for (const r of results) map[r.id] = r.data;
-        setMemberScores(map);
-        setScoresLoading(false);
-      });
     } else if (!summaryLoading) {
       setScoresLoading(false);
     }
   }, [summary, summaryLoading, activeMembers]);
-
-  useEffect(() => {
-    if (quickLogMemberId) return;
-    const last = getLastUsedMember();
-    if (last) {
-      const match = activeMembers.find((m) => m.id === last.id);
-      if (match) setQuickLogMemberId(match.id);
-    }
-  }, [quickLogMemberId, activeMembers]);
 
   const memberNames = useMemo(() => {
     const names: Record<string, string> = {};
@@ -278,57 +174,11 @@ export function DashboardContent({
     return { avgScore, totalMeds };
   }, [memberScores]);
 
-  const hba1cData = useMemo(() => {
-    const entries: { date: string; value: number; memberName: string }[] = [];
-    for (const r of activeRecords) {
-      if (r.record_type !== "blood_glucose" && r.record_type !== "doctor_visit") continue;
-      try {
-        const parsed = JSON.parse(r.clinical_data);
-        if (parsed.hba1c_value) {
-          const v = parseFloat(parsed.hba1c_value);
-          if (!isNaN(v))
-            entries.push({
-              date: r.record_date,
-              value: v,
-              memberName: memberNames[r.family_member_id] || "Unknown",
-            });
-          continue;
-        }
-        for (const key of ["lab_results", "tests"]) {
-          const labs = parsed[key];
-          if (!Array.isArray(labs)) continue;
-          for (const test of labs) {
-            const name = (test.test_name || "").toLowerCase();
-            if (name.includes("hba1c") || name.includes("a1c") || name.includes("glycated")) {
-              const match = (test.result || "").match(/(\d+\.?\d*)/);
-              if (match) {
-                entries.push({
-                  date: r.record_date,
-                  value: parseFloat(match[1]),
-                  memberName: memberNames[r.family_member_id] || "Unknown",
-                });
-                break;
-              }
-            }
-          }
-        }
-      } catch {
-        /* skip */
-      }
-    }
-    return entries.sort((a, b) => a.date.localeCompare(b.date));
-  }, [activeRecords, memberNames]);
-
-  const hba1cChartRows = useMemo(() => {
-    const byDate: Record<string, { date: string; [k: string]: string | number }> = {};
-    for (const e of hba1cData) {
-      if (!byDate[e.date]) byDate[e.date] = { date: e.date };
-      byDate[e.date][e.memberName] = e.value;
-    }
-    return Object.values(byDate).slice(-15);
-  }, [hba1cData]);
-
-  const hba1cMembers = useMemo(() => [...new Set(hba1cData.map((e) => e.memberName))], [hba1cData]);
+  const {
+    entries: hba1cData,
+    chartRows: hba1cChartRows,
+    members: hba1cMembers,
+  } = useHba1cChartData(activeRecords, memberNames);
 
   const [alerts, setAlerts] = useState<DashboardAlert[]>([]);
   useEffect(() => {
@@ -377,119 +227,18 @@ export function DashboardContent({
       </div>
 
       {/* ═══ STAT CARDS ROW ═══ */}
-      <div className="grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-6 gap-3">
-        <Card className="shadow-none">
-          <CardContent className="pt-4 pb-3">
-            <div className="flex items-center justify-between">
-              <p className="text-xs text-muted-foreground font-medium">Members</p>
-              <Users className="h-4 w-4 text-muted-foreground/40" />
-            </div>
-            <p className="text-2xl font-bold mt-1">{activeCount}</p>
-          </CardContent>
-        </Card>
-        <Card className="shadow-none">
-          <CardContent className="pt-4 pb-3">
-            <div className="flex items-center justify-between">
-              <p className="text-xs text-muted-foreground font-medium">Records</p>
-              <FileText className="h-4 w-4 text-muted-foreground/40" />
-            </div>
-            <p className="text-2xl font-bold mt-1">{activeRecords.length}</p>
-          </CardContent>
-        </Card>
-        <Card className="shadow-none">
-          <CardContent className="pt-4 pb-3">
-            <div className="flex items-center justify-between">
-              <p className="text-xs text-muted-foreground font-medium">Providers</p>
-              <Stethoscope className="h-4 w-4 text-muted-foreground/40" />
-            </div>
-            <p className="text-2xl font-bold mt-1">{stats.providersCount}</p>
-          </CardContent>
-        </Card>
-        <Card className="shadow-none">
-          <CardContent className="pt-4 pb-3">
-            <div className="flex items-center justify-between">
-              <p className="text-xs text-muted-foreground font-medium">Avg Score</p>
-              <Activity className="h-4 w-4 text-muted-foreground/40" />
-            </div>
-            <p
-              className="text-2xl font-bold mt-1"
-              style={{ color: scoreColor(familyStats.avgScore) }}
-            >
-              {!scoresLoading && familyStats.avgScore > 0 ? familyStats.avgScore : "--"}
-            </p>
-          </CardContent>
-        </Card>
-        {vacStatus && vacStatus.total_vaccinations > 0 && (
-          <Card className="shadow-none">
-            <CardContent className="pt-4 pb-3">
-              <div className="flex items-center justify-between">
-                <p className="text-xs text-muted-foreground font-medium">Vaccines</p>
-                <Syringe className="h-4 w-4 text-muted-foreground/40" />
-              </div>
-              <p className="text-2xl font-bold mt-1">{vacStatus.total_vaccinations}</p>
-              {vacStatus.overdue_count > 0 && (
-                <p className="text-[10px] text-amber-600 font-medium">
-                  {vacStatus.overdue_count} overdue
-                </p>
-              )}
-            </CardContent>
-          </Card>
-        )}
-        {summary?.risk_summary &&
-          (summary.risk_summary.high_risk_members > 0 ||
-            summary.risk_summary.moderate_risk_members > 0) && (
-            <Card className="shadow-none border-red-200 bg-red-50/50">
-              <CardContent className="pt-4 pb-3">
-                <div className="flex items-center justify-between">
-                  <p className="text-xs text-red-600 font-medium">Risk Alerts</p>
-                  <AlertTriangle className="h-4 w-4 text-red-400" />
-                </div>
-                <p className="text-2xl font-bold mt-1 text-red-700">
-                  {summary.risk_summary.high_risk_members +
-                    summary.risk_summary.moderate_risk_members}
-                </p>
-              </CardContent>
-            </Card>
-          )}
-      </div>
+      <DashboardStatCards
+        activeCount={activeCount}
+        recordsCount={activeRecords.length}
+        providersCount={stats.providersCount}
+        avgScore={familyStats.avgScore}
+        scoresLoading={scoresLoading}
+        vacStatus={vacStatus}
+        riskSummary={summary?.risk_summary}
+      />
 
       {/* ═══ QUICK LOG ═══ */}
-      {activeMembers.length > 0 && (
-        <Card className="shadow-none">
-          <CardContent className="py-2.5 px-4">
-            {quickLogMemberId ? (
-              <div className="flex items-center gap-3">
-                <button
-                  onClick={() => setQuickLogMemberId(null)}
-                  className="text-xs font-medium text-muted-foreground hover:text-foreground shrink-0 underline underline-offset-2"
-                >
-                  Change
-                </button>
-                <QuickLogInput
-                  memberId={quickLogMemberId}
-                  memberName={memberNames[quickLogMemberId]}
-                  onLogged={() =>
-                    setLastUsedMember(quickLogMemberId, memberNames[quickLogMemberId] || "")
-                  }
-                />
-              </div>
-            ) : (
-              <div className="flex items-center gap-2 flex-wrap">
-                <span className="text-xs text-muted-foreground font-medium">Quick log:</span>
-                {activeMembers.slice(0, 5).map((m) => (
-                  <button
-                    key={m.id}
-                    onClick={() => setQuickLogMemberId(m.id)}
-                    className="inline-flex items-center gap-1 rounded-md border px-2.5 py-1 text-xs font-semibold hover:bg-primary hover:text-primary-foreground transition-colors"
-                  >
-                    {m.first_name}
-                  </button>
-                ))}
-              </div>
-            )}
-          </CardContent>
-        </Card>
-      )}
+      <QuickLogBar activeMembers={activeMembers} memberNames={memberNames} />
 
       {/* ═══ ALERTS ═══ */}
       {alerts.length > 0 && <AlertsFeed alerts={alerts} onDismiss={handleDismissAlert} />}
@@ -498,102 +247,13 @@ export function DashboardContent({
       <div className="grid gap-4 lg:grid-cols-3">
         {/* Left: Family + Charts */}
         <div className="lg:col-span-2 space-y-4">
-          {/* Family Health Cards */}
-          <div>
-            <h2 className="text-sm font-semibold mb-3">Family Health</h2>
-            <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
-              {activeMembers.map((member) => {
-                const scoreData = memberScores[member.id];
-                const fullName = `${member.first_name} ${member.last_name}`;
-                const recCount = memberRecordCounts[member.id] || 0;
-                const age = memberAge(member.date_of_birth);
-                const riskLevel = scoreData?.riskLevel;
-                const isHighRisk = riskLevel === "high" || riskLevel === "moderate";
-
-                return (
-                  <Link
-                    key={member.id}
-                    to={`/members/${member.id}`}
-                    className="group rounded-lg border bg-card p-3.5 hover:shadow-md transition-all"
-                  >
-                    <div className="flex items-center gap-3">
-                      {scoresLoading ? (
-                        <Skeleton className="h-[56px] w-[56px] rounded-full shrink-0" />
-                      ) : scoreData ? (
-                        <HealthScoreRing
-                          score={scoreData.score}
-                          size={56}
-                          riskLevel={scoreData.riskLevel}
-                        />
-                      ) : (
-                        <div className="flex h-[56px] w-[56px] items-center justify-center rounded-full bg-muted/50 shrink-0">
-                          <span className="text-sm font-bold text-muted-foreground">--</span>
-                        </div>
-                      )}
-                      <div className="flex-1 min-w-0">
-                        <div className="flex items-center gap-1.5">
-                          <p className="text-sm font-semibold truncate">{fullName}</p>
-                          {isHighRisk && (
-                            <span
-                              className={`inline-block h-1.5 w-1.5 rounded-full ${riskLevel === "high" ? "bg-red-500" : "bg-amber-500"}`}
-                            />
-                          )}
-                        </div>
-                        <div className="flex items-center gap-1.5 mt-0.5 text-[11px] text-muted-foreground">
-                          <span>{RELATIONSHIP_LABELS[member.relationship]}</span>
-                          {age && (
-                            <>
-                              <span className="opacity-30">·</span>
-                              <span>{age}</span>
-                            </>
-                          )}
-                        </div>
-                      </div>
-                    </div>
-                    {/* Detail chips */}
-                    <div className="flex items-center gap-1.5 mt-2.5 flex-wrap">
-                      {member.blood_group && (
-                        <span className="text-[10px] font-semibold text-red-600 bg-red-50 px-1.5 py-0.5 rounded">
-                          {member.blood_group}
-                        </span>
-                      )}
-                      {member.bmi && (
-                        <span className="text-[10px] text-muted-foreground bg-muted/50 px-1.5 py-0.5 rounded">
-                          BMI {member.bmi.toFixed(1)}
-                        </span>
-                      )}
-                      {recCount > 0 && (
-                        <span className="text-[10px] text-muted-foreground bg-muted/50 px-1.5 py-0.5 rounded">
-                          {recCount} recs
-                        </span>
-                      )}
-                      {scoreData && scoreData.medications > 0 && (
-                        <span className="text-[10px] text-violet-600 bg-violet-50 px-1.5 py-0.5 rounded">
-                          {scoreData.medications} meds
-                        </span>
-                      )}
-                      {member.allergies && member.allergies.length > 0 && (
-                        <span className="text-[10px] text-amber-600 bg-amber-50 px-1.5 py-0.5 rounded">
-                          {member.allergies.length} allerg
-                          {member.allergies.length !== 1 ? "ies" : "y"}
-                        </span>
-                      )}
-                    </div>
-                  </Link>
-                );
-              })}
-              {/* Add member */}
-              <Link
-                to="/members/new"
-                className="flex items-center justify-center gap-2 rounded-lg border-2 border-dashed border-border/50 py-8 hover:border-primary/30 transition-colors group"
-              >
-                <Plus className="h-5 w-5 text-muted-foreground group-hover:text-primary transition-colors" />
-                <span className="text-sm font-medium text-muted-foreground group-hover:text-foreground transition-colors">
-                  Add Member
-                </span>
-              </Link>
-            </div>
-          </div>
+          {/* Family Health Grid */}
+          <FamilyHealthGrid
+            activeMembers={activeMembers}
+            memberScores={memberScores}
+            scoresLoading={scoresLoading}
+            memberRecordCounts={memberRecordCounts}
+          />
 
           {/* Charts Row */}
           <div className="grid gap-4 md:grid-cols-2">
@@ -777,7 +437,9 @@ export function DashboardContent({
               ) : (
                 <div className="space-y-1.5">
                   {stats.upcomingReminders.slice(0, 4).map((reminder) => {
-                    const isOverdue = new Date(reminder.start_datetime) < new Date();
+                    const isOverdue = reminder.start_datetime
+                      ? new Date(reminder.start_datetime) < new Date()
+                      : false;
                     const memberName = reminder.family_member_id
                       ? memberNames[reminder.family_member_id]
                       : null;
@@ -790,7 +452,9 @@ export function DashboardContent({
                         <div className="min-w-0">
                           <p className="text-xs font-semibold truncate">{reminder.title}</p>
                           <p className="text-[10px] text-muted-foreground mt-0.5">
-                            {formatRelativeTime(reminder.start_datetime)}
+                            {reminder.start_datetime
+                              ? formatRelativeTime(reminder.start_datetime)
+                              : "No date"}
                             {memberName && <span className="ml-1">— {memberName}</span>}
                           </p>
                         </div>

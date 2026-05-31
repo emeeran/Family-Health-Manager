@@ -15,20 +15,7 @@ import useSWR from "swr";
 import { toast } from "sonner";
 import { ErrorState } from "@/components/shared/error-state";
 import type { NotificationResponse } from "@/lib/types/notification";
-
-function relativeTime(date: string | Date): string {
-  const now = new Date();
-  const d = new Date(date);
-  const seconds = Math.floor((now.getTime() - d.getTime()) / 1000);
-  if (seconds < 60) return "Just now";
-  const minutes = Math.floor(seconds / 60);
-  if (minutes < 60) return `${minutes}m ago`;
-  const hours = Math.floor(minutes / 60);
-  if (hours < 24) return `${hours}h ago`;
-  const days = Math.floor(hours / 24);
-  if (days < 7) return `${days}d ago`;
-  return d.toLocaleDateString(undefined, { month: "short", day: "numeric" });
-}
+import { formatRelativeTime } from "@/lib/utils";
 
 function NotificationIcon({ title }: { title: string }) {
   const lower = title.toLowerCase();
@@ -145,7 +132,7 @@ function NotificationsContent({ notifications }: { notifications: NotificationRe
                     <p className="text-sm text-muted-foreground">{notification.message}</p>
                     <p className="text-xs text-muted-foreground/60 mt-1 flex items-center gap-1">
                       <Clock className="h-3 w-3" />
-                      {relativeTime(notification.created_at)}
+                      {formatRelativeTime(notification.created_at)}
                     </p>
                   </div>
                   <div className="flex gap-0.5 shrink-0 opacity-0 group-hover:opacity-100 transition-opacity">

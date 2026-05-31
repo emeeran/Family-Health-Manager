@@ -4,7 +4,6 @@ import {
   Home,
   Users,
   Stethoscope,
-  MessageSquare,
   BellDot,
   Settings,
   CalendarClock,
@@ -17,7 +16,6 @@ import { cn } from "@/lib/utils";
 import { Tooltip, TooltipTrigger, TooltipContent, TooltipProvider } from "@/components/ui/tooltip";
 import { useNotificationCount } from "@/hooks/use-notification-count";
 import { DawnstarLogo } from "@/components/shared/dawnstar-logo";
-import { ChatPopup } from "@/components/shared/chat-popup";
 
 interface NavItem {
   label: string;
@@ -37,8 +35,6 @@ export const Sidebar = memo(function Sidebar() {
     return localStorage.getItem(COLLAPSED_KEY) === "true";
   });
 
-  const [chatOpen, setChatOpen] = useState(false);
-
   useEffect(() => {
     localStorage.setItem(COLLAPSED_KEY, String(collapsed));
   }, [collapsed]);
@@ -55,10 +51,7 @@ export const Sidebar = memo(function Sidebar() {
     { label: "Notifications", href: "/notifications", icon: BellDot, badge: unreadCount },
   ];
 
-  const toolsNav: NavItem[] = [
-    { label: "AI Chat", href: "/conversations", icon: MessageSquare },
-    { label: "Settings", href: "/settings", icon: Settings },
-  ];
+  const toolsNav: NavItem[] = [{ label: "Settings", href: "/settings", icon: Settings }];
 
   function handleNavKeyDown(e: React.KeyboardEvent<HTMLElement>) {
     const links = Array.from(e.currentTarget.querySelectorAll<HTMLAnchorElement>("a[href]"));
@@ -192,20 +185,20 @@ export const Sidebar = memo(function Sidebar() {
             <Tooltip>
               {/* @ts-expect-error Radix TooltipTrigger supports asChild */}
               <TooltipTrigger asChild>
-                <button
-                  onClick={() => setChatOpen(true)}
+                <Link
+                  to="/conversations"
                   className="group flex items-center justify-center w-10 h-10 rounded-lg bg-gradient-to-br from-(--brand-accent)/15 to-(--brand-primary)/10 border border-(--brand-accent)/20 hover:from-(--brand-accent)/25 hover:to-(--brand-primary)/20 hover:border-(--brand-accent)/40 transition-all duration-300"
                 >
                   <Sparkles className="h-4 w-4 text-(--brand-accent)" />
-                </button>
+                </Link>
               </TooltipTrigger>
               <TooltipContent side="right">AI Assistant</TooltipContent>
             </Tooltip>
           </TooltipProvider>
         ) : (
-          <button
-            onClick={() => setChatOpen(true)}
-            className="group w-full text-left rounded-lg bg-gradient-to-r from-(--brand-accent)/12 via-(--brand-primary)/8 to-(--brand-accent)/12 border border-(--brand-accent)/15 px-3 py-2 hover:from-(--brand-accent)/20 hover:via-(--brand-primary)/15 hover:to-(--brand-accent)/20 hover:border-(--brand-accent)/30 transition-all duration-300"
+          <Link
+            to="/conversations"
+            className="group block w-full text-left rounded-lg bg-gradient-to-r from-(--brand-accent)/12 via-(--brand-primary)/8 to-(--brand-accent)/12 border border-(--brand-accent)/15 px-3 py-2 hover:from-(--brand-accent)/20 hover:via-(--brand-primary)/15 hover:to-(--brand-accent)/20 hover:border-(--brand-accent)/30 transition-all duration-300"
           >
             <div className="flex items-center gap-2">
               <div className="flex h-7 w-7 items-center justify-center rounded-md bg-gradient-to-br from-(--brand-accent) to-orange-600 shadow-sm shadow-(--brand-accent)/20">
@@ -213,11 +206,9 @@ export const Sidebar = memo(function Sidebar() {
               </div>
               <p className="text-xs font-semibold text-foreground">AI Assistant</p>
             </div>
-          </button>
+          </Link>
         )}
       </div>
-
-      <ChatPopup open={chatOpen} onOpenChange={setChatOpen} />
     </aside>
   );
 });

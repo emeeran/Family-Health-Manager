@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, memo } from "react";
 
 interface ChartRow {
   date: string;
@@ -12,7 +12,10 @@ interface Hba1cModernChartProps {
 
 const COLORS = ["#6366f1", "#f59e0b", "#10b981", "#ec4899"];
 
-export function Hba1cModernChart({ rows, members }: Hba1cModernChartProps) {
+export const Hba1cModernChart = memo(function Hba1cModernChart({
+  rows,
+  members,
+}: Hba1cModernChartProps) {
   const W = 600;
   const H = 200;
   const pad = { top: 12, right: 12, bottom: 24, left: 32 };
@@ -222,4 +225,4 @@ export function Hba1cModernChart({ rows, members }: Hba1cModernChartProps) {
       )}
     </div>
   );
-}
+});

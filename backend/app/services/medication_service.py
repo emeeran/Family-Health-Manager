@@ -329,3 +329,35 @@ class MedicationService:
         except (json.JSONDecodeError, ValueError):
             pass
         return None
+
+    @staticmethod
+    def count_medications_from_records(records: list) -> dict[str, int]:
+        """Count unique active medications per member from pre-fetched records.
+
+        Groups records by `family_member_id`, deduplicates by base medicine name,
+        and returns a dict mapping member_id (str) → medication count.
+        """
+        member_records: dict[str, list] = {}
+        for r in records:
+            mid = str(r.family_member_id)
+            member_records.setdefault(mid, []).append(r)
+
+        med_counts: dict[str, int] = {}
+        for mid, recs in member_records.items():
+            seen_names: set[str] = set()
+            count = 0
+            for r in recs:
+                parsed = MedicationService._parse_clinical_data(r.clinical_data)
+                if not parsed or parsed.get("_type") != "structured":
+                    continue
+                if parsed.get(MEDICATION_SYNC_KEY) is False:
+                    continue
+                for rx in parsed.get("prescriptions", []):
+                    name = (rx.get("medicine") or "").strip()
+                    if name:
+                        base = name.lower().split()[0]
+                        if base not in seen_names:
+                            seen_names.add(base)
+                            count += 1
+            med_counts[mid] = count
+        return med_counts

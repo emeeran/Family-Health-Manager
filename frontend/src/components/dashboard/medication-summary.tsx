@@ -1,3 +1,4 @@
+import { memo } from "react";
 import { Pill } from "lucide-react";
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -14,7 +15,9 @@ function urgencyCls(days: number): string {
   return "text-emerald-700 bg-emerald-100 border-emerald-200";
 }
 
-export function MedicationSummaryWidget({ summary }: MedicationSummaryWidgetProps) {
+export const MedicationSummaryWidget = memo(function MedicationSummaryWidget({
+  summary,
+}: MedicationSummaryWidgetProps) {
   const { total_active_medications, members_with_medications, refill_reminders } = summary;
   const topRefills = refill_reminders.slice(0, 3);
 
@@ -64,4 +67,4 @@ export function MedicationSummaryWidget({ summary }: MedicationSummaryWidgetProp
       </CardContent>
     </Card>
   );
-}
+});

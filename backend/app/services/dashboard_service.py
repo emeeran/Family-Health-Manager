@@ -1,6 +1,7 @@
 """Dashboard service — aggregates household-level health data for the main dashboard."""
 from __future__ import annotations
 
+import json
 import logging
 from datetime import date, timedelta
 from uuid import UUID
@@ -9,10 +10,13 @@ from sqlalchemy import select, func
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.base import (
+    FamilyMember,
     HealthRecord,
+    Provider,
     Vaccination,
 )
-from app.routers.members import _compute_health_score
+from app.services.health_score_service import compute_health_score as _compute_health_score
+from app.services.health_score_service import get_conditions_count
 from app.services.health_alert_service import HealthAlertService
 from app.services.member_service import MemberService
 from app.services.preventive_care_service import PreventiveCareService
@@ -87,32 +91,51 @@ class DashboardService:
             }
 
         member_ids = [m.id for m in members]
-        # Ensure string IDs for queries that compare against string columns
-        member_ids_str = [str(mid) for mid in member_ids]
 
-        # --- 3. Preventive care recommendations (all members) ---
-        preventive_svc = PreventiveCareService(self.db)
-        all_preventive: list[dict] = []
-        for member in members:
-            recs = await preventive_svc.generate_recommendations(member)
-            for rec in recs:
-                rec["member_id"] = str(member.id)
-                rec["member_name"] = f"{member.first_name} {member.last_name}"
-            all_preventive.extend(recs)
+        # --- 3. Batch medications for all members ---
+        med_result = await self.db.execute(
+            select(HealthRecord)
+            .where(
+                HealthRecord.family_member_id.in_(member_ids),
+                HealthRecord.record_type == "doctor_visit",
+                HealthRecord.is_deleted.is_(False),
+            )
+            .order_by(HealthRecord.record_date.desc())
+        )
+        all_med_records = list(med_result.scalars().all())
 
-        # --- 4. Medications per member ---
-        total_medications = 0
-        members_with_meds = 0
+        # Build per-member medication lists
+        member_medications: dict[str, list[dict]] = {str(mid): [] for mid in member_ids}
+        for r in all_med_records:
+            if not r.clinical_data:
+                continue
+            try:
+                parsed = json.loads(r.clinical_data)
+                if not isinstance(parsed, dict) or parsed.get("_type") != "structured":
+                    continue
+                if parsed.get("_medication_sync") is False:
+                    continue
+                rx_list = parsed.get("prescriptions", [])
+                if not isinstance(rx_list, list):
+                    continue
+                mid = str(r.family_member_id)
+                for rx in rx_list:
+                    med_name = rx.get("medicine", "").strip()
+                    if med_name:
+                        member_medications.setdefault(mid, []).append({
+                            "medicine": med_name,
+                            "dosage": rx.get("dosage", ""),
+                            "duration": rx.get("duration", ""),
+                            "prescribed_date": r.record_date.isoformat() if r.record_date else None,
+                        })
+            except (json.JSONDecodeError, ValueError):
+                continue
+
+        total_medications = sum(len(v) for v in member_medications.values())
+        members_with_meds = sum(1 for v in member_medications.values() if v)
         refill_reminders: list[dict] = []
-        member_medications: dict[str, list[dict]] = {}
-
         for member in members:
-            meds = await member_svc.get_active_medications(member.id)
-            member_medications[str(member.id)] = meds
-            total_medications += len(meds)
-            if meds:
-                members_with_meds += 1
-            # Refill reminders: medications with a duration hint
+            meds = member_medications.get(str(member.id), [])
             for med in meds[:5]:
                 refill_reminders.append({
                     "member_id": str(member.id),
@@ -124,47 +147,63 @@ class DashboardService:
                 })
         refill_reminders = refill_reminders[:5]
 
-        # --- 5. Health scores (batch) ---
+        # --- 4. Batch recent records for all members ---
+        # Fetch the most recent records per member. For efficiency,
+        # we load records ordered by member+date and limit per-member in Python.
+        # Total is bounded: members × 20 = manageable even for large households.
+        batch_records_result = await self.db.execute(
+            select(HealthRecord)
+            .where(
+                HealthRecord.family_member_id.in_(member_ids),
+                HealthRecord.is_deleted.is_(False),
+            )
+            .order_by(HealthRecord.family_member_id, HealthRecord.record_date.desc())
+        )
+        all_records = list(batch_records_result.scalars().all())
+
+        # Group records by member (keep last 20 per member)
+        member_records: dict[str, list] = {}
+        for r in all_records:
+            mid = str(r.family_member_id)
+            if mid not in member_records:
+                member_records[mid] = []
+            if len(member_records[mid]) < 20:
+                member_records[mid].append(r)
+
+        # --- 5. Preventive care + health scores (batch) ---
+        import asyncio
+        preventive_svc = PreventiveCareService(self.db)
+
+        # Run preventive care for all members in parallel
+        async def _member_preventive(m: FamilyMember) -> list[dict]:
+            recs = await preventive_svc.generate_recommendations(m)
+            for rec in recs:
+                rec["member_id"] = str(m.id)
+                rec["member_name"] = f"{m.first_name} {m.last_name}"
+            return recs
+
+        all_preventive_results = await asyncio.gather(
+            *[_member_preventive(m) for m in members]
+        )
+        all_preventive: list[dict] = []
+        for recs in all_preventive_results:
+            all_preventive.extend(recs)
+
         scores: list[dict] = []
         for member in members:
-            # Compute age
             age = today.year - member.date_of_birth.year - (
                 (today.month, today.day)
                 < (member.date_of_birth.month, member.date_of_birth.day)
             )
 
-            # Count conditions from medical_history_summary
-            conditions_count = 0
-            if member.medical_history_summary:
-                for part in member.medical_history_summary.split("; "):
-                    if part.startswith("Conditions:"):
-                        conditions_count = len(
-                            [
-                                x.strip()
-                                for x in part.replace("Conditions:", "").split(",")
-                                if x.strip()
-                            ]
-                        )
-                        break
+            conditions_count = get_conditions_count(member.medical_history_summary)
 
-            # Recent records for this member (needed for score computation)
-            recs_result = await self.db.execute(
-                select(HealthRecord)
-                .where(
-                    HealthRecord.family_member_id == member.id,
-                    HealthRecord.is_deleted.is_(False),
-                )
-                .order_by(HealthRecord.record_date.desc())
-                .limit(20)
-            )
-            recent_records = list(recs_result.scalars().all())
-
+            recent_records = member_records.get(str(member.id), [])
             meds_list = member_medications.get(str(member.id), [])
             health_score, score_breakdown = _compute_health_score(
                 member, conditions_count, meds_list, recent_records, age
             )
 
-            # Determine risk level from score
             if health_score < 40:
                 risk_level = "high"
             elif health_score <= 65:
@@ -188,7 +227,7 @@ class DashboardService:
                 func.count().label("cnt"),
             )
             .where(
-                HealthRecord.family_member_id.in_(member_ids_str),
+                HealthRecord.family_member_id.in_(member_ids),
                 HealthRecord.is_deleted.is_(False),
                 HealthRecord.record_date >= thirty_days_ago,
             )
@@ -206,26 +245,126 @@ class DashboardService:
         # --- 7. Vaccination status ---
         vacc_result = await self.db.execute(
             select(func.count()).where(
-                Vaccination.family_member_id.in_(member_ids_str),
+                Vaccination.family_member_id.in_(member_ids),
             )
         )
         total_vaccinations = vacc_result.scalar() or 0
 
         overdue_vacc_result = await self.db.execute(
             select(func.count()).where(
-                Vaccination.family_member_id.in_(member_ids_str),
+                Vaccination.family_member_id.in_(member_ids),
                 Vaccination.booster_due_date.isnot(None),
                 Vaccination.booster_due_date < today,
             )
         )
         overdue_count = overdue_vacc_result.scalar() or 0
 
-        # --- 8. Risk summary ---
+        # --- 9. Risk summary ---
         risk_summary = {
             "high_risk_members": sum(1 for s in scores if s["risk_level"] == "high"),
             "moderate_risk_members": sum(1 for s in scores if s["risk_level"] == "moderate"),
             "low_risk_members": sum(1 for s in scores if s["risk_level"] == "low"),
         }
+
+        # --- 10. Members list (for frontend display) ---
+        members_data = [
+            {
+                "id": str(m.id),
+                "first_name": m.first_name,
+                "last_name": m.last_name,
+                "date_of_birth": m.date_of_birth.isoformat(),
+                "gender": m.gender.value if hasattr(m.gender, "value") else m.gender,
+                "relationship": m.relationship_type.value if hasattr(m.relationship_type, "value") else m.relationship_type,
+                "blood_group": m.blood_group,
+                "bmi": m.weight_kg and m.height_cm and m.height_cm > 0
+                    and round(m.weight_kg / (m.height_cm / 100) ** 2, 1) or None,
+                "is_active": m.is_active,
+                "allergies_json": m.allergies_json,
+            }
+            for m in members
+        ]
+
+        # --- 11. Providers count ---
+        providers_result = await self.db.execute(
+            select(func.count()).select_from(Provider).where(
+                Provider.household_id == household_id,
+            )
+        )
+        providers_count = providers_result.scalar() or 0
+
+        # --- 12. Unread notifications ---
+        from app.models.base import Reminder, Notification
+        notif_result = await self.db.execute(
+            select(func.count()).select_from(Notification).where(
+                Notification.household_id == household_id,
+                Notification.is_read.is_(False),
+            )
+        )
+        unread_notifications = notif_result.scalar() or 0
+
+        # --- 13. Upcoming reminders ---
+        from datetime import datetime, timezone as _tz
+        now_utc = datetime.now(_tz.utc)
+        rem_result = await self.db.execute(
+            select(Reminder)
+            .where(
+                Reminder.household_id == household_id,
+                Reminder.is_active.is_(True),
+                Reminder.start_datetime >= now_utc,
+            )
+            .order_by(Reminder.start_datetime.asc())
+            .limit(5)
+        )
+        upcoming_reminders = [
+            {
+                "id": str(r.id),
+                "title": r.title,
+                "start_datetime": r.start_datetime.isoformat() if r.start_datetime else None,
+                "reminder_type": r.reminder_type.value if hasattr(r.reminder_type, "value") else r.reminder_type,
+            }
+            for r in rem_result.scalars().all()
+        ]
+
+        # --- 14. Recent records (last 30) ---
+        recent_result = await self.db.execute(
+            select(HealthRecord)
+            .where(
+                HealthRecord.family_member_id.in_(member_ids),
+                HealthRecord.is_deleted.is_(False),
+            )
+            .order_by(HealthRecord.created_at.desc())
+            .limit(30)
+        )
+        recent_records = [
+            {
+                "id": str(r.id),
+                "family_member_id": str(r.family_member_id),
+                "record_type": r.record_type.value if hasattr(r.record_type, "value") else r.record_type,
+                "record_date": r.record_date.isoformat() if r.record_date else None,
+                "diagnosis": r.diagnosis,
+                "clinical_data": r.clinical_data,
+                "is_deleted": r.is_deleted,
+                "created_at": r.created_at.isoformat() if r.created_at else None,
+            }
+            for r in recent_result.scalars().all()
+        ]
+
+        # --- 15. Household name ---
+        from app.models.base import Household
+        hh_result = await self.db.execute(
+            select(Household).where(Household.id == household_id)
+        )
+        household_obj = hh_result.scalar_one_or_none()
+        household_name = household_obj.name if household_obj else "My Family"
+
+        # --- 16. Conversations count ---
+        from app.models.base import Conversation
+        conv_result = await self.db.execute(
+            select(func.count()).select_from(Conversation).where(
+                Conversation.household_id == household_id,
+            )
+        )
+        conversations_count = conv_result.scalar() or 0
 
         return {
             "alerts": alerts_data,
@@ -245,4 +384,11 @@ class DashboardService:
                 "overdue_count": overdue_count,
             },
             "risk_summary": risk_summary,
+            "members": members_data,
+            "household_name": household_name,
+            "providers_count": providers_count,
+            "unread_notifications": unread_notifications,
+            "upcoming_reminders": upcoming_reminders,
+            "recent_records": recent_records,
+            "conversations_count": conversations_count,
         }

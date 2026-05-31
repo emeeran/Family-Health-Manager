@@ -67,7 +67,7 @@ async def test_bulk_delete_multiple_records():
 @pytest.mark.asyncio
 async def test_bulk_delete_endpoint_integration():
     """Test the bulk delete endpoint directly exercises the pop-descending logic."""
-    from app.routers.members import _rebuild_clinical_data
+    from app.routers.medications import _rebuild_clinical_data
 
     parsed = {
         "_type": "structured",

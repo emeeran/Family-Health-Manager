@@ -76,13 +76,6 @@ const NAV_ITEMS: SearchResult[] = [
   },
   {
     type: "navigation",
-    id: "nav-chat",
-    label: "Go to AI Chat",
-    href: "/conversations",
-    icon: <MessageSquare className="h-4 w-4 text-violet-500" />,
-  },
-  {
-    type: "navigation",
     id: "nav-reminders",
     label: "Go to Reminders",
     href: "/reminders",

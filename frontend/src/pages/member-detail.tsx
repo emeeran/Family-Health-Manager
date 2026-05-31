@@ -1,7 +1,7 @@
 import useSWR from "swr";
 import { useParams, useNavigate } from "react-router-dom";
-import { getMemberDashboard } from "@/lib/api/members";
-import { MemberDashboardContent } from "@/components/content/member-dashboard-content";
+import { getMemberDetail } from "@/lib/api/members";
+import { MemberTabs } from "@/components/members/member-tabs";
 import { Link } from "react-router-dom";
 import { useEffect } from "react";
 
@@ -9,10 +9,10 @@ export default function MemberDetailPage() {
   const { memberId } = useParams<{ memberId: string }>();
   const navigate = useNavigate();
 
-  const { data: dashboard, error } = useSWR(
-    memberId ? `member-dashboard-${memberId}` : null,
+  const { data: detail, error } = useSWR(
+    memberId ? `member-detail-${memberId}` : null,
     async () => {
-      return getMemberDashboard(memberId!);
+      return getMemberDetail(memberId!);
     },
     { revalidateOnMount: true, dedupingInterval: 60_000 }
   );
@@ -22,7 +22,7 @@ export default function MemberDetailPage() {
       navigate("/login");
   }, [error, navigate]);
 
-  if (!dashboard) {
+  if (!detail) {
     return (
       <div className="space-y-4">
         <Link to="/members" className="text-sm text-muted-foreground hover:underline">
@@ -35,5 +35,5 @@ export default function MemberDetailPage() {
     );
   }
 
-  return <MemberDashboardContent dashboard={dashboard} />;
+  return <MemberTabs data={detail} />;
 }

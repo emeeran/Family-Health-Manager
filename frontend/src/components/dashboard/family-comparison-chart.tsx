@@ -1,4 +1,4 @@
-import React, { Suspense } from "react";
+import React, { Suspense, memo } from "react";
 import { Users } from "lucide-react";
 import { Card, CardHeader, CardTitle, CardContent } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -83,7 +83,9 @@ const LazyRadarChart = React.lazy(() =>
   }))
 );
 
-export function FamilyComparisonChart({ scores }: FamilyComparisonChartProps) {
+export const FamilyComparisonChart = memo(function FamilyComparisonChart({
+  scores,
+}: FamilyComparisonChartProps) {
   const membersWithScores = scores.filter((s) => s.health_score > 0);
 
   if (membersWithScores.length < 2) return null;
@@ -125,4 +127,4 @@ export function FamilyComparisonChart({ scores }: FamilyComparisonChartProps) {
       </CardContent>
     </Card>
   );
-}
+});

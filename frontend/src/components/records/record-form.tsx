@@ -2,7 +2,6 @@ import { useState, useRef, useEffect, useMemo, useCallback, startTransition } fr
 import { useActionState } from "react";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
-import { z } from "zod";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -15,7 +14,6 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { Badge } from "@/components/ui/badge";
-import { RECORD_TYPE_LABELS, ALLOWED_MIME_TYPES, MAX_FILE_SIZE } from "@/lib/constants";
 import { toDisplayDate, toISODate } from "@/lib/utils";
 import { getConfig, getTables } from "@/lib/record-type-configs";
 import {
@@ -32,21 +30,21 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
-import {
-  saveExtraction,
-  consumeBatch,
-  loadExtraction,
-  getBatchesForType,
-  removeBatch,
-  clearExtraction,
-} from "@/lib/extraction-store";
-
 import { TypeSpecificFields } from "./type-specific-fields";
 import { DynamicTable } from "./dynamic-table";
 import { MedicationSyncDialog } from "./medication-sync-dialog";
+import { useFileExtraction } from "./use-file-extraction";
+import {
+  RECORD_TYPE_OPTIONS,
+  MEDICATION_SYNC_KEY,
+  baseSchema,
+  todayStr,
+  timeAgo,
+} from "./record-form-utils";
+import type { FormValues } from "./record-form-utils";
 import type { RecordType } from "@/lib/types/enums";
 import type { ProviderResponse, ProviderCreate } from "@/lib/types/provider";
-import type { HealthRecordResponse, ExtractionResponse } from "@/lib/types/health-record";
+import type { HealthRecordResponse } from "@/lib/types/health-record";
 import { createProvider } from "@/lib/api/providers";
 import {
   Loader2,
@@ -61,120 +59,6 @@ import {
 } from "lucide-react";
 import { useDirtyWarn } from "@/hooks/use-dirty-warn";
 
-const API_BASE = import.meta.env.VITE_API_URL
-  ? `${import.meta.env.VITE_API_URL}/api/v1`
-  : "/api/v1";
-
-// Static — computed once at module level, never changes
-const RECORD_TYPE_OPTIONS = Object.entries(RECORD_TYPE_LABELS) as [RecordType, string][];
-
-const VALID_RECORD_TYPES = new Set<string>([
-  "doctor_visit",
-  "lab_report",
-  "rx_eyeglass",
-  "blood_glucose",
-  "misc_record",
-  "vitals",
-  "parkinsons_log",
-]);
-
-const EXTRACT_TIMEOUT = 300_000; // 5 min — local models can be slow on complex multi-page PDFs
-const MEDICATION_SYNC_KEY = "_medication_sync";
-const VALID_MED_TYPES = new Set(["Tab", "Cap", "Inj", "Syp", "Cream", "Drops", "Inhaler", "Other"]);
-const VALID_TIMINGS = new Set([
-  "before_food",
-  "after_food",
-  "with_food",
-  "empty_stomach",
-  "bedtime",
-  "sos",
-  "stat",
-]);
-
-/** Normalize various date formats to YYYY-MM-DD, or return null */
-function normalizeDate(val: unknown): string | null {
-  if (!val || typeof val !== "string") return null;
-  const s = val.trim();
-  // Already YYYY-MM-DD
-  if (/^\d{4}-\d{2}-\d{2}$/.test(s)) return s;
-  // DD/MM/YYYY or DD-MM-YYYY
-  const dmy = s.match(/^(\d{1,2})[\/\-](\d{1,2})[\/\-](\d{4})$/);
-  if (dmy) return `${dmy[3]}-${dmy[2].padStart(2, "0")}-${dmy[1].padStart(2, "0")}`;
-  // Try native parse as last resort
-  const d = new Date(s);
-  if (!isNaN(d.getTime())) return d.toISOString().slice(0, 10);
-  return null;
-}
-
-/** Normalize time to HH:MM, handling HH:MM:SS from backend */
-function normalizeTime(val: unknown): string | null {
-  if (!val || typeof val !== "string") return null;
-  const s = val.trim();
-  const m = s.match(/^(\d{1,2}):(\d{2})/);
-  if (!m) return null;
-  const h = Number(m[1]);
-  const mins = Number(m[2]);
-  if (h < 0 || h > 23 || mins < 0 || mins > 59) return null;
-  return `${String(h).padStart(2, "0")}:${String(mins).padStart(2, "0")}`;
-}
-
-function sanitizeText(val: unknown, maxLen = 500): string | null {
-  if (!val || typeof val !== "string") return null;
-  const trimmed = val.trim();
-  if (!trimmed) return null;
-  return trimmed.length > maxLen ? trimmed.slice(0, maxLen) : trimmed;
-}
-
-function validatePrescriptionRow(row: unknown): Record<string, string> | null {
-  if (!row || typeof row !== "object") return null;
-  const r = row as Record<string, unknown>;
-  const medicine = sanitizeText(r.medicine, 200);
-  if (!medicine) return null;
-  return {
-    type: VALID_MED_TYPES.has(r.type as string) ? (r.type as string) : "Tab",
-    medicine,
-    dosage: sanitizeText(r.dosage, 50) || "",
-    duration: sanitizeText(r.duration, 50) || "",
-    timing: VALID_TIMINGS.has(r.timing as string) ? (r.timing as string) : "",
-    note: sanitizeText(r.note, 200) || "",
-  };
-}
-
-function validateLabTestRow(row: unknown): Record<string, string> | null {
-  if (!row || typeof row !== "object") return null;
-  const r = row as Record<string, unknown>;
-  const test_name = sanitizeText(r.test_name, 200);
-  if (!test_name) return null;
-  return {
-    test_name,
-    result: sanitizeText(r.result, 100) || "",
-    ref_value: sanitizeText(r.ref_value, 100) || "",
-    note: sanitizeText(r.note, 200) || "",
-  };
-}
-
-const baseSchema = z.object({
-  record_type: z.enum([
-    "doctor_visit",
-    "lab_report",
-    "rx_eyeglass",
-    "blood_glucose",
-    "hba1c",
-    "misc_record",
-    "vitals",
-    "parkinsons_log",
-  ] as const),
-  record_date: z.string().min(1, "Record date is required"),
-  record_time: z.string().optional(),
-  clinical_data: z.string().optional(),
-  diagnosis: z.string().optional(),
-  prescription_text: z.string().optional(),
-  provider_id: z.string().optional(),
-  next_review_date: z.string().optional(),
-});
-
-type FormValues = z.infer<typeof baseSchema>;
-
 interface RecordFormProps {
   action: (prevState: unknown, formData: FormData) => Promise<unknown>;
   providers: ProviderResponse[];
@@ -185,26 +69,6 @@ interface RecordFormProps {
   defaultType?: RecordType;
   defaultProviderId?: string;
   defaultChiefComplaint?: string;
-}
-
-interface UploadedFile {
-  name: string;
-  stagingId: string;
-}
-
-function todayStr() {
-  const d = new Date();
-  const dd = String(d.getDate()).padStart(2, "0");
-  const mm = String(d.getMonth() + 1).padStart(2, "0");
-  return `${dd}-${mm}-${d.getFullYear()}`;
-}
-
-function timeAgo(ts: number): string {
-  const diff = Date.now() - ts;
-  if (diff < 60000) return "just now";
-  if (diff < 3600000) return `${Math.floor(diff / 60000)}m ago`;
-  if (diff < 86400000) return `${Math.floor(diff / 3600000)}h ago`;
-  return `${Math.floor(diff / 86400000)}d ago`;
 }
 
 export function RecordForm({
@@ -219,24 +83,11 @@ export function RecordForm({
   defaultChiefComplaint,
 }: RecordFormProps) {
   const [state, formAction, isPending] = useActionState<unknown, FormData>(action, null);
-  const [stagingFileIds, setStagingFileIds] = useState<string[]>([]);
-  const [uploadedFiles, setUploadedFiles] = useState<UploadedFile[]>([]);
-  const [extracting, setExtracting] = useState(false);
-  const [extractError, setExtractError] = useState<string | null>(null);
-  const [progress, setProgress] = useState({
-    step: "",
-    pct: 0,
-    substeps: [] as string[],
-    done: [] as string[],
-  });
-  const [_extractedFields, setExtractedFields] = useState<Set<string>>(new Set());
-  const fileInputRef = useRef<HTMLInputElement>(null);
   const [isDragOver, setIsDragOver] = useState(false);
-
-  // Dynamic field state — keyed by table key
   const [customValues, setCustomValues] = useState<Record<string, string>>({});
   const [tableData, setTableData] = useState<Record<string, Record<string, string>[]>>({});
   const [notes, setNotes] = useState("");
+  const [_extractedFields, setExtractedFields] = useState<Set<string>>(new Set());
 
   const [showMedPrompt, setShowMedPrompt] = useState(false);
   const [providerList, setProviderList] = useState<ProviderResponse[]>(providersProp);
@@ -252,7 +103,6 @@ export function RecordForm({
   const [tagInput, setTagInput] = useState("");
   const [tags, setTags] = useState<string[]>(record?.tags ?? []);
 
-  // Sync local provider list when parent data changes
   useEffect(() => setProviderList(providersProp), [providersProp]);
 
   const {
@@ -291,15 +141,45 @@ export function RecordForm({
   const config = recordType ? getConfig(recordType) : null;
   const tables = useMemo(() => (recordType ? getTables(getConfig(recordType)) : []), [recordType]);
 
+  // File extraction hook
+  const {
+    extracting,
+    extractError,
+    setExtractError,
+    progress,
+    uploadedFiles,
+    stagingFileIds,
+    fileInputRef,
+    recentBatches,
+    allAutoFillBatches,
+    handleMultiFileExtract,
+    handleFileDrop,
+    handleTableAutoFill,
+    handleRecentBatchClick,
+    clearExtractionState,
+    clearExtraction,
+    removeBatch,
+    refreshRecentBatches,
+  } = useFileExtraction({
+    memberId,
+    record: record ?? null,
+    recordType,
+    providerList,
+    form: { setValue, getValues, register, watch, reset, formState: { errors, isDirty } } as any,
+    customValues,
+    setCustomValues,
+    tableData,
+    setTableData,
+    setNotes,
+    setExtractedFields,
+  });
+
   const handleAddProvider = useCallback(async () => {
     const name = newProviderName.trim();
     if (!name) return;
     setAddingProvider(true);
     try {
-      const data: ProviderCreate = {
-        name,
-        speciality: newProviderSpeciality.trim() || undefined,
-      };
+      const data: ProviderCreate = { name, speciality: newProviderSpeciality.trim() || undefined };
       const created = await createProvider(data);
       setProviderList((prev) => [...prev, created]);
       setValue("provider_id", created.id);
@@ -308,13 +188,13 @@ export function RecordForm({
       setNewProviderName("");
       setNewProviderSpeciality("");
     } catch {
-      // Silently fail — user can retry
+      /* silently fail */
     } finally {
       setAddingProvider(false);
     }
   }, [newProviderName, newProviderSpeciality, setValue, onProviderCreated]);
 
-  // When editing, deserialize clinical_data into structured fields
+  // When editing, deserialize clinical_data
   useEffect(() => {
     if (record && record.clinical_data) {
       const deserialized = deserializeClinicalData(record.clinical_data);
@@ -331,36 +211,24 @@ export function RecordForm({
     }
   }, [record, setValue]);
 
-  // Track if this is the initial type selection (not a user change)
+  // Reset custom fields when record type changes
   const prevRecordTypeRef = useRef<string | undefined>(undefined);
-
-  // Reset custom fields when record type changes (new records only)
   useEffect(() => {
     if (!record && recordType) {
       const cfg = getConfig(recordType);
       const defaults = getDefaultCustomFields(cfg);
-      // Re-apply any pending extracted fields on top of defaults
-      if (pendingExtractedFields.current) {
-        Object.assign(defaults, pendingExtractedFields.current);
-        pendingExtractedFields.current = null;
-      }
-      // Apply pre-consultation chief complaint if provided
       if (defaultChiefComplaint && "chief_complaint" in defaults) {
         defaults["chief_complaint"] = defaultChiefComplaint;
       }
       setCustomValues(defaults);
-      // Only reset table data on explicit user change, not first selection
       if (prevRecordTypeRef.current !== undefined) {
         setTableData(getDefaultTableData(cfg));
       } else {
-        // First selection — ensure table keys exist but don't wipe existing data
         setTableData((prev) => {
           const defaults = getDefaultTableData(cfg);
           const merged = { ...defaults };
           for (const key of Object.keys(defaults)) {
-            if (prev[key] && prev[key].length > 0) {
-              merged[key] = prev[key];
-            }
+            if (prev[key] && prev[key].length > 0) merged[key] = prev[key];
           }
           return merged;
         });
@@ -370,46 +238,6 @@ export function RecordForm({
     prevRecordTypeRef.current = recordType;
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [recordType, record]);
-
-  // On mount, check sessionStorage for existing extraction data and apply base fields
-  useEffect(() => {
-    if (!memberId || record) return;
-    const stored = loadExtraction(memberId);
-    if (stored && stored.batches.length > 0) {
-      const latestBatch = stored.batches[0];
-      const bf = latestBatch.baseFields;
-      if (bf.record_type && !getValues("record_type")) {
-        setValue("record_type", bf.record_type as RecordType);
-      }
-      if (bf.record_date && !getValues("record_date")) {
-        setValue("record_date", toDisplayDate(bf.record_date));
-      }
-      if (bf.diagnosis && !getValues("diagnosis")) {
-        setValue("diagnosis", bf.diagnosis);
-      }
-      if (bf.next_review_date && !getValues("next_review_date")) {
-        setValue("next_review_date", toDisplayDate(bf.next_review_date));
-      }
-      // Restore custom fields from stored extraction
-      const customFields = ["chief_complaint", "existing_conditions", "investigations"] as const;
-      for (const key of customFields) {
-        const val = bf[key];
-        if (val) {
-          setCustomValues((prev) => (prev[key] ? prev : { ...prev, [key]: val }));
-        }
-      }
-      // Restore provider match
-      if (bf.provider_name && providerList.length > 0 && !getValues("provider_id")) {
-        const match = providerList.find(
-          (p) =>
-            p.name.toLowerCase().includes(bf.provider_name!.toLowerCase()) ||
-            bf.provider_name!.toLowerCase().includes(p.name.toLowerCase())
-        );
-        if (match) setValue("provider_id", match.id);
-      }
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [memberId, record]);
 
   const clinicalDataRef = useRef<HTMLInputElement>(null);
 
@@ -421,152 +249,9 @@ export function RecordForm({
     setTableData((prev) => ({ ...prev, [tableKey]: rows }));
   }
 
-  // Auto-fill batches — single sessionStorage read, memoized
-  const {
-    prescriptionBatches: _prescriptionBatches,
-    labTestBatches: _labTestBatches,
-    eyeglassBatches: _eyeglassBatches,
-    allAutoFillBatches,
-  } = useMemo(() => {
-    if (!memberId)
-      return {
-        prescriptionBatches: [],
-        labTestBatches: [],
-        eyeglassBatches: [],
-        allAutoFillBatches: [],
-      };
-    const prescriptionBatches = getBatchesForType(memberId, "prescriptions");
-    const labTestBatches = getBatchesForType(memberId, "labTests");
-    const eyeglassBatches =
-      recordType === "rx_eyeglass" ? getBatchesForType(memberId, "eyeglass") : [];
-
-    // Aggregate batches relevant to current form tables
-    const relevant: import("@/lib/extraction-store").ExtractionBatch[] = [];
-    for (const tableDef of tables) {
-      if (tableDef.key === "prescriptions") relevant.push(...prescriptionBatches);
-      else if (tableDef.key === "tests" || tableDef.key === "lab_results")
-        relevant.push(...labTestBatches);
-    }
-    if (recordType === "rx_eyeglass") relevant.push(...eyeglassBatches);
-    const seen = new Set<string>();
-    const allAutoFillBatches = relevant.filter((b) => {
-      if (seen.has(b.id)) return false;
-      seen.add(b.id);
-      return true;
-    });
-
-    return {
-      prescriptionBatches: prescriptionBatches,
-      labTestBatches: labTestBatches,
-      eyeglassBatches: eyeglassBatches,
-      allAutoFillBatches,
-    };
-  }, [memberId, recordType, tables]);
-
-  // Handle auto-fill for a specific table
-  function handleTableAutoFill(tableKey: string, batchId: string) {
-    if (!memberId) return;
-
-    const type =
-      tableKey === "prescriptions"
-        ? ("prescriptions" as const)
-        : tableKey === "tests" || tableKey === "lab_results"
-          ? ("labTests" as const)
-          : undefined;
-    if (!type) return;
-
-    const data = consumeBatch(memberId, batchId, type);
-    if (data && Array.isArray(data)) {
-      setTableData((prev) => ({
-        ...prev,
-        [tableKey]: [...(prev[tableKey] || []), ...data],
-      }));
-    }
-    refreshRecentBatches();
-  }
-
-  // Handle eyeglass auto-fill
-  function _handleEyeglassAutoFill(batchId: string) {
-    if (!memberId || recordType !== "rx_eyeglass") return;
-    const data = consumeBatch(memberId, batchId, "eyeglass");
-    if (data && !Array.isArray(data)) {
-      setCustomValues((prev) => {
-        const merged = { ...prev };
-        for (const [k, v] of Object.entries(data)) {
-          if (v && !merged[k]) merged[k] = v;
-        }
-        return merged;
-      });
-    }
-    refreshRecentBatches();
-  }
-
-  // Get recent extraction batches — deferred to avoid hydration mismatch (sessionStorage is client-only)
-  const [recentBatches, setRecentBatches] = useState<
-    import("@/lib/extraction-store").ExtractionBatch[]
-  >([]);
-  const _storeHasData = recentBatches.length > 0;
-
-  const refreshRecentBatches = useCallback(() => {
-    if (!memberId) return;
-    const stored = loadExtraction(memberId);
-    setRecentBatches(stored ? stored.batches : []);
-  }, [memberId]);
-
-  useEffect(() => {
-    if (!memberId || record) return;
-    refreshRecentBatches();
-  }, [memberId, record, refreshRecentBatches]);
-
-  // Handle clicking a recent batch to auto-fill its data
-  function handleRecentBatchClick(batchId: string) {
-    if (!memberId) return;
-    const stored = loadExtraction(memberId);
-    if (!stored) return;
-    const batch = stored.batches.find((b) => b.id === batchId);
-    if (!batch) return;
-
-    // Apply base fields if not already set
-    const bf = batch.baseFields;
-    if (bf.record_date && getValues("record_date") === todayStr()) {
-      setValue("record_date", toDisplayDate(bf.record_date));
-    }
-    if (bf.diagnosis && !getValues("diagnosis")) {
-      setValue("diagnosis", bf.diagnosis);
-    }
-
-    // Consume prescriptions
-    if (batch.prescriptions.length > 0) {
-      const rxData = consumeBatch(memberId, batchId, "prescriptions");
-      if (rxData && Array.isArray(rxData)) {
-        setTableData((prev) => ({
-          ...prev,
-          prescriptions: [...(prev.prescriptions || []), ...rxData],
-        }));
-      }
-    }
-
-    // Consume lab tests
-    if (batch.labTests.length > 0) {
-      const labData = consumeBatch(memberId, batchId, "labTests");
-      if (labData && Array.isArray(labData)) {
-        const labKey =
-          tables.find((t) => t.key === "tests" || t.key === "lab_results")?.key || "lab_results";
-        setTableData((prev) => ({
-          ...prev,
-          [labKey]: [...(prev[labKey] || []), ...labData],
-        }));
-      }
-    }
-
-    refreshRecentBatches();
-  }
-
-  // Get prescription rows from current table data
   const prescriptionRows = (tableData["prescriptions"] || []).filter((row) => row.medicine?.trim());
   const hasPrescriptions = prescriptionRows.length > 0;
 
-  // Serialize clinical data into hidden field
   function serializeToHiddenField() {
     if (clinicalDataRef.current && config && recordType) {
       const serialized = serializeClinicalData(
@@ -577,7 +262,6 @@ export function RecordForm({
       );
       clinicalDataRef.current.value = serialized;
     }
-    // Convert DD-MM-YYYY → YYYY-MM-DD for API
     const dateVal = getValues("record_date");
     if (dateVal) setValue("record_date", toISODate(dateVal));
     const reviewVal = getValues("next_review_date");
@@ -595,53 +279,32 @@ export function RecordForm({
       provider_id: defaultProviderId || "",
       next_review_date: "",
     });
-    setStagingFileIds([]);
-    setUploadedFiles([]);
-    setExtracting(false);
-    setExtractError(null);
-    setProgress({ step: "", pct: 0, substeps: [], done: [] });
-    setExtractedFields(new Set());
+    clearExtractionState();
     setCustomValues({});
     setTableData({});
     setNotes("");
     setTags([]);
     setTagInput("");
-    pendingExtractedFields.current = null;
-    if (memberId) {
-      sessionStorage.removeItem(`extraction_${memberId}`);
-      refreshRecentBatches();
-    }
   }
 
-  // Intercept form submit: serialize structured data, then submit manually
-  // to ensure the FormData includes updated values (React 19 captures
-  // FormData before onSubmit runs, so direct DOM mutations in onSubmit
-  // are missed by the form action).
   function handleSubmit(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault();
     if (isPending || !formRef.current) return;
     serializeToHiddenField();
-
-    // Show prompt for new doctor visits with prescriptions
     if (!record && recordType === "doctor_visit" && hasPrescriptions) {
       setShowMedPrompt(true);
       return;
     }
-
-    // Build fresh FormData from the updated DOM and submit manually
     const formData = new FormData(formRef.current);
     startTransition(() => {
       formAction(formData);
     });
   }
 
-  // Directly submit via formAction (bypasses onSubmit cycle)
   function submitViaAction(updateMedications = true) {
     if (!formRef.current || isPending) return;
     serializeToHiddenField();
     const formData = new FormData(formRef.current);
-
-    // "Save Only" — mark clinical_data so backend medication service skips it
     if (!updateMedications) {
       const clinicalStr = formData.get("clinical_data") as string;
       if (clinicalStr) {
@@ -652,518 +315,14 @@ export function RecordForm({
             formData.set("clinical_data", JSON.stringify(parsed));
           }
         } catch {
-          /* not JSON — leave as-is */
+          /* not JSON */
         }
       }
     }
-
     startTransition(() => {
       formAction(formData);
     });
     setShowMedPrompt(false);
-  }
-
-  function _registerExtracted(fieldName: keyof FormValues) {
-    const reg = register(fieldName);
-    const origOnChange = reg.onChange;
-    return {
-      ...reg,
-      onChange: (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) => {
-        setExtractedFields((prev) => {
-          const next = new Set(prev);
-          next.delete(fieldName);
-          return next;
-        });
-        return origOnChange?.(e);
-      },
-    };
-  }
-
-  // Pending extracted custom fields — re-applied after recordType reset effect
-  const pendingExtractedFields = useRef<Record<string, string> | null>(null);
-
-  function mergeExtracted(
-    extracted: ExtractionResponse["extracted"],
-    stagingId: string,
-    fileName: string
-  ): boolean {
-    const populated = new Set<string>();
-
-    // ── record_type ──
-    if (extracted.record_type && VALID_RECORD_TYPES.has(extracted.record_type)) {
-      setValue("record_type", extracted.record_type as RecordType);
-      populated.add("record_type");
-    }
-
-    // ── record_date ──
-    const dateISO = normalizeDate(extracted.record_date);
-    if (dateISO) {
-      setValue("record_date", toDisplayDate(dateISO));
-      populated.add("record_date");
-    }
-
-    // ── record_time (backend may return HH:MM:SS) ──
-    const timeStr = normalizeTime(extracted.record_time);
-    if (timeStr) {
-      setValue("record_time", timeStr);
-      populated.add("record_time");
-    }
-
-    // ── next_review_date (accept any valid date, past or future) ──
-    const reviewISO = normalizeDate(extracted.next_review_date);
-    if (reviewISO) {
-      setValue("next_review_date", toDisplayDate(reviewISO));
-      populated.add("next_review_date");
-    }
-
-    // ── Text fields (append-style) ──
-    const diag = sanitizeText(extracted.diagnosis);
-    if (diag) {
-      const existing = getValues("diagnosis") || "";
-      setValue("diagnosis", existing ? `${existing}; ${diag}` : diag);
-      populated.add("diagnosis");
-    }
-    const clinData = sanitizeText(extracted.clinical_data, 5000);
-    if (clinData) {
-      const existing = getValues("clinical_data") || "";
-      setValue("clinical_data", existing ? `${existing}\n\n${clinData}` : clinData);
-      populated.add("clinical_data");
-    }
-    const rxText = sanitizeText(extracted.prescription_text, 2000);
-    if (rxText) {
-      const existing = getValues("prescription_text") || "";
-      setValue("prescription_text", existing ? `${existing}\n\n${rxText}` : rxText);
-      populated.add("prescription_text");
-    }
-
-    // ── Provider matching ──
-    const provName = sanitizeText(extracted.provider_name, 200);
-    if (provName && providerList.length > 0) {
-      const lower = provName.toLowerCase();
-      const match = providerList.find((p) => {
-        const pLower = p.name.toLowerCase();
-        return (
-          (pLower.length >= 3 && lower.includes(pLower.slice(0, Math.min(pLower.length, 8)))) ||
-          (lower.length >= 3 && pLower.includes(lower.slice(0, Math.min(lower.length, 8))))
-        );
-      });
-      if (match) {
-        setValue("provider_id", match.id);
-        populated.add("provider_id");
-      }
-    }
-
-    // ── Custom text fields ──
-    const customFieldMap: Record<string, string | null> = {
-      chief_complaint: sanitizeText(extracted.chief_complaint),
-      existing_conditions: sanitizeText(extracted.existing_conditions),
-      investigations: sanitizeText(extracted.investigations),
-    };
-    const pendingCustom: Record<string, string> = {};
-    for (const [fieldKey, val] of Object.entries(customFieldMap)) {
-      if (val) {
-        pendingCustom[fieldKey] = val;
-        populated.add(fieldKey);
-      }
-    }
-    pendingExtractedFields.current = Object.keys(pendingCustom).length > 0 ? pendingCustom : null;
-    if (Object.keys(pendingCustom).length > 0) {
-      setCustomValues((prev) => ({ ...prev, ...pendingCustom }));
-    }
-
-    // ── Prescription table rows ──
-    if (Array.isArray(extracted.prescriptions) && extracted.prescriptions.length > 0) {
-      const validRows = extracted.prescriptions
-        .map((row) => validatePrescriptionRow(row))
-        .filter(Boolean) as Record<string, string>[];
-      if (validRows.length > 0) {
-        setTableData((prev) => ({
-          ...prev,
-          prescriptions: [...(prev.prescriptions || []), ...validRows],
-        }));
-        populated.add("prescriptions");
-      }
-    }
-
-    // ── Lab test table rows ──
-    if (Array.isArray(extracted.lab_tests) && extracted.lab_tests.length > 0) {
-      const validRows = extracted.lab_tests
-        .map((row) => validateLabTestRow(row))
-        .filter(Boolean) as Record<string, string>[];
-      if (validRows.length > 0) {
-        setTableData((prev) => {
-          const labKey =
-            tables.find((t) => t.key === "tests" || t.key === "lab_results")?.key || "lab_results";
-          return {
-            ...prev,
-            [labKey]: [...(prev[labKey] || []), ...validRows],
-          };
-        });
-        populated.add("lab_tests");
-      }
-    }
-
-    // ── Eyeglass data ──
-    if (extracted.eyeglass && typeof extracted.eyeglass === "object") {
-      const validEntries = Object.entries(extracted.eyeglass).filter(
-        ([, v]) => typeof v === "string" && v.trim().length > 0
-      );
-      if (validEntries.length >= 2) {
-        const eyeglass: Record<string, string> = {};
-        for (const [k, v] of validEntries) eyeglass[k] = (v as string).trim();
-        setCustomValues((prev) => {
-          const merged = { ...prev };
-          for (const [k, v] of Object.entries(eyeglass)) {
-            if (v && !merged[k]) merged[k] = v;
-          }
-          return merged;
-        });
-        populated.add("eyeglass");
-      }
-    }
-
-    // ── Persist to sessionStorage ──
-    if (memberId) {
-      saveExtraction(memberId, {
-        fileName,
-        prescriptions: Array.isArray(extracted.prescriptions)
-          ? (extracted.prescriptions.map(validatePrescriptionRow).filter(Boolean) as Record<
-              string,
-              string
-            >[])
-          : [],
-        labTests: Array.isArray(extracted.lab_tests)
-          ? (extracted.lab_tests.map(validateLabTestRow).filter(Boolean) as Record<
-              string,
-              string
-            >[])
-          : [],
-        eyeglass: extracted.eyeglass || null,
-        baseFields: {
-          record_type:
-            extracted.record_type && VALID_RECORD_TYPES.has(extracted.record_type)
-              ? extracted.record_type
-              : undefined,
-          record_date: dateISO || undefined,
-          provider_name: provName || undefined,
-          diagnosis: diag || undefined,
-          next_review_date: reviewISO || undefined,
-          chief_complaint: customFieldMap.chief_complaint || undefined,
-          existing_conditions: customFieldMap.existing_conditions || undefined,
-          investigations: customFieldMap.investigations || undefined,
-        },
-      });
-      refreshRecentBatches();
-    }
-
-    if (populated.size > 0) {
-      setExtractedFields((prev) => {
-        const next = new Set(prev);
-        populated.forEach((f) => next.add(f));
-        return next;
-      });
-    }
-    setStagingFileIds((prev) => [...prev, stagingId]);
-    setUploadedFiles((prev) => [...prev, { name: fileName, stagingId }]);
-    return populated.size > 0;
-  }
-
-  function appendExtractError(fileName: string, reason?: string) {
-    const msg = reason || "unexpected error";
-    setExtractError((prev) => (prev ? `${prev}; ${fileName}: ${msg}` : `${fileName}: ${msg}`));
-  }
-
-  async function extractFile(file: File): Promise<{ data?: ExtractionResponse; error?: string }> {
-    const formData = new FormData();
-    formData.append("file", file);
-
-    const controller = new AbortController();
-    const timer = setTimeout(() => controller.abort(), EXTRACT_TIMEOUT);
-
-    try {
-      const response = await fetch(`${API_BASE}/members/${memberId}/records/extract`, {
-        method: "POST",
-        body: formData,
-        credentials: "include",
-        signal: controller.signal,
-      });
-      if (!response.ok) {
-        const body = await response.json().catch(() => null);
-        const msg =
-          body?.detail ||
-          body?.message ||
-          (response.status === 401
-            ? "Session expired — please log in again"
-            : response.status === 413
-              ? "File too large for the server"
-              : response.status >= 500
-                ? "Server error — please try again"
-                : "Extraction failed");
-        return { error: msg };
-      }
-      const result: ExtractionResponse = await response.json();
-      return { data: result };
-    } catch (e) {
-      if (controller.signal.aborted) {
-        return {
-          error:
-            "Extraction timed out — the document may be too large or complex. Try a smaller file.",
-        };
-      }
-      if (e instanceof TypeError && e.message === "Failed to fetch") {
-        return { error: "Network error — check your connection and try again." };
-      }
-      return { error: e instanceof Error ? e.message : "Extraction failed" };
-    } finally {
-      clearTimeout(timer);
-    }
-  }
-
-  async function handleMultiFileExtract() {
-    if (!memberId || !fileInputRef.current?.files?.length) return;
-
-    const files = Array.from(fileInputRef.current.files);
-
-    for (const file of files) {
-      if (!ALLOWED_MIME_TYPES.includes(file.type as (typeof ALLOWED_MIME_TYPES)[number])) {
-        setExtractError(`Invalid file type: ${file.name}. Accepted: PDF, JPEG, PNG.`);
-        return;
-      }
-      if (file.size > MAX_FILE_SIZE) {
-        setExtractError(`File too large: ${file.name}. Maximum size is 25MB.`);
-        return;
-      }
-    }
-
-    setExtracting(true);
-    setExtractError(null);
-    const allDone: string[] = [];
-
-    for (let i = 0; i < files.length; i++) {
-      const file = files[i];
-      const basePct = Math.round((i / files.length) * 100);
-      const filePct = Math.round(100 / files.length);
-
-      // Stage 1: Uploading
-      setProgress({
-        step: `Uploading ${i + 1}/${files.length}: ${file.name}`,
-        pct: basePct + Math.round(filePct * 0.15),
-        substeps: [
-          "Uploading file...",
-          "AI analyzing document...",
-          "Extracting medical data...",
-          "Auto-filling form...",
-        ],
-        done: [...allDone],
-      });
-
-      await new Promise((r) => setTimeout(r, 100));
-
-      try {
-        // Stage 2: AI Processing (fetch in progress)
-        setProgress((prev) => ({
-          ...prev,
-          step: `Analyzing ${i + 1}/${files.length}: ${file.name}`,
-          pct: basePct + Math.round(filePct * 0.4),
-          substeps: [
-            "Uploading file...",
-            "AI analyzing document...",
-            "Extracting medical data...",
-            "Auto-filling form...",
-          ],
-          done: [...allDone, "Uploading file..."],
-        }));
-
-        const result = await extractFile(file);
-
-        if (result.error) {
-          allDone.push(`${file.name}: failed`);
-          setExtractError((prev) =>
-            prev ? `${prev}; ${file.name}: ${result.error}` : `${file.name}: ${result.error}`
-          );
-          continue;
-        }
-
-        if (result.data) {
-          // Stage 3: Extracting data
-          setProgress((prev) => ({
-            ...prev,
-            step: `Extracting ${i + 1}/${files.length}: ${file.name}`,
-            pct: basePct + Math.round(filePct * 0.75),
-            substeps: [
-              "Uploading file...",
-              "AI analyzing document...",
-              "Extracting medical data...",
-              "Auto-filling form...",
-            ],
-            done: [...allDone, "Uploading file...", "AI analyzing document..."],
-          }));
-
-          await new Promise((r) => setTimeout(r, 50));
-
-          const hadData = mergeExtracted(
-            result.data.extracted,
-            result.data.staging_file_id,
-            file.name
-          );
-
-          // Stage 4: Auto-filling
-          setProgress((prev) => ({
-            ...prev,
-            step: `Auto-filling ${i + 1}/${files.length}: ${file.name}`,
-            pct: basePct + Math.round(filePct * 0.95),
-            substeps: [
-              "Uploading file...",
-              "AI analyzing document...",
-              "Extracting medical data...",
-              "Auto-filling form...",
-            ],
-            done: [
-              ...allDone,
-              "Uploading file...",
-              "AI analyzing document...",
-              "Extracting medical data...",
-            ],
-          }));
-
-          await new Promise((r) => setTimeout(r, 50));
-
-          allDone.push(file.name);
-
-          if (!hadData) {
-            setExtractError((prev) =>
-              prev
-                ? `${prev}; ${file.name}: no readable data found`
-                : `${file.name}: no readable data found in document`
-            );
-          }
-        }
-      } catch (e) {
-        allDone.push(`${file.name}: failed`);
-        appendExtractError(file.name, e instanceof Error ? e.message : undefined);
-      }
-    }
-
-    setProgress({ step: "Complete", pct: 100, substeps: [], done: [] });
-    setExtracting(false);
-    if (fileInputRef.current) fileInputRef.current.value = "";
-  }
-
-  async function handleFileDrop(files: File[]) {
-    if (!memberId || !files.length) return;
-
-    for (const file of files) {
-      if (!ALLOWED_MIME_TYPES.includes(file.type as (typeof ALLOWED_MIME_TYPES)[number])) {
-        setExtractError(`Invalid file type: ${file.name}. Accepted: PDF, JPEG, PNG.`);
-        return;
-      }
-      if (file.size > MAX_FILE_SIZE) {
-        setExtractError(`File too large: ${file.name}. Maximum size is 25MB.`);
-        return;
-      }
-    }
-
-    setExtracting(true);
-    setExtractError(null);
-    const allDone: string[] = [];
-
-    for (let i = 0; i < files.length; i++) {
-      const file = files[i];
-      const basePct = Math.round((i / files.length) * 100);
-      const filePct = Math.round(100 / files.length);
-
-      setProgress({
-        step: `Uploading ${i + 1}/${files.length}: ${file.name}`,
-        pct: basePct + Math.round(filePct * 0.15),
-        substeps: [
-          "Uploading file...",
-          "AI analyzing document...",
-          "Extracting medical data...",
-          "Auto-filling form...",
-        ],
-        done: [...allDone],
-      });
-      await new Promise((r) => setTimeout(r, 100));
-
-      try {
-        setProgress((prev) => ({
-          ...prev,
-          step: `Analyzing ${i + 1}/${files.length}: ${file.name}`,
-          pct: basePct + Math.round(filePct * 0.4),
-          substeps: [
-            "Uploading file...",
-            "AI analyzing document...",
-            "Extracting medical data...",
-            "Auto-filling form...",
-          ],
-          done: [...allDone, "Uploading file..."],
-        }));
-        const result = await extractFile(file);
-
-        if (result.error) {
-          allDone.push(`${file.name}: failed`);
-          setExtractError((prev) =>
-            prev ? `${prev}; ${file.name}: ${result.error}` : `${file.name}: ${result.error}`
-          );
-          continue;
-        }
-        if (result.data) {
-          setProgress((prev) => ({
-            ...prev,
-            step: `Extracting ${i + 1}/${files.length}: ${file.name}`,
-            pct: basePct + Math.round(filePct * 0.75),
-            substeps: [
-              "Uploading file...",
-              "AI analyzing document...",
-              "Extracting medical data...",
-              "Auto-filling form...",
-            ],
-            done: [...allDone, "Uploading file...", "AI analyzing document..."],
-          }));
-          await new Promise((r) => setTimeout(r, 50));
-
-          const hadData = mergeExtracted(
-            result.data.extracted,
-            result.data.staging_file_id,
-            file.name
-          );
-
-          setProgress((prev) => ({
-            ...prev,
-            step: `Auto-filling ${i + 1}/${files.length}: ${file.name}`,
-            pct: basePct + Math.round(filePct * 0.95),
-            substeps: [
-              "Uploading file...",
-              "AI analyzing document...",
-              "Extracting medical data...",
-              "Auto-filling form...",
-            ],
-            done: [
-              ...allDone,
-              "Uploading file...",
-              "AI analyzing document...",
-              "Extracting medical data...",
-            ],
-          }));
-          await new Promise((r) => setTimeout(r, 50));
-          allDone.push(file.name);
-
-          if (!hadData) {
-            setExtractError((prev) =>
-              prev
-                ? `${prev}; ${file.name}: no readable data found`
-                : `${file.name}: no readable data found in document`
-            );
-          }
-        }
-      } catch (e) {
-        allDone.push(`${file.name}: failed`);
-        appendExtractError(file.name, e instanceof Error ? e.message : undefined);
-      }
-    }
-
-    setProgress({ step: "Complete", pct: 100, substeps: [], done: [] });
-    setExtracting(false);
   }
 
   const hasCustomFields = config && config.customFields.length > 0;
@@ -1171,12 +330,9 @@ export function RecordForm({
   const hasStructuredContent = hasCustomFields || hasTables;
   const isDoctorVisit = recordType === "doctor_visit";
 
-  // Memoize filtered config to avoid re-rendering TypeSpecificFields every render
   const typeSpecificConfig = useMemo(() => {
     if (!config) return null;
     if (isDoctorVisit) {
-      // Chief complaint rendered in Visit Details; notes rendered after Diagnosis;
-      // tables (prescription, lab results) rendered at the bottom
       const hiddenKeys = new Set(["chief_complaint", "notes"]);
       return {
         ...config,
@@ -1188,7 +344,6 @@ export function RecordForm({
     return config;
   }, [config, isDoctorVisit]);
 
-  // Warn on navigation if form is dirty
   const tagsChanged = JSON.stringify(tags) !== JSON.stringify(record?.tags ?? []);
   useDirtyWarn(isDirty || tagsChanged || !!recordType, isPending);
 
@@ -1255,7 +410,7 @@ export function RecordForm({
         />
       )}
 
-      {/* ═══ SECTION 1: Upload & Extract ═══ */}
+      {/* ═══ Upload & Extract ═══ */}
       {memberId && !record && (
         <div className="space-y-2">
           <div className="flex items-center justify-between">
@@ -1287,7 +442,6 @@ export function RecordForm({
             }}
           />
 
-          {/* Upload drop zone */}
           <div
             role="button"
             tabIndex={0}
@@ -1317,17 +471,12 @@ export function RecordForm({
               const files = Array.from(e.dataTransfer.files);
               if (files.length) handleFileDrop(files);
             }}
-            className={`flex items-center justify-center gap-2 rounded-md border border-dashed px-3 py-2 text-sm transition-all cursor-pointer ${
-              isDragOver
-                ? "border-primary bg-primary/10"
-                : "border-muted-foreground/20 hover:border-primary/40 hover:bg-primary/5"
-            }`}
+            className={`flex items-center justify-center gap-2 rounded-md border border-dashed px-3 py-2 text-sm transition-all cursor-pointer ${isDragOver ? "border-primary bg-primary/10" : "border-muted-foreground/20 hover:border-primary/40 hover:bg-primary/5"}`}
           >
             <Upload className="h-4 w-4 text-muted-foreground/50" />
             <span className="text-muted-foreground">Drop or click to upload PDF, JPEG, PNG</span>
           </div>
 
-          {/* Progress */}
           {extracting && (
             <div className="rounded-lg border bg-card p-3 space-y-2.5">
               <div className="flex items-center justify-between text-xs">
@@ -1373,7 +522,6 @@ export function RecordForm({
             </div>
           )}
 
-          {/* Extracted files summary */}
           {uploadedFiles.length > 0 && !extracting && (
             <div className="flex items-start gap-2 rounded-lg border border-green-200 bg-green-50 px-3 py-2 dark:border-green-800 dark:bg-green-950">
               <CheckCircle2 className="h-4 w-4 text-green-600 dark:text-green-400 mt-0.5 shrink-0" />
@@ -1394,7 +542,6 @@ export function RecordForm({
             </div>
           )}
 
-          {/* Recent Files — show stored batches */}
           {recentBatches.length > 0 && uploadedFiles.length === 0 && !extracting && (
             <div className="space-y-1.5">
               <div className="flex items-center justify-between">
@@ -1479,13 +626,11 @@ export function RecordForm({
         </div>
       )}
 
-      {/* ═══ SECTION 2: Visit Details ═══ */}
+      {/* ═══ Visit Details ═══ */}
       <div className="space-y-2">
         <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">
           Visit Details
         </p>
-
-        {/* Record type + Date in one row */}
         <div className="grid gap-2 md:grid-cols-2">
           <div className="space-y-0.5">
             <Label className="text-xs">Record Type</Label>
@@ -1533,7 +678,6 @@ export function RecordForm({
           </div>
         </div>
 
-        {/* Provider/Consultant */}
         {config?.schemaFields.provider_id && (
           <div className="space-y-0.5">
             <Label htmlFor="provider_id" className="text-xs">
@@ -1584,7 +728,6 @@ export function RecordForm({
           </div>
         )}
 
-        {/* Add Provider Dialog */}
         <Dialog open={showAddProvider} onOpenChange={setShowAddProvider}>
           <DialogContent className="sm:max-w-sm">
             <DialogHeader>
@@ -1646,7 +789,6 @@ export function RecordForm({
           </DialogContent>
         </Dialog>
 
-        {/* Chief Complaint — prominent, for doctor_visit */}
         {isDoctorVisit && (
           <div className="space-y-0.5">
             <Label className="text-xs">Chief Complaint</Label>
@@ -1661,7 +803,7 @@ export function RecordForm({
         )}
       </div>
 
-      {/* ═══ SECTION 3: Type-specific fields + tables ═══ */}
+      {/* ═══ Type-specific fields + tables ═══ */}
       {typeSpecificConfig && (
         <TypeSpecificFields
           config={typeSpecificConfig}
@@ -1674,7 +816,6 @@ export function RecordForm({
         />
       )}
 
-      {/* Diagnosis — placed after Investigation tables */}
       {config?.schemaFields.diagnosis && (
         <div className="space-y-0.5">
           <Label htmlFor="diagnosis" className="text-xs">
@@ -1689,7 +830,6 @@ export function RecordForm({
         </div>
       )}
 
-      {/* Notes — placed after Diagnosis for doctor visits */}
       {isDoctorVisit && (
         <div className="space-y-0.5">
           <Label className="text-xs">Notes</Label>
@@ -1703,7 +843,6 @@ export function RecordForm({
         </div>
       )}
 
-      {/* Fallback clinical_data textarea for misc_record */}
       {!hasStructuredContent && (
         <div className="space-y-0.5">
           <Label htmlFor="clinical_data" className="text-xs">
@@ -1723,7 +862,6 @@ export function RecordForm({
         </div>
       )}
 
-      {/* Additional Notes for structured types */}
       {hasStructuredContent && !isDoctorVisit && (
         <div className="space-y-0.5">
           <Label htmlFor="additional_notes" className="text-xs">
@@ -1740,7 +878,6 @@ export function RecordForm({
         </div>
       )}
 
-      {/* ═══ SECTION 4: Follow-up ═══ */}
       {config?.schemaFields.next_review_date && (
         <div className="space-y-0.5">
           <Label htmlFor="next_review_date" className="text-xs">
@@ -1796,7 +933,7 @@ export function RecordForm({
         )}
       </div>
 
-      {/* ═══ Prescription & Lab Results (doctor visit — at bottom) ═══ */}
+      {/* Doctor visit prescription & lab tables at bottom */}
       {isDoctorVisit &&
         tables.map((tableDef) => {
           const autoFillDataType =
@@ -1842,7 +979,7 @@ export function RecordForm({
         </Button>
       </div>
 
-      {/* Medication update confirmation dialog */}
+      {/* Medication update confirmation */}
       <Dialog open={showMedPrompt} onOpenChange={setShowMedPrompt}>
         <DialogContent>
           <DialogHeader>
@@ -1887,13 +1024,7 @@ export function RecordForm({
             </table>
           </div>
           <DialogFooter className="gap-2 sm:gap-0">
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={() => {
-                setShowMedPrompt(false);
-              }}
-            >
+            <Button variant="outline" size="sm" onClick={() => setShowMedPrompt(false)}>
               Cancel
             </Button>
             <Button variant="outline" size="sm" onClick={() => submitViaAction(false)}>
@@ -1906,7 +1037,6 @@ export function RecordForm({
         </DialogContent>
       </Dialog>
 
-      {/* Medication Sync Dialog — shown after save when med changes detected */}
       {medSyncDiff && (
         <MedicationSyncDialog
           open={showMedSyncDialog}

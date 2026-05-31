@@ -63,6 +63,40 @@ export interface DashboardSummary {
   record_activity: RecordActivity;
   vaccination_status: VaccinationStatus;
   risk_summary: RiskSummary;
+  // Extended fields (single-call dashboard)
+  members: {
+    id: string;
+    first_name: string;
+    last_name: string;
+    date_of_birth: string;
+    gender: string;
+    relationship: string;
+    blood_group: string | null;
+    bmi: number | null;
+    is_active: boolean;
+    allergies_json: string | null;
+  }[];
+  household_name: string;
+  providers_count: number;
+  unread_notifications: number;
+  upcoming_reminders: {
+    id: string;
+    title: string;
+    start_datetime: string | null;
+    reminder_type: string;
+    family_member_id: string | null;
+  }[];
+  recent_records: {
+    id: string;
+    family_member_id: string;
+    record_type: string;
+    record_date: string | null;
+    diagnosis: string | null;
+    clinical_data: string | null;
+    is_deleted: boolean;
+    created_at: string | null;
+  }[];
+  conversations_count: number;
 }
 
 export interface RiskFactor {

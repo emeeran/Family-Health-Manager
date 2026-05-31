@@ -20,17 +20,9 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { Pencil, Printer, Trash2 } from "lucide-react";
 import { useRecordQuickView } from "./record-quick-view-provider";
 import { toast } from "sonner";
+import { computeAge } from "@/lib/utils";
 import type { HealthRecordResponse } from "@/lib/types/health-record";
 import type { FamilyMemberResponse } from "@/lib/types/member";
-
-function computeAge(dob: string): number {
-  const today = new Date();
-  const birth = new Date(dob);
-  let age = today.getFullYear() - birth.getFullYear();
-  const m = today.getMonth() - birth.getMonth();
-  if (m < 0 || (m === 0 && today.getDate() < birth.getDate())) age--;
-  return age;
-}
 
 export function RecordQuickView() {
   const { recordId, memberId, isOpen, closeQuickView } = useRecordQuickView();

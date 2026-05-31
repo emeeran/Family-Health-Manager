@@ -1,14 +1,29 @@
 """Family member service."""
+import asyncio
 import json
 import logging
-from datetime import datetime, timezone
+from datetime import date, datetime, timezone, timedelta
 from uuid import UUID
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import joinedload
 from app.core.database import update_model
-from app.models.base import FamilyMember, HealthRecord, RecordType, Gender, Relationship
-from app.schemas.family_member import MedicalHistoryQuestionnaire
+from app.models.base import (
+    AIInsight,
+    FamilyMember,
+    HealthRecord,
+    Provider,
+    ProviderAssignment,
+    RecordType,
+    Reminder,
+    Vaccination,
+    Gender,
+    Relationship,
+)
+from app.schemas.family_member import FamilyMemberResponse, MedicalHistoryQuestionnaire
+from app.schemas.provider_assignment import ProviderAssignmentResponse
+from app.services.health_score_service import compute_health_score as _compute_health_score
+from app.services.health_score_service import get_conditions_count, extract_hba1c_history
 
 logger = logging.getLogger(__name__)
 
@@ -200,3 +215,223 @@ class MemberService:
                 })
 
         return medications
+
+    async def get_member_detail(self, household_id: UUID, member_id: UUID) -> dict:
+        """Return aggregated member detail for the detail page.
+
+        Runs all independent queries in parallel via asyncio.gather.
+        """
+        from app.services.preventive_care_service import PreventiveCareService
+
+        member = await self.get_member(household_id, member_id)
+
+        today = date.today()
+        age = today.year - member.date_of_birth.year - (
+            (today.month, today.day) < (member.date_of_birth.month, member.date_of_birth.day)
+        )
+        conditions_count = get_conditions_count(member.medical_history_summary)
+
+        (
+            active_medications,
+            recent_records_raw,
+            assignments_result,
+            hba1c_history,
+            drug_interactions,
+            latest_insight,
+            preconsult_note,
+            reminders_result,
+            vaccinations_result,
+            preventive_recs,
+        ) = await asyncio.gather(
+            self.get_active_medications(member_id),
+            self._detail_recent_records(member_id),
+            self._detail_provider_assignments(member_id, member),
+            self._detail_hba1c_history(member_id),
+            self._detail_drug_interactions(member_id),
+            self._detail_latest_insight(member_id),
+            self._detail_latest_preconsult(member_id),
+            self._detail_upcoming_reminders(member_id),
+            self._detail_vaccinations(member_id),
+            PreventiveCareService(self.db).generate_recommendations(member),
+        )
+
+        recent_records = list(recent_records_raw)
+        health_score, score_breakdown = _compute_health_score(
+            member, conditions_count, active_medications, recent_records, age
+        )
+
+        risk_level = "high" if health_score < 40 else "moderate" if health_score <= 65 else "low"
+
+        return {
+            "member": FamilyMemberResponse.model_validate(member).model_dump(mode="json"),
+            "health_score": health_score,
+            "score_breakdown": score_breakdown,
+            "brief_medical_history": member.medical_history_summary,
+            "active_medications": active_medications,
+            "active_medications_count": len(active_medications),
+            "active_conditions_count": conditions_count,
+            "age": age,
+            "provider_assignments": assignments_result,
+            "risk_assessment": {"level": risk_level, "score": health_score},
+            "hba1c_history": hba1c_history,
+            "drug_interactions": drug_interactions,
+            "latest_insight": latest_insight,
+            "latest_preconsult_note": preconsult_note,
+            "recent_records": self._serialize_recent_records(recent_records),
+            "upcoming_reminders": reminders_result,
+            "vaccinations": vaccinations_result,
+            "preventive_recommendations": preventive_recs,
+        }
+
+    # ── Private detail helpers ──
+
+    async def _detail_recent_records(self, member_id: UUID) -> list[HealthRecord]:
+        result = await self.db.execute(
+            select(HealthRecord)
+            .options(joinedload(HealthRecord.provider))
+            .where(HealthRecord.family_member_id == member_id, HealthRecord.is_deleted.is_(False))
+            .order_by(HealthRecord.record_date.desc())
+            .limit(20)
+        )
+        return list(result.scalars().all())
+
+    @staticmethod
+    def _serialize_recent_records(records: list[HealthRecord]) -> list[dict]:
+        return [
+            {
+                "id": str(r.id),
+                "record_type": r.record_type.value if hasattr(r.record_type, "value") else r.record_type,
+                "record_date": r.record_date.isoformat() if r.record_date else None,
+                "diagnosis": r.diagnosis,
+                "provider_name": r.provider_name,
+                "clinical_data": r.clinical_data,
+            }
+            for r in records
+        ]
+
+    async def _detail_provider_assignments(self, member_id: UUID, member: FamilyMember) -> list[dict]:
+        result = await self.db.execute(
+            select(ProviderAssignment)
+            .where(ProviderAssignment.family_member_id == member_id)
+            .order_by(ProviderAssignment.created_at.desc())
+        )
+        out: list[dict] = []
+        for a in result.scalars().all():
+            prov = await self.db.get(Provider, a.provider_id)
+            out.append(
+                ProviderAssignmentResponse(
+                    id=a.id, provider_id=a.provider_id,
+                    provider_name=prov.name if prov else "Unknown",
+                    family_member_id=a.family_member_id,
+                    family_member_name=f"{member.first_name} {member.last_name}",
+                    uhid=a.uhid, created_at=a.created_at,
+                ).model_dump(mode="json")
+            )
+        return out
+
+    async def _detail_hba1c_history(self, member_id: UUID) -> list[dict]:
+        result = await self.db.execute(
+            select(HealthRecord)
+            .where(
+                HealthRecord.family_member_id == member_id,
+                HealthRecord.record_type.in_([RecordType.BLOOD_GLUCOSE, RecordType.DOCTOR_VISIT, RecordType.LAB_REPORT]),
+                HealthRecord.is_deleted.is_(False),
+            )
+            .order_by(HealthRecord.record_date.asc())
+        )
+        return extract_hba1c_history(list(result.scalars().all()))
+
+    async def _detail_drug_interactions(self, member_id: UUID) -> list[dict]:
+        medications = await self.get_active_medications(member_id)
+        if len(medications) < 2:
+            return []
+        cutoff = datetime.now(timezone.utc) - timedelta(hours=24)
+        result = await self.db.execute(
+            select(AIInsight)
+            .where(AIInsight.prompt == f"__drug_interactions__{member_id}", AIInsight.generated_at >= cutoff)
+            .order_by(AIInsight.generated_at.desc()).limit(1)
+        )
+        cached = result.scalar_one_or_none()
+        if cached:
+            try:
+                interactions = json.loads(cached.response)
+                if isinstance(interactions, list):
+                    return interactions
+            except (json.JSONDecodeError, ValueError):
+                pass
+        return []
+
+    async def _detail_latest_insight(self, member_id: UUID) -> dict | None:
+        result = await self.db.execute(
+            select(AIInsight)
+            .where(AIInsight.prompt.notlike("__drug_interactions__%"), AIInsight.prompt.notlike("__preconsult__%"))
+            .order_by(AIInsight.generated_at.desc()).limit(1)
+        )
+        insight = result.scalar_one_or_none()
+        if not insight:
+            return None
+        return {
+            "id": str(insight.id),
+            "response": insight.response,
+            "provider_used": insight.provider_used,
+            "generated_at": insight.generated_at.isoformat(),
+            "verification": {
+                "status": insight.verification_status,
+                "claims_checked": insight.verification_claims_checked,
+                "verifier_provider": insight.verification_verifier,
+                "summary": insight.verification_summary,
+                "warnings": json.loads(insight.verification_warnings_json) if insight.verification_warnings_json else None,
+                "verified_at": insight.verification_at.isoformat() if insight.verification_at else None,
+            } if insight.verification_status != "pending" or insight.verification_at else {"status": "pending" if (datetime.now(timezone.utc) - insight.generated_at.replace(tzinfo=timezone.utc)).total_seconds() < 300 else "unverifiable"},
+        }
+
+    async def _detail_latest_preconsult(self, member_id: UUID) -> dict | None:
+        result = await self.db.execute(
+            select(AIInsight)
+            .where(AIInsight.prompt.like(f"__preconsult__{member_id}__%"), AIInsight.health_record_id.is_(None))
+            .order_by(AIInsight.generated_at.desc()).limit(1)
+        )
+        insight = result.scalar_one_or_none()
+        if not insight:
+            return None
+        return {
+            "id": str(insight.id),
+            "response": insight.response,
+            "provider_used": insight.provider_used,
+            "generated_at": insight.generated_at.isoformat(),
+            "verification": {
+                "status": insight.verification_status,
+                "claims_checked": insight.verification_claims_checked,
+                "verifier_provider": insight.verification_verifier,
+                "summary": insight.verification_summary,
+                "warnings": json.loads(insight.verification_warnings_json) if insight.verification_warnings_json else None,
+                "verified_at": insight.verification_at.isoformat() if insight.verification_at else None,
+            } if insight.verification_status != "pending" or insight.verification_at else {"status": "pending" if (datetime.now(timezone.utc) - insight.generated_at.replace(tzinfo=timezone.utc)).total_seconds() < 300 else "unverifiable"},
+        }
+
+    async def _detail_upcoming_reminders(self, member_id: UUID) -> list[dict]:
+        now = datetime.now(timezone.utc)
+        result = await self.db.execute(
+            select(Reminder)
+            .where(Reminder.family_member_id == member_id, Reminder.is_active.is_(True), Reminder.start_datetime >= now)
+            .order_by(Reminder.start_datetime.asc()).limit(10)
+        )
+        return [
+            {"id": str(r.id), "title": r.title, "description": r.description,
+             "start_datetime": r.start_datetime.isoformat() if r.start_datetime else None,
+             "reminder_type": r.reminder_type.value if hasattr(r.reminder_type, "value") else r.reminder_type}
+            for r in result.scalars().all()
+        ]
+
+    async def _detail_vaccinations(self, member_id: UUID) -> list[dict]:
+        result = await self.db.execute(
+            select(Vaccination).where(Vaccination.family_member_id == member_id)
+            .order_by(Vaccination.date_administered.desc())
+        )
+        return [
+            {"id": str(v.id), "name": v.name,
+             "date_administered": v.date_administered.isoformat() if v.date_administered else None,
+             "booster_due_date": v.booster_due_date.isoformat() if v.booster_due_date else None,
+             "notes": v.notes}
+            for v in result.scalars().all()
+        ]

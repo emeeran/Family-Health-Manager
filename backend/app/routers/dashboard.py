@@ -16,7 +16,8 @@ from app.models.base import (
     Household,
     Vaccination,
 )
-from app.routers.members import _compute_health_score
+from app.services.health_score_service import compute_health_score as _compute_health_score
+from app.services.health_score_service import get_conditions_count
 from app.services.dashboard_service import DashboardService
 from app.services.member_service import MemberService
 
@@ -57,7 +58,6 @@ async def get_member_comparison(
         return []
 
     member_ids = [m.id for m in members]
-    member_ids_str = [str(mid) for mid in member_ids]
 
     # Aggregate record counts per member
     counts_result = await db.execute(
@@ -66,7 +66,7 @@ async def get_member_comparison(
             func.count().label("total_records"),
         )
         .where(
-            HealthRecord.family_member_id.in_(member_ids_str),
+            HealthRecord.family_member_id.in_(member_ids),
             HealthRecord.is_deleted.is_(False),
         )
         .group_by(HealthRecord.family_member_id)
@@ -79,7 +79,7 @@ async def get_member_comparison(
             Vaccination.family_member_id,
             func.count().label("vaccination_count"),
         ).where(
-            Vaccination.family_member_id.in_(member_ids_str),
+            Vaccination.family_member_id.in_(member_ids),
         )
         .group_by(Vaccination.family_member_id)
     )
@@ -103,18 +103,7 @@ async def get_member_comparison(
         meds = await member_svc.get_active_medications(member.id)
 
         # Conditions count
-        conditions_count = 0
-        if member.medical_history_summary:
-            for part in member.medical_history_summary.split("; "):
-                if part.startswith("Conditions:"):
-                    conditions_count = len(
-                        [
-                            x.strip()
-                            for x in part.replace("Conditions:", "").split(",")
-                            if x.strip()
-                        ]
-                    )
-                    break
+        conditions_count = get_conditions_count(member.medical_history_summary)
 
         # Recent records for health score
         recs_result = await db.execute(
@@ -182,18 +171,7 @@ async def get_member_risk_assessment(
     # Gather data needed for health score
     meds = await member_svc.get_active_medications(member.id)
 
-    conditions_count = 0
-    if member.medical_history_summary:
-        for part in member.medical_history_summary.split("; "):
-            if part.startswith("Conditions:"):
-                conditions_count = len(
-                    [
-                        x.strip()
-                        for x in part.replace("Conditions:", "").split(",")
-                        if x.strip()
-                    ]
-                )
-                break
+    conditions_count = get_conditions_count(member.medical_history_summary)
 
     recs_result = await db.execute(
         select(HealthRecord)
@@ -234,7 +212,7 @@ async def get_member_risk_assessment(
     # Check for overdue vaccinations
     overdue_vacc = await db.execute(
         select(func.count()).where(
-            Vaccination.family_member_id == str(member.id),
+            Vaccination.family_member_id == member.id,
             Vaccination.booster_due_date.isnot(None),
             Vaccination.booster_due_date < today,
         )
@@ -251,7 +229,7 @@ async def get_member_risk_assessment(
     # Check for overdue follow-ups
     overdue_followups = await db.execute(
         select(func.count()).where(
-            HealthRecord.family_member_id == str(member.id),
+            HealthRecord.family_member_id == member.id,
             HealthRecord.is_deleted.is_(False),
             HealthRecord.next_review_date.isnot(None),
             HealthRecord.next_review_date < today,

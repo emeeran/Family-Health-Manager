@@ -9,7 +9,7 @@ import { RecordAttachments } from "@/components/records/record-attachments";
 import { ConfirmDialog } from "@/components/shared/confirm-dialog";
 import { VerificationBadge } from "@/components/shared/verification-badge";
 import { RECORD_TYPE_LABELS, GENDER_LABELS } from "@/lib/constants";
-import { formatDate } from "@/lib/utils";
+import { computeAge, formatDate } from "@/lib/utils";
 import { deleteRecord, getRecord, getRecordInsight } from "@/lib/api/records";
 import { streamRequest } from "@/lib/api-client";
 import { toast } from "sonner";
@@ -20,15 +20,6 @@ import type { FamilyMemberResponse } from "@/lib/types/member";
 interface RecordDetailContentProps {
   record: HealthRecordResponse;
   member: FamilyMemberResponse;
-}
-
-function computeAge(dob: string): number {
-  const today = new Date();
-  const birth = new Date(dob);
-  let age = today.getFullYear() - birth.getFullYear();
-  const m = today.getMonth() - birth.getMonth();
-  if (m < 0 || (m === 0 && today.getDate() < birth.getDate())) age--;
-  return age;
 }
 
 export function RecordDetailContent({ record: initialRecord, member }: RecordDetailContentProps) {

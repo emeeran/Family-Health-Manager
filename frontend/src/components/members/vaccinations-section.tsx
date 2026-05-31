@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, memo } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -19,7 +19,9 @@ function isOverdue(dateStr: string | null): boolean {
   return new Date(dateStr) < new Date();
 }
 
-export function VaccinationsSection({ memberId }: VaccinationsSectionProps) {
+export const VaccinationsSection = memo(function VaccinationsSection({
+  memberId,
+}: VaccinationsSectionProps) {
   const [vaccinations, setVaccinations] = useState<VaccinationResponse[]>([]);
   const [loading, setLoading] = useState(true);
   const [showForm, setShowForm] = useState(false);
@@ -233,4 +235,4 @@ export function VaccinationsSection({ memberId }: VaccinationsSectionProps) {
       />
     </>
   );
-}
+});

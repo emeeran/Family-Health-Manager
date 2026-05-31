@@ -1,3 +1,4 @@
+import { memo } from "react";
 import { AlertTriangle, CheckCircle2, X, Bell } from "lucide-react";
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -26,7 +27,7 @@ const severityConfig = {
   info: { color: "text-blue-600", bg: "bg-blue-50", border: "border-blue-200", icon: Bell },
 } as const;
 
-export function AlertsFeed({ alerts, onDismiss }: AlertsFeedProps) {
+export const AlertsFeed = memo(function AlertsFeed({ alerts, onDismiss }: AlertsFeedProps) {
   const displayed = alerts.slice(0, 5);
   const criticalCount = alerts.filter((a) => a.severity === "critical").length;
 
@@ -88,4 +89,4 @@ export function AlertsFeed({ alerts, onDismiss }: AlertsFeedProps) {
       </CardContent>
     </Card>
   );
-}
+});
