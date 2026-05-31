@@ -62,7 +62,12 @@ export async function apiRequest<T>(path: string, options: ApiOptions = {}): Pro
       const text = await response.text().catch(() => "");
       let error;
       try {
-        error = JSON.parse(text);
+        const parsed = JSON.parse(text);
+        // Normalize FastAPI error format: {"detail": "..."} → {"message": "..."}
+        if (parsed.detail && !parsed.message) {
+          parsed.message = parsed.detail;
+        }
+        error = parsed;
       } catch {
         error = {
           status_code: response.status,
