@@ -514,7 +514,8 @@ class AIService:
 
     async def _ollama_chat_stream(self, model: str, prompt: str) -> AsyncGenerator[str, None]:
         from app.services.ai.providers.ollama import ollama_chat_stream
-        return ollama_chat_stream(model, prompt)
+        async for chunk in ollama_chat_stream(model, prompt):
+            yield chunk
 
     # ---- Internal AI call routing ----
 
