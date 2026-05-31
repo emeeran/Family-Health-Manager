@@ -1,4 +1,4 @@
-import { useState, useRef, useEffect, type KeyboardEvent } from "react";
+import { useState, useEffect, type KeyboardEvent } from "react";
 import { Bot, Send, StopCircle, Plus } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import {
