@@ -1,14 +1,15 @@
 import { useState, useEffect, lazy, Suspense, memo } from "react";
-// Recharts Tooltip formatter callback lacks precise types — use recharts internal types
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { listRecords } from "@/lib/api/records";
+import type { HealthRecordResponse } from "@/lib/types/health-record";
 import type { TooltipPayloadEntry, TooltipValueType } from "recharts";
+
+// Recharts Tooltip formatter callback lacks precise types — use recharts internal types
 type RechartsFormatter = (
   value: TooltipValueType | undefined,
   name: string | number | undefined,
   item: TooltipPayloadEntry
 ) => [string, string];
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { listRecords } from "@/lib/api/records";
-import type { HealthRecordResponse } from "@/lib/types/health-record";
 
 const LazyGlucoseChart = lazy(() =>
   import("recharts").then((mod) => ({
@@ -202,8 +203,8 @@ export const ChronicConditionCharts = memo(function ChronicConditionCharts({
   useEffect(() => {
     // Fetch recent records for glucose and PD types
     Promise.all([
-      listRecords(memberId, { record_type: "blood_glucose" as never, limit: 50 }).catch(() => []),
-      listRecords(memberId, { record_type: "parkinsons_log" as never, limit: 50 }).catch(() => []),
+      listRecords(memberId, { record_type: "blood_glucose", limit: 50 }).catch(() => []),
+      listRecords(memberId, { record_type: "parkinsons_log", limit: 50 }).catch(() => []),
     ]).then(([glucoseRecords, pdRecords]) => {
       setGlucoseData(parseGlucoseRecords(glucoseRecords));
       setPdData(parsePDRecords(pdRecords));
