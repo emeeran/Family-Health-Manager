@@ -51,12 +51,17 @@ async def _get_provider_specialty_context(
     if provider.speciality:
         specialty_section += f"- Specialty: {provider.speciality}\n"
         specialty_focus = (
-            f"\nCRITICAL: This consultation is with a {provider.speciality} specialist. "
-            f"The discussion points MUST be scoped to {provider.speciality}-relevant concerns. "
-            f"Focus on: conditions, medications, lab results, and follow-ups that fall within "
-            f"the {provider.speciality} scope of practice. Only include points from other "
-            f"specialties if they directly affect the {provider.speciality} treatment plan "
-            f"(e.g., drug interactions between {provider.speciality} medications and other drugs).\n"
+            f"\nSPECIALTY FOCUS — CRITICAL:\n"
+            f"This consultation is with a {provider.speciality} specialist. "
+            f"ALL questions MUST be strictly within the {provider.speciality} scope of practice. "
+            f"Generate questions that only a {provider.speciality} specialist would answer — "
+            f"about disease progression, treatment response, medication optimization within their domain, "
+            f"specialist-level investigations, and procedure-related concerns. "
+            f"Only reference conditions, labs, or medications from other specialties if they directly "
+            f"impact the {provider.speciality} treatment plan "
+            f"(e.g., drug interactions, comorbidity complications). "
+            f"Do NOT include general practice questions — this patient needs {provider.speciality}-specific, "
+            f"clinically sharp questions that probe deeper than a GP would go.\n"
         )
     else:
         specialty_focus = (

@@ -71,21 +71,34 @@ COMPREHENSIVE_INSIGHT_PROMPT = (
 )
 
 PRE_CONSULT_PROMPT = (
-    "Generate a list of discussion points for a patient to raise with their doctor during an "
-    "upcoming consultation. Use the patient's medical history, conditions, medications, lab "
-    "results, visit notes, and any reported symptoms."
+    "Generate a list of cryptic, specialty-targeted questions for a patient to raise with their "
+    "doctor during an upcoming consultation. Use the patient's medical history, conditions, "
+    "medications, lab results, visit notes, and any reported symptoms."
     "{specialty_section}"
     "{symptoms_section}\n\n"
-    "OUTPUT: a numbered list of 8-12 concise discussion points. Nothing else — no title, "
+    "OUTPUT: a numbered list of 8-12 questions. Nothing else — no title, "
     "no summary, no sections, no preamble, no closing.\n\n"
-    "Each point: **Topic:** One-sentence discussion point with specific patient data.\n\n"
-    "Cover: medication review, lab interpretation, treatment efficacy, symptom follow-up, "
-    "overdue follow-ups, preventive care, new concerns.\n"
+    "Each question must be CRYPTIC — phrased as a short, specific medical question that hints at "
+    "a deeper concern without spelling it out. The patient should be able to read it aloud to the "
+    "doctor and let the doctor connect the dots.\n\n"
+    "FORMAT per item:\n"
+    "**[Category]** A single sharp question rooted in the patient's actual data.\n\n"
+    "Example styles:\n"
+    '- **Medication Review:** "My last HbA1c was 8.9% on Metformin 500mg BID — should we be looking at dose adjustment or adding something?"\n'
+    '- **Lab Follow-up:** "My fasting glucose jumped from 110 to 142 mg/dL between January and March — what does that trajectory tell us?"\n'
+    '- **Drug Interaction:** "I\'m on both Amlodipine and Metoprolol — is there anything I should watch for with this combination?"\n'
+    '- **Symptom Pattern:** "These headaches started 2 weeks after we increased the dose — could that be related?"\n\n'
+    "The questions MUST be:\n"
+    "- Specialty-relevant (see SPECIALTY FOCUS below)\n"
+    "- Cryptic: specific enough to signal the issue, vague enough to let the doctor interpret\n"
+    "- Rooted in actual patient data: reference drug names, lab values with units/dates, conditions\n"
+    "- Written from the patient's perspective as questions TO the doctor\n"
     "{specialty_focus}"
     "RULES:\n"
-    "- Every point must reference specific data (drug names, lab values with units/dates, conditions).\n"
+    "- Every question must reference specific data (drug names, lab values with units/dates, conditions).\n"
     "- MEDICATION-INDICATION ACCURACY: MetXL/Metoprolol = beta-blocker for HYPERTENSION (NOT for diabetes). "
     "Amlodipine = calcium channel blocker for HYPERTENSION. If unsure about a drug's indication, "
     "say 'indication: review with doctor'. Never fabricate.\n"
-    "- Most urgent points first. No filler. Address each diagnosed condition.\n"
+    "- Most urgent questions first. No filler. Address each diagnosed condition.\n"
+    "- Do NOT explain why the question matters — the question itself should carry the weight.\n"
 )

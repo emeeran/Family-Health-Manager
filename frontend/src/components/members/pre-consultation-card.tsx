@@ -232,8 +232,8 @@ export const PreConsultationCard = memo(function PreConsultationCard({
       </CardHeader>
       <CardContent className="space-y-3">
         <p className="text-sm text-foreground/70">
-          Select which doctor you're visiting and describe your symptoms. The AI will tailor the
-          note to the doctor's specialty.
+          Select which doctor you're visiting and describe your symptoms. The AI will generate
+          cryptic, specialty-focused questions you can ask during the visit.
         </p>
 
         {/* Provider selector */}
@@ -262,7 +262,7 @@ export const PreConsultationCard = memo(function PreConsultationCard({
             </Select>
             {selectedProvider?.speciality && (
               <p className="text-xs text-teal-600 font-medium">
-                Note will be focused on {selectedProvider.speciality}-relevant concerns
+                Questions will be {selectedProvider.speciality}-specific and cryptic
               </p>
             )}
           </div>

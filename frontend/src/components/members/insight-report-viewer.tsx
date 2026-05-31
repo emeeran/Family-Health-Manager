@@ -1,3 +1,4 @@
+import { useEffect } from "react";
 import { Button } from "@/components/ui/button";
 import { VerificationBadge } from "@/components/shared/verification-badge";
 import type { VerificationResult } from "@/lib/types/message";
@@ -165,6 +166,14 @@ export function InsightReport({
   memberGender: string;
   onBack: () => void;
 }) {
+  useEffect(() => {
+    function handleKeyDown(e: KeyboardEvent) {
+      if (e.key === "Escape") onBack();
+    }
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
+  }, [onBack]);
+
   const sections = parseSections(response);
   const genDate = new Date(generatedAt);
   const dateStr = genDate.toLocaleDateString(undefined, {
@@ -373,6 +382,14 @@ export function PreConsultationNoteViewer({
   onBack: () => void;
   onExportPDF: () => void;
 }) {
+  useEffect(() => {
+    function handleKeyDown(e: KeyboardEvent) {
+      if (e.key === "Escape") onBack();
+    }
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
+  }, [onBack]);
+
   const sections = parseSections(response);
   const dateStr = new Date(generatedAt).toLocaleDateString(undefined, {
     year: "numeric",
