@@ -1,6 +1,7 @@
 """Dashboard router — household-level dashboard endpoints."""
 from __future__ import annotations
 
+import asyncio
 import logging
 from datetime import date
 from uuid import UUID
@@ -11,6 +12,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.database import get_db
 from app.core.deps import get_household_from_token
+from app.core.utils import calculate_age
 from app.models.base import (
     HealthRecord,
     Household,
@@ -50,7 +52,6 @@ async def get_member_comparison(
 
     Includes health scores, BMI, medication counts, and record counts.
     """
-    today = date.today()
     member_svc = MemberService(db)
     members = await member_svc.list_members(household.id, is_active=True)
 
@@ -59,39 +60,91 @@ async def get_member_comparison(
 
     member_ids = [m.id for m in members]
 
-    # Aggregate record counts per member
-    counts_result = await db.execute(
-        select(
-            HealthRecord.family_member_id,
-            func.count().label("total_records"),
-        )
-        .where(
-            HealthRecord.family_member_id.in_(member_ids),
-            HealthRecord.is_deleted.is_(False),
-        )
-        .group_by(HealthRecord.family_member_id)
+    # Batch: aggregate record counts, vaccination counts, medications,
+    # and recent records in a few queries instead of N+1 per member.
+    counts_result, vacc_result, med_records_result, all_records_result = await asyncio.gather(
+        # Record counts per member
+        db.execute(
+            select(
+                HealthRecord.family_member_id,
+                func.count().label("total_records"),
+            )
+            .where(
+                HealthRecord.family_member_id.in_(member_ids),
+                HealthRecord.is_deleted.is_(False),
+            )
+            .group_by(HealthRecord.family_member_id)
+        ),
+        # Vaccination counts per member
+        db.execute(
+            select(
+                Vaccination.family_member_id,
+                func.count().label("vaccination_count"),
+            ).where(
+                Vaccination.family_member_id.in_(member_ids),
+            )
+            .group_by(Vaccination.family_member_id)
+        ),
+        # All doctor_visit records for medication extraction
+        db.execute(
+            select(HealthRecord)
+            .where(
+                HealthRecord.family_member_id.in_(member_ids),
+                HealthRecord.record_type == "doctor_visit",
+                HealthRecord.is_deleted.is_(False),
+            )
+            .order_by(HealthRecord.record_date.desc())
+        ),
+        # Recent records for health score (ordered for per-member limiting)
+        db.execute(
+            select(HealthRecord)
+            .where(
+                HealthRecord.family_member_id.in_(member_ids),
+                HealthRecord.is_deleted.is_(False),
+            )
+            .order_by(HealthRecord.family_member_id, HealthRecord.record_date.desc())
+        ),
     )
-    record_counts = {row[0]: row[1] for row in counts_result.all()}
 
-    # Aggregate vaccination counts per member
-    vacc_result = await db.execute(
-        select(
-            Vaccination.family_member_id,
-            func.count().label("vaccination_count"),
-        ).where(
-            Vaccination.family_member_id.in_(member_ids),
-        )
-        .group_by(Vaccination.family_member_id)
-    )
+    record_counts = {row[0]: row[1] for row in counts_result.all()}
     vacc_counts = {row[0]: row[1] for row in vacc_result.all()}
 
-    # Build comparison data per member
+    # Build per-member medication lists from batched doctor_visit records
+    import json as _json
+    member_medications: dict[str, list[dict]] = {}
+    for r in med_records_result.scalars().all():
+        if not r.clinical_data:
+            continue
+        try:
+            parsed = _json.loads(r.clinical_data)
+            if not isinstance(parsed, dict) or parsed.get("_type") != "structured":
+                continue
+            if parsed.get("_medication_sync") is False:
+                continue
+            rx_list = parsed.get("prescriptions", [])
+            if not isinstance(rx_list, list):
+                continue
+            mid = str(r.family_member_id)
+            for rx in rx_list:
+                med_name = rx.get("medicine", "").strip()
+                if med_name:
+                    member_medications.setdefault(mid, []).append(rx)
+        except (_json.JSONDecodeError, ValueError):
+            continue
+
+    # Group recent records per member (keep last 20)
+    member_records: dict[str, list] = {}
+    for r in all_records_result.scalars().all():
+        mid = str(r.family_member_id)
+        if mid not in member_records:
+            member_records[mid] = []
+        if len(member_records[mid]) < 20:
+            member_records[mid].append(r)
+
+    # Build comparison data per member (no per-member DB queries)
     comparison = []
     for member in members:
-        age = today.year - member.date_of_birth.year - (
-            (today.month, today.day)
-            < (member.date_of_birth.month, member.date_of_birth.day)
-        )
+        age = calculate_age(member.date_of_birth)
 
         # BMI
         bmi = None
@@ -99,23 +152,9 @@ async def get_member_comparison(
             hm = member.height_cm / 100
             bmi = round(member.weight_kg / (hm * hm), 1)
 
-        # Medication count
-        meds = await member_svc.get_active_medications(member.id)
-
-        # Conditions count
+        meds = member_medications.get(str(member.id), [])
         conditions_count = get_conditions_count(member.medical_history_summary)
-
-        # Recent records for health score
-        recs_result = await db.execute(
-            select(HealthRecord)
-            .where(
-                HealthRecord.family_member_id == member.id,
-                HealthRecord.is_deleted.is_(False),
-            )
-            .order_by(HealthRecord.record_date.desc())
-            .limit(20)
-        )
-        recent_records = list(recs_result.scalars().all())
+        recent_records = member_records.get(str(member.id), [])
 
         health_score, score_breakdown = _compute_health_score(
             member, conditions_count, meds, recent_records, age
@@ -163,10 +202,7 @@ async def get_member_risk_assessment(
         raise HTTPException(status_code=404, detail="Member not found")
 
     today = date.today()
-    age = today.year - member.date_of_birth.year - (
-        (today.month, today.day)
-        < (member.date_of_birth.month, member.date_of_birth.day)
-    )
+    age = calculate_age(member.date_of_birth)
 
     # Gather data needed for health score
     meds = await member_svc.get_active_medications(member.id)

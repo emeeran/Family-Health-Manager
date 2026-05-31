@@ -1,19 +1,24 @@
 """Shared httpx clients, cache, and lock management for AI service."""
 import asyncio
 import logging
+from collections import OrderedDict
 
 import httpx
 
 logger = logging.getLogger(__name__)
 
-# Class-level LRU cache — survives across per-request instances
-member_context_cache: dict[str, str] = {}
+# Proper LRU cache using OrderedDict — survives across per-request instances
+member_context_cache: OrderedDict[str, str] = OrderedDict()
 MAX_CACHE_SIZE = 64
 
 # Shared httpx clients for connection pooling — reused across all instances
 cloud_client: httpx.AsyncClient | None = None
 ollama_client: httpx.AsyncClient | None = None
 _client_lock: asyncio.Lock | None = None
+
+# Connection pool limits for httpx clients
+_CLOUD_LIMITS = httpx.Limits(max_connections=50, max_keepalive_connections=20)
+_OLLAMA_LIMITS = httpx.Limits(max_connections=20, max_keepalive_connections=10)
 
 
 def get_lock() -> asyncio.Lock:
@@ -29,7 +34,7 @@ async def get_cloud_client() -> httpx.AsyncClient:
     global cloud_client
     async with get_lock():
         if cloud_client is None or cloud_client.is_closed:
-            cloud_client = httpx.AsyncClient(timeout=60)
+            cloud_client = httpx.AsyncClient(timeout=60, limits=_CLOUD_LIMITS)
         return cloud_client
 
 
@@ -48,7 +53,7 @@ async def get_ollama_client() -> httpx.AsyncClient:
                 if client._transport is None:
                     client = None
         if client is None or client.is_closed:
-            ollama_client = httpx.AsyncClient(timeout=300)
+            ollama_client = httpx.AsyncClient(timeout=300, limits=_OLLAMA_LIMITS)
         return ollama_client
 
 
@@ -59,13 +64,17 @@ def invalidate_member_cache(member_id: "UUID | str") -> None:  # noqa: F821
 
 
 def put_cache(key: str, value: str) -> None:
-    """Store value in LRU cache, evicting half if at capacity."""
-    if len(member_context_cache) >= MAX_CACHE_SIZE:
-        for old_key in list(member_context_cache.keys())[: MAX_CACHE_SIZE // 2]:
-            del member_context_cache[old_key]
+    """Store value in LRU cache, evicting the least-recently-used entry."""
+    if key in member_context_cache:
+        member_context_cache.move_to_end(key)
+    elif len(member_context_cache) >= MAX_CACHE_SIZE:
+        member_context_cache.popitem(last=False)
     member_context_cache[key] = value
 
 
 def get_cache(key: str) -> str | None:
-    """Retrieve value from LRU cache, or None if not found."""
-    return member_context_cache.get(key)
+    """Retrieve value from LRU cache, promoting it as most-recently-used."""
+    if key in member_context_cache:
+        member_context_cache.move_to_end(key)
+        return member_context_cache[key]
+    return None

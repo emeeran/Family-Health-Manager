@@ -1,4 +1,4 @@
-import React, { useState, useMemo, useEffect, Suspense } from "react";
+import React, { memo, useState, useMemo, useEffect, Suspense } from "react";
 import { Link } from "react-router-dom";
 import {
   Plus,
@@ -95,7 +95,7 @@ interface DashboardContentProps {
 
 /* ── Main Component ── */
 
-export function DashboardContent({
+export const DashboardContent = memo(function DashboardContent({
   members,
   householdName,
   stats,
@@ -150,13 +150,7 @@ export function DashboardContent({
 
   const activeRecords = useMemo(() => records.filter((r) => !r.is_deleted), [records]);
 
-  const recentActivity = useMemo(
-    () =>
-      activeRecords
-        .sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime())
-        .slice(0, 5),
-    [activeRecords]
-  );
+  const recentActivity = useMemo(() => activeRecords.slice(0, 5), [activeRecords]);
 
   const memberRecordCounts = useMemo(() => {
     const counts: Record<string, number> = {};
@@ -528,7 +522,7 @@ export function DashboardContent({
       <QuickAddRecordDialog open={quickAddOpen} onOpenChange={setQuickAddOpen} members={members} />
     </div>
   );
-}
+});
 
 /* ── Skeleton ── */
 

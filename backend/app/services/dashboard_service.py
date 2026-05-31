@@ -1,18 +1,24 @@
 """Dashboard service — aggregates household-level health data for the main dashboard."""
 from __future__ import annotations
 
+import asyncio
 import json
 import logging
-from datetime import date, timedelta
+from datetime import date, datetime, timedelta, timezone as _tz
 from uuid import UUID
 
 from sqlalchemy import select, func
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.core.utils import calculate_age
 from app.models.base import (
+    Conversation,
     FamilyMember,
     HealthRecord,
+    Household,
+    Notification,
     Provider,
+    Reminder,
     Vaccination,
 )
 from app.services.health_score_service import compute_health_score as _compute_health_score
@@ -35,16 +41,20 @@ class DashboardService:
 
         Aggregates alerts, preventive care, medications, health scores,
         record activity, vaccinations, and risk levels for all active members.
+        Queries are parallelized where possible using asyncio.gather.
         """
         today = date.today()
         thirty_days_ago = today - timedelta(days=30)
 
-        # --- 1. Alerts: top 10 undismissed ---
+        # --- Phase 1: Alerts + Members (parallel) ---
         alert_svc = HealthAlertService(self.db)
-        alerts = await alert_svc.list_alerts(
-            household_id=household_id,
-            dismissed=False,
+        member_svc = MemberService(self.db)
+
+        alerts, members = await asyncio.gather(
+            alert_svc.list_alerts(household_id=household_id, dismissed=False),
+            member_svc.list_members(household_id, is_active=True),
         )
+
         alerts_data = [
             {
                 "id": str(a.id),
@@ -60,10 +70,6 @@ class DashboardService:
             }
             for a in alerts[:10]
         ]
-
-        # --- 2. Active members ---
-        member_svc = MemberService(self.db)
-        members = await member_svc.list_members(household_id, is_active=True)
 
         if not members:
             return {
@@ -91,22 +97,122 @@ class DashboardService:
             }
 
         member_ids = [m.id for m in members]
+        now_utc = datetime.now(_tz.utc)
+        records_per_member_limit = 20
+        batch_limit = len(member_ids) * records_per_member_limit
 
-        # --- 3. Batch medications for all members ---
-        med_result = await self.db.execute(
-            select(HealthRecord)
-            .where(
-                HealthRecord.family_member_id.in_(member_ids),
-                HealthRecord.record_type == "doctor_visit",
-                HealthRecord.is_deleted.is_(False),
-            )
-            .order_by(HealthRecord.record_date.desc())
+        # --- Phase 2: Batch DB queries (all parallel) ---
+        (
+            med_result,
+            batch_records_result,
+            activity_result,
+            vacc_result,
+            overdue_vacc_result,
+            providers_result,
+            notif_result,
+            rem_result,
+            recent_result,
+            hh_result,
+            conv_result,
+        ) = await asyncio.gather(
+            # 3. Doctor visit records for medications
+            self.db.execute(
+                select(HealthRecord)
+                .where(
+                    HealthRecord.family_member_id.in_(member_ids),
+                    HealthRecord.record_type == "doctor_visit",
+                    HealthRecord.is_deleted.is_(False),
+                )
+                .order_by(HealthRecord.record_date.desc())
+            ),
+            # 4. Recent records per member (bounded limit)
+            self.db.execute(
+                select(HealthRecord)
+                .where(
+                    HealthRecord.family_member_id.in_(member_ids),
+                    HealthRecord.is_deleted.is_(False),
+                )
+                .order_by(HealthRecord.family_member_id, HealthRecord.record_date.desc())
+                .limit(batch_limit)
+            ),
+            # 6. Record activity (last 30 days)
+            self.db.execute(
+                select(
+                    HealthRecord.record_type,
+                    func.count().label("cnt"),
+                )
+                .where(
+                    HealthRecord.family_member_id.in_(member_ids),
+                    HealthRecord.is_deleted.is_(False),
+                    HealthRecord.record_date >= thirty_days_ago,
+                )
+                .group_by(HealthRecord.record_type)
+            ),
+            # 7a. Total vaccinations
+            self.db.execute(
+                select(func.count()).where(
+                    Vaccination.family_member_id.in_(member_ids),
+                )
+            ),
+            # 7b. Overdue vaccinations
+            self.db.execute(
+                select(func.count()).where(
+                    Vaccination.family_member_id.in_(member_ids),
+                    Vaccination.booster_due_date.isnot(None),
+                    Vaccination.booster_due_date < today,
+                )
+            ),
+            # 11. Providers count
+            self.db.execute(
+                select(func.count()).select_from(Provider).where(
+                    Provider.household_id == household_id,
+                )
+            ),
+            # 12. Unread notifications
+            self.db.execute(
+                select(func.count()).select_from(Notification).where(
+                    Notification.household_id == household_id,
+                    Notification.is_read.is_(False),
+                )
+            ),
+            # 13. Upcoming reminders
+            self.db.execute(
+                select(Reminder)
+                .where(
+                    Reminder.household_id == household_id,
+                    Reminder.is_active.is_(True),
+                    Reminder.start_datetime >= now_utc,
+                )
+                .order_by(Reminder.start_datetime.asc())
+                .limit(5)
+            ),
+            # 14. Recent records (last 30)
+            self.db.execute(
+                select(HealthRecord)
+                .where(
+                    HealthRecord.family_member_id.in_(member_ids),
+                    HealthRecord.is_deleted.is_(False),
+                )
+                .order_by(HealthRecord.created_at.desc())
+                .limit(30)
+            ),
+            # 15. Household name
+            self.db.execute(
+                select(Household).where(Household.id == household_id)
+            ),
+            # 16. Conversations count
+            self.db.execute(
+                select(func.count()).select_from(Conversation).where(
+                    Conversation.household_id == household_id,
+                )
+            ),
         )
-        all_med_records = list(med_result.scalars().all())
 
-        # Build per-member medication lists
+        # --- Phase 3: Process batch query results ---
+
+        # 3. Build per-member medication lists
         member_medications: dict[str, list[dict]] = {str(mid): [] for mid in member_ids}
-        for r in all_med_records:
+        for r in med_result.scalars().all():
             if not r.clinical_data:
                 continue
             try:
@@ -147,34 +253,18 @@ class DashboardService:
                 })
         refill_reminders = refill_reminders[:5]
 
-        # --- 4. Batch recent records for all members ---
-        # Fetch the most recent records per member. For efficiency,
-        # we load records ordered by member+date and limit per-member in Python.
-        # Total is bounded: members × 20 = manageable even for large households.
-        batch_records_result = await self.db.execute(
-            select(HealthRecord)
-            .where(
-                HealthRecord.family_member_id.in_(member_ids),
-                HealthRecord.is_deleted.is_(False),
-            )
-            .order_by(HealthRecord.family_member_id, HealthRecord.record_date.desc())
-        )
-        all_records = list(batch_records_result.scalars().all())
-
-        # Group records by member (keep last 20 per member)
+        # 4. Group records by member (keep last N per member)
         member_records: dict[str, list] = {}
-        for r in all_records:
+        for r in batch_records_result.scalars().all():
             mid = str(r.family_member_id)
             if mid not in member_records:
                 member_records[mid] = []
-            if len(member_records[mid]) < 20:
+            if len(member_records[mid]) < records_per_member_limit:
                 member_records[mid].append(r)
 
-        # --- 5. Preventive care + health scores (batch) ---
-        import asyncio
+        # 5. Preventive care (parallel per member)
         preventive_svc = PreventiveCareService(self.db)
 
-        # Run preventive care for all members in parallel
         async def _member_preventive(m: FamilyMember) -> list[dict]:
             recs = await preventive_svc.generate_recommendations(m)
             for rec in recs:
@@ -189,19 +279,15 @@ class DashboardService:
         for recs in all_preventive_results:
             all_preventive.extend(recs)
 
+        # Health scores
         scores: list[dict] = []
         for member in members:
-            age = today.year - member.date_of_birth.year - (
-                (today.month, today.day)
-                < (member.date_of_birth.month, member.date_of_birth.day)
-            )
-
+            age = calculate_age(member.date_of_birth)
             conditions_count = get_conditions_count(member.medical_history_summary)
-
-            recent_records = member_records.get(str(member.id), [])
+            recent_recs = member_records.get(str(member.id), [])
             meds_list = member_medications.get(str(member.id), [])
             health_score, score_breakdown = _compute_health_score(
-                member, conditions_count, meds_list, recent_records, age
+                member, conditions_count, meds_list, recent_recs, age
             )
 
             if health_score < 40:
@@ -220,19 +306,7 @@ class DashboardService:
                 "score_breakdown": score_breakdown,
             })
 
-        # --- 6. Record activity (last 30 days) ---
-        activity_result = await self.db.execute(
-            select(
-                HealthRecord.record_type,
-                func.count().label("cnt"),
-            )
-            .where(
-                HealthRecord.family_member_id.in_(member_ids),
-                HealthRecord.is_deleted.is_(False),
-                HealthRecord.record_date >= thirty_days_ago,
-            )
-            .group_by(HealthRecord.record_type)
-        )
+        # 6. Record activity
         by_type: dict[str, int] = {}
         total_last_30 = 0
         for row in activity_result.all():
@@ -242,31 +316,18 @@ class DashboardService:
             by_type[label] = count
             total_last_30 += count
 
-        # --- 7. Vaccination status ---
-        vacc_result = await self.db.execute(
-            select(func.count()).where(
-                Vaccination.family_member_id.in_(member_ids),
-            )
-        )
+        # 7. Vaccination status
         total_vaccinations = vacc_result.scalar() or 0
-
-        overdue_vacc_result = await self.db.execute(
-            select(func.count()).where(
-                Vaccination.family_member_id.in_(member_ids),
-                Vaccination.booster_due_date.isnot(None),
-                Vaccination.booster_due_date < today,
-            )
-        )
         overdue_count = overdue_vacc_result.scalar() or 0
 
-        # --- 9. Risk summary ---
+        # 9. Risk summary
         risk_summary = {
             "high_risk_members": sum(1 for s in scores if s["risk_level"] == "high"),
             "moderate_risk_members": sum(1 for s in scores if s["risk_level"] == "moderate"),
             "low_risk_members": sum(1 for s in scores if s["risk_level"] == "low"),
         }
 
-        # --- 10. Members list (for frontend display) ---
+        # 10. Members list
         members_data = [
             {
                 "id": str(m.id),
@@ -284,37 +345,9 @@ class DashboardService:
             for m in members
         ]
 
-        # --- 11. Providers count ---
-        providers_result = await self.db.execute(
-            select(func.count()).select_from(Provider).where(
-                Provider.household_id == household_id,
-            )
-        )
+        # 11-16. Scalar + list results
         providers_count = providers_result.scalar() or 0
-
-        # --- 12. Unread notifications ---
-        from app.models.base import Reminder, Notification
-        notif_result = await self.db.execute(
-            select(func.count()).select_from(Notification).where(
-                Notification.household_id == household_id,
-                Notification.is_read.is_(False),
-            )
-        )
         unread_notifications = notif_result.scalar() or 0
-
-        # --- 13. Upcoming reminders ---
-        from datetime import datetime, timezone as _tz
-        now_utc = datetime.now(_tz.utc)
-        rem_result = await self.db.execute(
-            select(Reminder)
-            .where(
-                Reminder.household_id == household_id,
-                Reminder.is_active.is_(True),
-                Reminder.start_datetime >= now_utc,
-            )
-            .order_by(Reminder.start_datetime.asc())
-            .limit(5)
-        )
         upcoming_reminders = [
             {
                 "id": str(r.id),
@@ -324,17 +357,6 @@ class DashboardService:
             }
             for r in rem_result.scalars().all()
         ]
-
-        # --- 14. Recent records (last 30) ---
-        recent_result = await self.db.execute(
-            select(HealthRecord)
-            .where(
-                HealthRecord.family_member_id.in_(member_ids),
-                HealthRecord.is_deleted.is_(False),
-            )
-            .order_by(HealthRecord.created_at.desc())
-            .limit(30)
-        )
         recent_records = [
             {
                 "id": str(r.id),
@@ -348,22 +370,8 @@ class DashboardService:
             }
             for r in recent_result.scalars().all()
         ]
-
-        # --- 15. Household name ---
-        from app.models.base import Household
-        hh_result = await self.db.execute(
-            select(Household).where(Household.id == household_id)
-        )
         household_obj = hh_result.scalar_one_or_none()
         household_name = household_obj.name if household_obj else "My Family"
-
-        # --- 16. Conversations count ---
-        from app.models.base import Conversation
-        conv_result = await self.db.execute(
-            select(func.count()).select_from(Conversation).where(
-                Conversation.household_id == household_id,
-            )
-        )
         conversations_count = conv_result.scalar() or 0
 
         return {

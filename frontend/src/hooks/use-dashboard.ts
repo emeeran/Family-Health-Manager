@@ -4,16 +4,18 @@ import type { DashboardSummary } from "@/lib/types/dashboard";
 
 /**
  * Hook for auto-refreshing dashboard summary data.
- * Polls every 60 seconds so the dashboard widgets stay current.
+ * Polls every 5 minutes so the dashboard widgets stay current.
+ * Uses a shared SWR key so the dashboard page and content component
+ * deduplicate requests automatically.
  */
 export function useDashboardSummary() {
   const { data, error, mutate, isLoading } = useSWR<DashboardSummary>(
-    "dashboard-summary",
+    "dashboard",
     () => getDashboardSummary(),
     {
-      refreshInterval: 60_000,
+      refreshInterval: 300_000,
       revalidateOnFocus: true,
-      dedupingInterval: 15_000,
+      dedupingInterval: 30_000,
     }
   );
 
