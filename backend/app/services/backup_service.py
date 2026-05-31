@@ -411,13 +411,21 @@ class BackupService:
                 errors.append(f"Provider {p.name}: {exc}")
 
     async def _import_assignments(self, items, mode, id_maps, imported, skipped, errors):
+        # Batch lookup for merge mode to avoid N+1 queries
+        existing_ids: set = set()
+        if mode == "merge" and items:
+            all_ids = [a.id for a in items]
+            result = await self.db.execute(
+                select(ProviderAssignment.id).where(ProviderAssignment.id.in_(all_ids))
+            )
+            existing_ids = set(result.scalars().all())
+
         for a in items:
             try:
                 member_id = self._map_id("members", a.family_member_id, id_maps)
                 provider_id = self._map_id("providers", a.provider_id, id_maps)
                 if mode == "merge":
-                    exists = await self.db.execute(select(ProviderAssignment).where(ProviderAssignment.id == a.id))
-                    if exists.scalar_one_or_none():
+                    if a.id in existing_ids:
                         skipped.provider_assignments += 1
                         id_maps.setdefault("assignments", {})[a.id] = a.id
                         continue
@@ -431,13 +439,21 @@ class BackupService:
                 errors.append(f"ProviderAssignment {a.id}: {exc}")
 
     async def _import_records(self, items, mode, id_maps, imported, skipped, errors):
+        # Batch lookup for merge mode to avoid N+1 queries
+        existing_ids: set = set()
+        if mode == "merge" and items:
+            all_ids = [r.id for r in items]
+            result = await self.db.execute(
+                select(HealthRecord.id).where(HealthRecord.id.in_(all_ids))
+            )
+            existing_ids = set(result.scalars().all())
+
         for r in items:
             try:
                 member_id = self._map_id("members", r.family_member_id, id_maps)
                 provider_id = self._map_id("providers", r.provider_id, id_maps) if r.provider_id else None
                 if mode == "merge":
-                    exists = await self.db.execute(select(HealthRecord).where(HealthRecord.id == r.id))
-                    if exists.scalar_one_or_none():
+                    if r.id in existing_ids:
                         skipped.health_records += 1
                         id_maps.setdefault("records", {})[r.id] = r.id
                         continue
@@ -457,12 +473,21 @@ class BackupService:
     async def _import_attachments(self, items, mode, id_maps, zf, imported, skipped, errors):
         storage_path = Path(settings.STORAGE_PATH)
         storage_path.mkdir(parents=True, exist_ok=True)
+
+        # Batch lookup for merge mode to avoid N+1 queries
+        existing_ids: set = set()
+        if mode == "merge" and items:
+            all_ids = [a.id for a in items]
+            result = await self.db.execute(
+                select(Attachment.id).where(Attachment.id.in_(all_ids))
+            )
+            existing_ids = set(result.scalars().all())
+
         for a in items:
             try:
                 record_id = self._map_id("records", a.health_record_id, id_maps)
                 if mode == "merge":
-                    exists = await self.db.execute(select(Attachment).where(Attachment.id == a.id))
-                    if exists.scalar_one_or_none():
+                    if a.id in existing_ids:
                         skipped.attachments += 1
                         id_maps.setdefault("attachments", {})[a.id] = a.id
                         continue
@@ -490,13 +515,21 @@ class BackupService:
                 errors.append(f"Attachment {a.file_name}: {exc}")
 
     async def _import_insights(self, items, mode, id_maps, imported, skipped, errors):
+        # Batch lookup for merge mode to avoid N+1 queries
+        existing_ids: set = set()
+        if mode == "merge" and items:
+            all_ids = [i.id for i in items]
+            result = await self.db.execute(
+                select(AIInsight.id).where(AIInsight.id.in_(all_ids))
+            )
+            existing_ids = set(result.scalars().all())
+
         for i in items:
             try:
                 record_id = self._map_id("records", i.health_record_id, id_maps) if i.health_record_id else None
                 conv_id = self._map_id("conversations", i.conversation_id, id_maps) if i.conversation_id else None
                 if mode == "merge":
-                    exists = await self.db.execute(select(AIInsight).where(AIInsight.id == i.id))
-                    if exists.scalar_one_or_none():
+                    if i.id in existing_ids:
                         skipped.ai_insights += 1
                         continue
                 new_id = self._new_id(mode, i.id, "insights", id_maps)
@@ -511,12 +544,20 @@ class BackupService:
                 errors.append(f"AIInsight {i.id}: {exc}")
 
     async def _import_conversations(self, household_id, items, mode, id_maps, imported, skipped, errors):
+        # Batch lookup for merge mode to avoid N+1 queries
+        existing_ids: set = set()
+        if mode == "merge" and items:
+            all_ids = [c.id for c in items]
+            result = await self.db.execute(
+                select(Conversation.id).where(Conversation.id.in_(all_ids))
+            )
+            existing_ids = set(result.scalars().all())
+
         for c in items:
             try:
                 member_id = self._map_id("members", c.family_member_id, id_maps) if c.family_member_id else None
                 if mode == "merge":
-                    exists = await self.db.execute(select(Conversation).where(Conversation.id == c.id))
-                    if exists.scalar_one_or_none():
+                    if c.id in existing_ids:
                         skipped.conversations += 1
                         id_maps.setdefault("conversations", {})[c.id] = c.id
                         continue
@@ -531,12 +572,20 @@ class BackupService:
                 errors.append(f"Conversation {c.id}: {exc}")
 
     async def _import_messages(self, items, mode, id_maps, imported, skipped, errors):
+        # Batch lookup for merge mode to avoid N+1 queries
+        existing_ids: set = set()
+        if mode == "merge" and items:
+            all_ids = [m.id for m in items]
+            result = await self.db.execute(
+                select(Message.id).where(Message.id.in_(all_ids))
+            )
+            existing_ids = set(result.scalars().all())
+
         for m in items:
             try:
                 conv_id = self._map_id("conversations", m.conversation_id, id_maps)
                 if mode == "merge":
-                    exists = await self.db.execute(select(Message).where(Message.id == m.id))
-                    if exists.scalar_one_or_none():
+                    if m.id in existing_ids:
                         skipped.messages += 1
                         continue
                 new_id = self._new_id(mode, m.id, "messages", id_maps)
@@ -549,12 +598,20 @@ class BackupService:
                 errors.append(f"Message {m.id}: {exc}")
 
     async def _import_reminders(self, household_id, items, mode, id_maps, imported, skipped, errors):
+        # Batch lookup for merge mode to avoid N+1 queries
+        existing_ids: set = set()
+        if mode == "merge" and items:
+            all_ids = [r.id for r in items]
+            result = await self.db.execute(
+                select(Reminder.id).where(Reminder.id.in_(all_ids))
+            )
+            existing_ids = set(result.scalars().all())
+
         for r in items:
             try:
                 member_id = self._map_id("members", r.family_member_id, id_maps) if r.family_member_id else None
                 if mode == "merge":
-                    exists = await self.db.execute(select(Reminder).where(Reminder.id == r.id))
-                    if exists.scalar_one_or_none():
+                    if r.id in existing_ids:
                         skipped.reminders += 1
                         id_maps.setdefault("reminders", {})[r.id] = r.id
                         continue
@@ -572,12 +629,20 @@ class BackupService:
                 errors.append(f"Reminder {r.title}: {exc}")
 
     async def _import_notifications(self, items, mode, id_maps, imported, skipped, errors):
+        # Batch lookup for merge mode to avoid N+1 queries
+        existing_ids: set = set()
+        if mode == "merge" and items:
+            all_ids = [n.id for n in items]
+            result = await self.db.execute(
+                select(Notification.id).where(Notification.id.in_(all_ids))
+            )
+            existing_ids = set(result.scalars().all())
+
         for n in items:
             try:
                 reminder_id = self._map_id("reminders", n.reminder_id, id_maps)
                 if mode == "merge":
-                    exists = await self.db.execute(select(Notification).where(Notification.id == n.id))
-                    if exists.scalar_one_or_none():
+                    if n.id in existing_ids:
                         skipped.notifications += 1
                         continue
                 new_id = self._new_id(mode, n.id, "notifications", id_maps)

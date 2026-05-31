@@ -85,8 +85,12 @@ export function QuickAddRecordDialog({ open, onOpenChange, members }: QuickAddRe
 
   const handleQuickFormSuccess = useCallback(() => {
     handleClose(false);
-    mutate(() => true, undefined, { revalidate: true });
-  }, [handleClose, mutate]);
+    if (selectedMember) {
+      Promise.all([mutate("dashboard"), mutate(`member-detail-${selectedMember.id}`)]);
+    } else {
+      mutate("dashboard");
+    }
+  }, [handleClose, mutate, selectedMember]);
 
   const handleBack = useCallback(() => {
     if (step === "form") {

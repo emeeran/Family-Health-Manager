@@ -1,4 +1,4 @@
-import { useState, useMemo } from "react";
+import { useState, useMemo, memo } from "react";
 import { Link } from "react-router-dom";
 import { Card, CardContent } from "@/components/ui/card";
 import { RecordTypeBadge } from "@/components/records/record-type-badge";
@@ -535,7 +535,7 @@ export function TimelineContent({
 
 /* ── Timeline item ── */
 
-function TimelineItem({
+const TimelineItem = memo(function TimelineItem({
   item,
   memberId,
   isLast,
@@ -606,4 +606,4 @@ function TimelineItem({
       </Card>
     </div>
   );
-}
+});

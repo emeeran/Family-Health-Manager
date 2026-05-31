@@ -8,11 +8,12 @@ from uuid import UUID
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.orm import joinedload
 
 from app.core.database import get_db
 from app.core.deps import get_household_from_token
 from app.models.base import Household, HealthRecord, RecordType
-from app.models.provider import Provider, ProviderAssignment
+from app.models.provider import ProviderAssignment
 from app.schemas.family_member import FamilyMemberResponse
 from app.schemas.provider_assignment import ProviderAssignmentResponse
 from app.services.health_score_service import compute_health_score, get_conditions_count, extract_hba1c_history
@@ -205,6 +206,7 @@ async def get_member_dashboard(
     )
     assignments_coro = db.execute(
         select(ProviderAssignment)
+        .options(joinedload(ProviderAssignment.provider))
         .where(ProviderAssignment.family_member_id == member_id)
         .order_by(ProviderAssignment.created_at.desc())
     )
@@ -221,15 +223,14 @@ async def get_member_dashboard(
 
     recent_records = list(recent_records_result.scalars().all())
 
-    assignments = assignments_result.scalars().all()
+    assignments = assignments_result.scalars().unique().all()
     assignment_responses = []
     for a in assignments:
-        prov = await db.get(Provider, a.provider_id)
         assignment_responses.append(
             ProviderAssignmentResponse(
                 id=a.id,
                 provider_id=a.provider_id,
-                provider_name=prov.name if prov else "Unknown",
+                provider_name=a.provider.name if a.provider else "Unknown",
                 family_member_id=a.family_member_id,
                 family_member_name=f"{member.first_name} {member.last_name}",
                 uhid=a.uhid,

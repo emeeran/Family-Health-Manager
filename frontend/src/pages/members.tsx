@@ -220,7 +220,7 @@ export default function MembersPage() {
       await deleteMember(deleteId);
       toast.success("Member deleted");
       setDeleteOpen(false);
-      swrMutate(() => true, undefined, { revalidate: true });
+      await Promise.all([swrMutate("members"), swrMutate("dashboard")]);
     } catch {
       toast.error("Failed to delete member");
     }

@@ -165,12 +165,14 @@ async def build_member_context(
 
 async def build_medication_summary(db: AsyncSession, member_id: UUID) -> str:
     """Aggregate all medications for a member using MedicationService + prescription_text."""
+    from app.models.base import RecordType
     from app.services.medication_service import MedicationService
 
     med_svc = MedicationService(db)
     all_meds: dict[str, str] = {}  # normalized_name -> formatted line
 
     # 1. Use MedicationService for structured, deduplicated active medications
+    #    This already queries all DOCTOR_VISIT records.
     try:
         active_meds = await med_svc.get_active_medications(member_id)
         for med in active_meds:
@@ -191,16 +193,19 @@ async def build_medication_summary(db: AsyncSession, member_id: UUID) -> str:
     except Exception as exc:
         logger.warning("MedicationService failed for summary: %s", exc)
 
-    # 2. Also scan ALL records for prescriptions in clinical_data (catches non-doctor_visit)
+    # 2. Scan non-DOCTOR_VISIT records for additional prescriptions.
+    #    DOCTOR_VISIT records are already fully handled by MedicationService above,
+    #    so we exclude them to avoid the redundant query.
     result = await db.execute(
         select(HealthRecord.clinical_data, HealthRecord.prescription_text)
         .where(
             HealthRecord.family_member_id == member_id,
+            HealthRecord.record_type != RecordType.DOCTOR_VISIT,
             HealthRecord.is_deleted.is_(False),
         )
     )
     for clinical_data, prescription_text in result.all():
-        # Structured prescriptions from ANY record type
+        # Structured prescriptions from non-doctor_visit record types
         if clinical_data:
             try:
                 data = json.loads(clinical_data)

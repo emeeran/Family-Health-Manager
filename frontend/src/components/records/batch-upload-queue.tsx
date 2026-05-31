@@ -1,4 +1,4 @@
-import { useState, useRef, useCallback, useEffect } from "react";
+import { useState, useRef, useCallback, useEffect, useMemo } from "react";
 import { useNavigate } from "react-router-dom";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
@@ -389,20 +389,23 @@ export function BatchUploadQueue({ memberId, onComplete, initialFiles }: BatchUp
     toast.success("Record removed from queue");
   }, []);
 
-  const savedCount = Array.from(cardStatuses.values()).filter((s) => s === "saved").length;
-  const skippedCount = Array.from(cardStatuses.values()).filter((s) => s === "skipped").length;
-  const dupCount = extractions.filter((e) => e.is_duplicate).length;
-  const errorCount = extractions.filter((e) => !!e.error).length;
-  const pendingCount = extractions.filter((_, i) => {
-    const s = cardStatuses.get(i);
-    return !s || s === "pending" || s === "editing" || s === "error";
-  }).length;
-  const allDone =
-    extractions.length > 0 &&
-    extractions.every((_, i) => {
+  const { savedCount, skippedCount, dupCount, errorCount, pendingCount, allDone } = useMemo(() => {
+    const savedCount = Array.from(cardStatuses.values()).filter((s) => s === "saved").length;
+    const skippedCount = Array.from(cardStatuses.values()).filter((s) => s === "skipped").length;
+    const dupCount = extractions.filter((e) => e.is_duplicate).length;
+    const errorCount = extractions.filter((e) => !!e.error).length;
+    const pendingCount = extractions.filter((_, i) => {
       const s = cardStatuses.get(i);
-      return s === "saved" || s === "skipped";
-    });
+      return !s || s === "pending" || s === "editing" || s === "error";
+    }).length;
+    const allDone =
+      extractions.length > 0 &&
+      extractions.every((_, i) => {
+        const s = cardStatuses.get(i);
+        return s === "saved" || s === "skipped";
+      });
+    return { savedCount, skippedCount, dupCount, errorCount, pendingCount, allDone };
+  }, [cardStatuses, extractions]);
 
   // Track which card to auto-expand (first pending)
   const [activeIndex, setActiveIndex] = useState<number | null>(null);

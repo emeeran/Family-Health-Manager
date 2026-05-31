@@ -10,6 +10,7 @@ from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy import select, func
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.core.cache import cache
 from app.core.database import get_db
 from app.core.deps import get_household_from_token
 from app.core.utils import calculate_age
@@ -37,10 +38,18 @@ async def get_dashboard_summary(
 
     Includes alerts, preventive care recommendations, medication summary,
     health scores with breakdowns, record activity, vaccination status,
-    and risk summary for all active members.
+    and risk summary for all active members.  Cached for 60 seconds per
+    household to reduce repeated DB load.
     """
+    cache_key = f"dashboard_summary:{household.id}"
+    cached = await cache.get_async(cache_key)
+    if cached is not None:
+        return cached
+
     svc = DashboardService(db)
-    return await svc.get_household_summary(household.id)
+    result = await svc.get_household_summary(household.id)
+    await cache.set_async(cache_key, result, ttl=60)
+    return result
 
 
 @router.get("/member-comparison")

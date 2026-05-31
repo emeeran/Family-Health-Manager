@@ -58,7 +58,7 @@ export const ProvidersUhidCard = memo(function ProvidersUhidCard({
   async function handleSave(assignmentId: string) {
     try {
       await updateUhid(memberId, assignmentId, editValue.trim() || null);
-      mutate(() => true, undefined, { revalidate: true });
+      await Promise.all([mutate(`member-detail-${memberId}`), mutate("dashboard")]);
       setEditingId(null);
     } catch {
       toast.error("Failed to update UHID");
@@ -73,7 +73,11 @@ export const ProvidersUhidCard = memo(function ProvidersUhidCard({
         provider_id: newProviderId,
         uhid: newUhid.trim() || null,
       });
-      mutate(() => true, undefined, { revalidate: true });
+      await Promise.all([
+        mutate(`member-detail-${memberId}`),
+        mutate("providers"),
+        mutate("dashboard"),
+      ]);
       setAdding(false);
       setNewProviderId("");
       setNewUhid("");

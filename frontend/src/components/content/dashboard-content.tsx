@@ -1,4 +1,4 @@
-import React, { memo, useState, useMemo, useEffect, Suspense } from "react";
+import React, { memo, useState, useMemo, useCallback, useEffect, Suspense } from "react";
 import { Link } from "react-router-dom";
 import {
   Plus,
@@ -152,6 +152,11 @@ export const DashboardContent = memo(function DashboardContent({
 
   const recentActivity = useMemo(() => activeRecords.slice(0, 5), [activeRecords]);
 
+  const recentPreviews = useMemo(
+    () => recentActivity.map((r) => extractPreview(r.clinical_data, r.diagnosis)),
+    [recentActivity]
+  );
+
   const memberRecordCounts = useMemo(() => {
     const counts: Record<string, number> = {};
     for (const r of activeRecords)
@@ -179,16 +184,19 @@ export const DashboardContent = memo(function DashboardContent({
     if (summary?.alerts) setAlerts(summary.alerts);
   }, [summary]);
 
-  async function handleDismissAlert(alertId: string) {
-    try {
-      await dismissHealthAlert(alertId);
-      setAlerts((prev) => prev.filter((a) => a.id !== alertId));
-      toast.success("Alert dismissed");
-      mutateSummary();
-    } catch {
-      toast.error("Failed to dismiss alert");
-    }
-  }
+  const handleDismissAlert = useCallback(
+    async (alertId: string) => {
+      try {
+        await dismissHealthAlert(alertId);
+        setAlerts((prev) => prev.filter((a) => a.id !== alertId));
+        toast.success("Alert dismissed");
+        mutateSummary();
+      } catch {
+        toast.error("Failed to dismiss alert");
+      }
+    },
+    [mutateSummary]
+  );
 
   const vacStatus = summary?.vaccination_status;
 
@@ -479,8 +487,8 @@ export const DashboardContent = memo(function DashboardContent({
                   </Link>
                 </div>
                 <div className="space-y-0.5">
-                  {recentActivity.map((record) => {
-                    const preview = extractPreview(record.clinical_data, record.diagnosis);
+                  {recentActivity.map((record, index) => {
+                    const preview = recentPreviews[index];
                     return (
                       <button
                         key={record.id}

@@ -318,6 +318,7 @@ async def create_record(
             logger.warning("Failed to create follow-up reminder for record %s", record.id)
 
     await cache.invalidate_async(f"household_records:{household.id}")
+    await cache.invalidate_async(f"dashboard_summary:{household.id}")
     return record
 
 
@@ -367,6 +368,7 @@ async def cleanup_empty_records(
     count = await record_service.bulk_soft_delete(empty_ids)
     if count:
         await cache.invalidate_async(f"household_records:{household.id}")
+        await cache.invalidate_async(f"dashboard_summary:{household.id}")
         AIService.invalidate_member_cache(member_id)
     return {"removed": count}
 
@@ -395,6 +397,7 @@ async def batch_delete_records(
     count = len(records)
     if count:
         await cache.invalidate_async(f"household_records:{household.id}")
+        await cache.invalidate_async(f"dashboard_summary:{household.id}")
         AIService.invalidate_member_cache(member_id)
     return {"deleted": count}
 
@@ -460,6 +463,7 @@ async def update_record(
             logger.warning("Failed to create follow-up reminder on update for record %s", record_id)
 
     await cache.invalidate_async(f"household_records:{household.id}")
+    await cache.invalidate_async(f"dashboard_summary:{household.id}")
     return record
 
 
@@ -479,6 +483,7 @@ async def delete_record(
     except ValueError:
         raise HTTPException(status_code=404, detail="Record not found")
     await cache.invalidate_async(f"household_records:{household.id}")
+    await cache.invalidate_async(f"dashboard_summary:{household.id}")
     AIService.invalidate_member_cache(member_id)
 
 

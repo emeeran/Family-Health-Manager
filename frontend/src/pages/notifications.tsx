@@ -36,7 +36,7 @@ function NotificationsContent({ notifications }: { notifications: NotificationRe
 
   async function handleMarkAsRead(id: string) {
     await markAsRead(id);
-    mutate(() => true, undefined, { revalidate: true });
+    await Promise.all([mutate("notifications"), mutate("notification-count")]);
   }
 
   async function handleMarkAllRead() {
@@ -44,7 +44,7 @@ function NotificationsContent({ notifications }: { notifications: NotificationRe
     try {
       const result = await markAllAsRead();
       toast.success(`Marked ${result.marked} as read`);
-      mutate(() => true, undefined, { revalidate: true });
+      await Promise.all([mutate("notifications"), mutate("notification-count")]);
     } catch {
       toast.error("Failed to mark all as read");
     } finally {
@@ -57,7 +57,7 @@ function NotificationsContent({ notifications }: { notifications: NotificationRe
       await deleteNotification(deleteId);
       toast.success("Notification deleted");
       setDeleteOpen(false);
-      mutate(() => true, undefined, { revalidate: true });
+      await Promise.all([mutate("notifications"), mutate("notification-count")]);
     } catch {
       toast.error("Failed to delete notification");
     }

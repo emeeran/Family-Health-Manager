@@ -46,8 +46,30 @@ export default function DashboardPage() {
     return null;
   }
 
-  // Derive stats from summary — single API call replaces 7 separate calls
-  const members = summary.members as unknown as FamilyMemberResponse[];
+  // Map dashboard API members to FamilyMemberResponse shape
+  const members = summary.members.map(
+    (m): FamilyMemberResponse => ({
+      id: m.id,
+      household_id: "",
+      first_name: m.first_name,
+      last_name: m.last_name,
+      date_of_birth: m.date_of_birth,
+      gender: m.gender as FamilyMemberResponse["gender"],
+      relationship: m.relationship as FamilyMemberResponse["relationship"],
+      medical_history_summary: null,
+      blood_group: m.blood_group,
+      family_history: null,
+      height_cm: null,
+      weight_kg: null,
+      allergies: m.allergies ?? null,
+      emergency_contact_name: null,
+      emergency_contact_phone: null,
+      bmi: m.bmi,
+      bmi_category: null,
+      is_active: m.is_active,
+      created_at: "",
+    })
+  );
   const records = (summary.recent_records || []) as unknown as HealthRecordResponse[];
 
   return (

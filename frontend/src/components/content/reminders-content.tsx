@@ -54,7 +54,7 @@ export function RemindersContent({ reminders, members }: RemindersContentProps) 
       await deleteReminder(deleteId);
       toast.success("Reminder deleted");
       setDeleteOpen(false);
-      mutate(() => true, undefined, { revalidate: true });
+      await Promise.all([mutate("reminders-page"), mutate("dashboard")]);
     } catch {
       toast.error("Failed to delete reminder");
     }

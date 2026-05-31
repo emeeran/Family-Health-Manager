@@ -1,5 +1,6 @@
 """Database engine and session management."""
 from collections.abc import AsyncGenerator
+from sqlalchemy import event
 from sqlalchemy.ext.asyncio import AsyncSession, create_async_engine, async_sessionmaker
 from app.core.config import get_settings
 
@@ -30,6 +31,14 @@ engine = create_async_engine(
     connect_args=connect_args,
     **pool_kwargs,
 )
+
+# Enable WAL mode for SQLite — allows concurrent reads during writes
+if settings.DATABASE_URL.startswith("sqlite"):
+    @event.listens_for(engine.sync_engine, "connect")
+    def set_sqlite_pragma(dbapi_connection, connection_record):
+        cursor = dbapi_connection.cursor()
+        cursor.execute("PRAGMA journal_mode=WAL")
+        cursor.close()
 
 SessionLocal = async_sessionmaker(
     bind=engine,

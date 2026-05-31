@@ -12,7 +12,6 @@ from app.models.base import (
     AIInsight,
     FamilyMember,
     HealthRecord,
-    Provider,
     ProviderAssignment,
     RecordType,
     Reminder,
@@ -312,16 +311,16 @@ class MemberService:
     async def _detail_provider_assignments(self, member_id: UUID, member: FamilyMember) -> list[dict]:
         result = await self.db.execute(
             select(ProviderAssignment)
+            .options(joinedload(ProviderAssignment.provider))
             .where(ProviderAssignment.family_member_id == member_id)
             .order_by(ProviderAssignment.created_at.desc())
         )
         out: list[dict] = []
-        for a in result.scalars().all():
-            prov = await self.db.get(Provider, a.provider_id)
+        for a in result.scalars().unique().all():
             out.append(
                 ProviderAssignmentResponse(
                     id=a.id, provider_id=a.provider_id,
-                    provider_name=prov.name if prov else "Unknown",
+                    provider_name=a.provider.name if a.provider else "Unknown",
                     family_member_id=a.family_member_id,
                     family_member_name=f"{member.first_name} {member.last_name}",
                     uhid=a.uhid, created_at=a.created_at,

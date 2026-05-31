@@ -65,6 +65,7 @@ async def create_member(
         weight_kg=request.weight_kg,
     )
     await cache.invalidate_async(f"members:{household.id}")
+    await cache.invalidate_async(f"dashboard_summary:{household.id}")
     return member
 
 
@@ -206,6 +207,7 @@ async def update_member(
 
     member = await service.update_member(member_id, **update_data)
     await cache.invalidate_async(f"members:{household.id}")
+    await cache.invalidate_async(f"dashboard_summary:{household.id}")
     return member
 
 
@@ -227,3 +229,4 @@ async def delete_member(
         raise HTTPException(status_code=404, detail="Member not found")
     await cache.invalidate_async(f"members:{household.id}")
     await cache.invalidate_async(f"household_records:{household.id}")
+    await cache.invalidate_async(f"dashboard_summary:{household.id}")

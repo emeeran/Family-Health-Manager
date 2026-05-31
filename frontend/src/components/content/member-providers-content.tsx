@@ -52,7 +52,11 @@ export function MemberProvidersContent({
       });
       setSelectedProvider("");
       setUhidInput("");
-      mutate(() => true, undefined, { revalidate: true });
+      await Promise.all([
+        mutate(`member-detail-${member.id}`),
+        mutate("providers"),
+        mutate("dashboard"),
+      ]);
     } finally {
       setLoading(false);
     }
@@ -60,7 +64,11 @@ export function MemberProvidersContent({
 
   async function handleDelete() {
     await deleteAssignment(member.id, deleteId);
-    mutate(() => true, undefined, { revalidate: true });
+    await Promise.all([
+      mutate(`member-detail-${member.id}`),
+      mutate("providers"),
+      mutate("dashboard"),
+    ]);
   }
 
   return (

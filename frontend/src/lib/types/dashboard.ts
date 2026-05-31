@@ -74,7 +74,7 @@ export interface DashboardSummary {
     blood_group: string | null;
     bmi: number | null;
     is_active: boolean;
-    allergies_json: string | null;
+    allergies: { name: string; severity: "mild" | "moderate" | "severe" }[] | null;
   }[];
   household_name: string;
   providers_count: number;

@@ -1,4 +1,4 @@
-import { useState, useCallback, useMemo, useRef } from "react";
+import { useState, useCallback, useMemo, useRef, memo } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -234,7 +234,7 @@ function RxForm({
   );
 }
 
-export function ActiveMedicationsTable({
+export const ActiveMedicationsTable = memo(function ActiveMedicationsTable({
   memberId,
   medications: initialMedications,
 }: ActiveMedicationsTableProps) {
@@ -759,4 +759,4 @@ export function ActiveMedicationsTable({
       />
     </>
   );
-}
+});

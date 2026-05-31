@@ -340,7 +340,7 @@ class DashboardService:
                 "bmi": m.weight_kg and m.height_cm and m.height_cm > 0
                     and round(m.weight_kg / (m.height_cm / 100) ** 2, 1) or None,
                 "is_active": m.is_active,
-                "allergies_json": m.allergies_json,
+                "allergies": json.loads(m.allergies_json) if m.allergies_json else None,
             }
             for m in members
         ]
@@ -357,19 +357,44 @@ class DashboardService:
             }
             for r in rem_result.scalars().all()
         ]
-        recent_records = [
-            {
+        recent_records = []
+        for r in recent_result.scalars().all():
+            clinical_preview = None
+            if r.clinical_data:
+                try:
+                    parsed = json.loads(r.clinical_data)
+                    preview = {}
+                    if parsed.get("chief_complaint"):
+                        preview["chief_complaint"] = parsed["chief_complaint"]
+                    if parsed.get("glucose_value"):
+                        preview["glucose_value"] = parsed["glucose_value"]
+                    if parsed.get("hba1c_value"):
+                        preview["hba1c_value"] = parsed["hba1c_value"]
+                    if isinstance(parsed.get("lab_results"), list) and parsed["lab_results"]:
+                        preview["lab_results"] = [
+                            {"test_name": t.get("test_name")}
+                            for t in parsed["lab_results"][:2]
+                        ]
+                        preview["lab_results_count"] = len(parsed["lab_results"])
+                    if preview:
+                        clinical_preview = json.dumps(preview)
+                except (json.JSONDecodeError, ValueError):
+                    # For unstructured text, send first 60 chars
+                    first_line = r.clinical_data.split("\n")[0]
+                    clinical_preview = first_line[:60]
+                    if len(first_line) > 60:
+                        clinical_preview += "..."
+
+            recent_records.append({
                 "id": str(r.id),
                 "family_member_id": str(r.family_member_id),
                 "record_type": r.record_type.value if hasattr(r.record_type, "value") else r.record_type,
                 "record_date": r.record_date.isoformat() if r.record_date else None,
                 "diagnosis": r.diagnosis,
-                "clinical_data": r.clinical_data,
+                "clinical_data": clinical_preview,
                 "is_deleted": r.is_deleted,
                 "created_at": r.created_at.isoformat() if r.created_at else None,
-            }
-            for r in recent_result.scalars().all()
-        ]
+            })
         household_obj = hh_result.scalar_one_or_none()
         household_name = household_obj.name if household_obj else "My Family"
         conversations_count = conv_result.scalar() or 0

@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useCallback, useMemo } from "react";
 import { useNavigate } from "react-router-dom";
+import useSWR from "swr";
 import {
   Search,
   Users,
@@ -122,14 +123,32 @@ export function GlobalSearch({ open, onOpenChange }: GlobalSearchProps) {
   const navigate = useNavigate();
   const { openQuickView } = useRecordQuickView();
   const [query, setQuery] = useState("");
-  const [members, setMembers] = useState<FamilyMemberResponse[]>([]);
-  const [providers, setProviders] = useState<ProviderResponse[]>([]);
-  const [conversations, setConversations] = useState<ConversationResponse[]>([]);
-  const [records, setRecords] = useState<HealthRecordResponse[]>([]);
   const [searchResults, setSearchResults] = useState<HealthRecordResponse[]>([]);
   const [aiPowered, setAiPowered] = useState(false);
-  const [loading, setLoading] = useState(false);
   const [activeIndex, setActiveIndex] = useState(0);
+
+  // SWR-backed data fetching — conditional on dialog being open.
+  // "members" and "providers" keys match the ones used in their respective
+  // page components so SWR shares the cache across the app.
+  const { data: members = [] } = useSWR(open ? "members" : null, () =>
+    listMembers().catch(() => [] as FamilyMemberResponse[])
+  );
+  const { data: providers = [] } = useSWR(open ? "providers" : null, () =>
+    listProviders().catch(() => [] as ProviderResponse[])
+  );
+  // Conversations page uses a bundled key ("conversations-page") that also
+  // fetches members, so we keep a dedicated key here.
+  const { data: conversations = [] } = useSWR(open ? "global-search-conversations" : null, () =>
+    listConversations().catch(() => [] as ConversationResponse[])
+  );
+  // Household records page bundles members + records together, and doesn't
+  // pass a limit, so we use a separate key for the global search.
+  const { data: records = [] } = useSWR(open ? "global-search-records" : null, () =>
+    listHouseholdRecords(30).catch(() => [] as HealthRecordResponse[])
+  );
+
+  const loading =
+    !members.length && !providers.length && !conversations.length && !records.length && open;
 
   // Build member name lookup
   const memberNames = useMemo(() => {
@@ -138,27 +157,12 @@ export function GlobalSearch({ open, onOpenChange }: GlobalSearchProps) {
     return map;
   }, [members]);
 
+  // Reset query and active index when dialog closes
   useEffect(() => {
     if (!open) {
       setQuery("");
       setActiveIndex(0);
-      return;
     }
-    async function loadData() {
-      setLoading(true);
-      const [m, p, c, r] = await Promise.all([
-        listMembers().catch(() => []),
-        listProviders().catch(() => []),
-        listConversations().catch(() => []),
-        listHouseholdRecords(30).catch(() => []),
-      ]);
-      setMembers(m);
-      setProviders(p);
-      setConversations(c);
-      setRecords(r);
-      setLoading(false);
-    }
-    loadData();
   }, [open]);
 
   // Debounced server-side record search — uses smart search for complex queries

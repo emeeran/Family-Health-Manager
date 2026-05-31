@@ -55,7 +55,7 @@ export function ProvidersContent({ providers }: ProvidersContentProps) {
       await deleteProvider(deleteId);
       toast.success("Provider deleted");
       setDeleteOpen(false);
-      mutate(() => true, undefined, { revalidate: true });
+      await Promise.all([mutate("providers"), mutate("dashboard")]);
     } catch {
       toast.error("Failed to delete provider");
     }
