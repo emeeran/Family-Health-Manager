@@ -3,7 +3,6 @@ import { useLocation, Link } from "react-router-dom";
 import {
   Home,
   Users,
-  Stethoscope,
   BellDot,
   Settings,
   CalendarClock,
@@ -46,7 +45,6 @@ export const Sidebar = memo(function Sidebar() {
 
   const careNav: NavItem[] = [
     { label: "Records", href: "/records", icon: ClipboardList },
-    { label: "Providers", href: "/providers", icon: Stethoscope },
     { label: "Reminders", href: "/reminders", icon: CalendarClock },
     { label: "Notifications", href: "/notifications", icon: BellDot, badge: unreadCount },
   ];
@@ -178,8 +176,8 @@ export const Sidebar = memo(function Sidebar() {
         </div>
       </nav>
 
-      {/* ── AI Assistant button (bottom) ── */}
-      <div className="px-2 pb-2">
+      {/* ── AI button (bottom) ── */}
+      <div className={cn("px-2 pb-2", collapsed && "flex flex-col items-center")}>
         {collapsed ? (
           <TooltipProvider delay={300}>
             <Tooltip>
@@ -204,7 +202,10 @@ export const Sidebar = memo(function Sidebar() {
               <div className="flex h-7 w-7 items-center justify-center rounded-md bg-gradient-to-br from-(--brand-accent) to-orange-600 shadow-sm shadow-(--brand-accent)/20">
                 <Sparkles className="h-3.5 w-3.5 text-white" />
               </div>
-              <p className="text-xs font-semibold text-foreground">AI Assistant</p>
+              <div>
+                <p className="text-xs font-semibold text-foreground">AI Assistant</p>
+                <p className="text-[9px] text-muted-foreground">Chat & health tools</p>
+              </div>
             </div>
           </Link>
         )}

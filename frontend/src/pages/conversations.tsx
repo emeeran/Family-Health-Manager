@@ -7,7 +7,7 @@ export default function ConversationsPage() {
   const memberId = searchParams.get("memberId") ?? undefined;
 
   return (
-    <div className="-m-4 md:-m-6 flex h-[calc(100vh-3.25rem)]">
+    <div className="absolute inset-0 flex overflow-hidden">
       <UnifiedChatLayout initialConversationId={conversationId} initialMemberId={memberId} />
     </div>
   );

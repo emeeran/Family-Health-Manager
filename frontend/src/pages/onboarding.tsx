@@ -5,6 +5,7 @@ import { listMembers } from "@/lib/api/members";
 import { OnboardingWizard } from "@/components/content/onboarding-wizard";
 import { useEffect } from "react";
 import { ErrorState } from "@/components/shared/error-state";
+import { PageLoader } from "@/components/shared/page-loader";
 
 export default function OnboardingPage() {
   const navigate = useNavigate();
@@ -23,12 +24,7 @@ export default function OnboardingPage() {
         <ErrorState onRetry={() => mutate()} />
       </div>
     );
-  if (!data)
-    return (
-      <div className="flex items-center justify-center min-h-[60vh]">
-        <p className="text-muted-foreground">Loading...</p>
-      </div>
-    );
+  if (!data) return <PageLoader />;
   if (data.members.length > 0) return null;
   return <OnboardingWizard householdName={data.household.name} />;
 }

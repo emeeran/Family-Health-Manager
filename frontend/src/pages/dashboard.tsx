@@ -2,10 +2,9 @@ import useSWR from "swr";
 import { useNavigate } from "react-router-dom";
 import { getDashboardSummary } from "@/lib/api/dashboard";
 import { DashboardContent, DashboardSkeleton } from "@/components/content/dashboard-content";
-import { UniversalQuickEntry } from "@/components/records/universal-quick-entry";
-import { useEffect, useMemo } from "react";
+import { SmartEntryFAB } from "@/components/records/smart-entry";
+import { useEffect } from "react";
 import type { FamilyMemberResponse } from "@/lib/types/member";
-import type { HealthRecordResponse } from "@/lib/types/health-record";
 
 export default function DashboardPage() {
   const navigate = useNavigate();
@@ -85,7 +84,7 @@ export default function DashboardPage() {
         }}
         records={records}
       />
-      <UniversalQuickEntry members={members} />
+      <SmartEntryFAB members={members} />
     </>
   );
 }

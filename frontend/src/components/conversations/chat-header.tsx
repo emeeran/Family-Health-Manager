@@ -27,24 +27,24 @@ export function ChatHeader({
   onToggleSidebar,
 }: ChatHeaderProps) {
   return (
-    <div className="flex items-center gap-2 px-3 py-2 border-b shrink-0">
+    <div className="flex items-center gap-2 px-4 py-2.5 shrink-0">
       {/* Mobile hamburger */}
       <button
         onClick={onToggleSidebar}
-        className="flex md:hidden items-center justify-center h-7 w-7 rounded-md hover:bg-muted transition-colors"
+        className="touch-compact flex md:hidden items-center justify-center h-8 w-8 rounded-lg hover:bg-muted/60 transition-colors"
         aria-label="Toggle sidebar"
       >
         <PanelLeft className="h-4 w-4" />
       </button>
 
-      {/* Mode toggle — compact icon + label */}
-      <div className="flex items-center rounded-md bg-muted/60 p-0.5">
+      {/* Mode toggle — pill style */}
+      <div className="flex items-center rounded-full bg-muted/50 p-0.5">
         <button
           onClick={() => onModeChange("general")}
           className={cn(
-            "flex items-center gap-1 px-2 py-1 text-xs font-medium rounded-sm transition-all",
+            "flex items-center gap-1.5 px-3.5 py-1.5 text-xs font-medium rounded-full transition-all",
             mode === "general"
-              ? "bg-background shadow-xs text-foreground"
+              ? "bg-card shadow-sm text-foreground"
               : "text-muted-foreground hover:text-foreground"
           )}
         >
@@ -54,9 +54,9 @@ export function ChatHeader({
         <button
           onClick={() => onModeChange("member")}
           className={cn(
-            "flex items-center gap-1 px-2 py-1 text-xs font-medium rounded-sm transition-all",
+            "flex items-center gap-1.5 px-3.5 py-1.5 text-xs font-medium rounded-full transition-all",
             mode === "member"
-              ? "bg-background shadow-xs text-foreground"
+              ? "bg-card shadow-sm text-foreground"
               : "text-muted-foreground hover:text-foreground"
           )}
         >
@@ -65,10 +65,10 @@ export function ChatHeader({
         </button>
       </div>
 
-      {/* Member selector — only in member mode */}
+      {/* Member selector */}
       {mode === "member" && (
         <Select value={selectedMemberId ?? ""} onValueChange={(v) => onMemberChange(v || null)}>
-          <SelectTrigger className="w-36 h-7 text-xs border-dashed">
+          <SelectTrigger className="w-36 h-8 text-xs rounded-full border-dashed">
             <SelectValue placeholder="Pick member" />
           </SelectTrigger>
           <SelectContent>
@@ -81,7 +81,6 @@ export function ChatHeader({
         </Select>
       )}
 
-      {/* Spacer */}
       <div className="flex-1" />
     </div>
   );

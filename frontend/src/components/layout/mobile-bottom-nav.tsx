@@ -1,14 +1,13 @@
 import { Link } from "react-router-dom";
 import { useLocation } from "react-router-dom";
-import { Home, Users, ClipboardList, MessageSquare, Bell } from "lucide-react";
+import { Home, Users, Sparkles, Bell } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useNotificationCount } from "@/hooks/use-notification-count";
 
 const navItems = [
   { label: "Home", href: "/dashboard", icon: Home },
   { label: "Members", href: "/members", icon: Users },
-  { label: "Records", href: "/records", icon: ClipboardList },
-  { label: "Chat", href: "/conversations", icon: MessageSquare },
+  { label: "AI", href: "/conversations", icon: Sparkles },
   { label: "Alerts", href: "/notifications", icon: Bell, showBadge: true },
 ];
 

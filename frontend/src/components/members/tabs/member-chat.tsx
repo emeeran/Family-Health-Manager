@@ -1,5 +1,5 @@
-import { useState, useRef, useEffect, useCallback, Suspense, type KeyboardEvent } from "react";
-import { Send, ArrowDown, StopCircle, Bot, User } from "lucide-react";
+import { useState, useEffect, useCallback, type KeyboardEvent } from "react";
+import { Send, StopCircle, Bot } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import {
   createConversation,
@@ -10,51 +10,19 @@ import {
   type StreamEvent,
 } from "@/lib/api/conversations";
 import type { MessageResponse } from "@/lib/types/message";
-import { MarkdownRenderer } from "@/components/shared/lazy-markdown";
 import { toast } from "sonner";
+import {
+  ChatMessage,
+  StreamingMessage,
+  ScrollToBottomButton,
+  useAutoResize,
+  useScrollToBottom,
+  useScrollVisibility,
+} from "@/components/shared/chat-primitives";
 
 /* ------------------------------------------------------------------ */
-/*  Helpers                                                             */
+/*  Suggestions                                                         */
 /* ------------------------------------------------------------------ */
-
-function TypingIndicator() {
-  return (
-    <div className="flex items-center gap-1">
-      <span className="h-1.5 w-1.5 rounded-full bg-muted-foreground/40 animate-bounce [animation-delay:0ms]" />
-      <span className="h-1.5 w-1.5 rounded-full bg-muted-foreground/40 animate-bounce [animation-delay:150ms]" />
-      <span className="h-1.5 w-1.5 rounded-full bg-muted-foreground/40 animate-bounce [animation-delay:300ms]" />
-    </div>
-  );
-}
-
-function ChatMessage({ msg }: { msg: MessageResponse }) {
-  const isUser = msg.role === "user";
-  return (
-    <div className={`flex gap-2 ${isUser ? "justify-end" : "justify-start"}`}>
-      {!isUser && (
-        <div className="shrink-0 h-6 w-6 rounded-full bg-primary/10 flex items-center justify-center mt-0.5">
-          <Bot className="h-3.5 w-3.5 text-primary" />
-        </div>
-      )}
-      <div
-        className={`group/bubble relative max-w-[80%] rounded-2xl px-3 py-2 text-sm ${
-          isUser ? "bg-primary text-primary-foreground" : "bg-muted"
-        }`}
-      >
-        <div className={isUser ? "" : "chat-markdown"}>
-          <Suspense fallback={<span className="text-muted-foreground">...</span>}>
-            <MarkdownRenderer content={msg.content} />
-          </Suspense>
-        </div>
-      </div>
-      {isUser && (
-        <div className="shrink-0 h-6 w-6 rounded-full bg-muted flex items-center justify-center mt-0.5">
-          <User className="h-3.5 w-3.5 text-muted-foreground" />
-        </div>
-      )}
-    </div>
-  );
-}
 
 const MEMBER_SUGGESTIONS = [
   "Summarize this member's health records",
@@ -77,16 +45,20 @@ export function MemberChat({ memberId, memberName }: MemberChatProps) {
   const [input, setInput] = useState("");
   const [sending, setSending] = useState(false);
   const [streamingContent, setStreamingContent] = useState("");
-  const [showScrollBtn, setShowScrollBtn] = useState(false);
   const [loaded, setLoaded] = useState(false);
 
-  const chatEndRef = useRef<HTMLDivElement>(null);
-  const scrollRef = useRef<HTMLDivElement>(null);
-  const textareaRef = useRef<HTMLTextAreaElement>(null);
+  const { endRef, scrollRef: mainScrollRef, scrollToBottom } = useScrollToBottom();
+  const { scrollRef: visScrollRef, showScrollBtn } = useScrollVisibility(120);
+  const textareaRef = useAutoResize(input);
 
-  const scrollToBottom = useCallback((smooth = true) => {
-    chatEndRef.current?.scrollIntoView({ behavior: smooth ? "smooth" : "instant" });
-  }, []);
+  // Combine scroll refs
+  const scrollRef = useCallback(
+    (el: HTMLDivElement | null) => {
+      (mainScrollRef as React.MutableRefObject<HTMLDivElement | null>).current = el;
+      (visScrollRef as React.MutableRefObject<HTMLDivElement | null>).current = el;
+    },
+    [mainScrollRef, visScrollRef]
+  );
 
   /* Find or create a member-scoped conversation on mount */
   useEffect(() => {
@@ -98,7 +70,6 @@ export function MemberChat({ memberId, memberName }: MemberChatProps) {
         const existing = convs.find((c) => c.family_member_id === memberId && c.scope === "member");
         if (existing) {
           setConversationId(existing.id);
-          // Fetch existing messages
           const detail = await getConversation(existing.id);
           if (!cancelled) {
             setMessages(detail.messages);
@@ -122,33 +93,12 @@ export function MemberChat({ memberId, memberName }: MemberChatProps) {
     }
   }, [messages.length, streamingContent, scrollToBottom]);
 
-  /* Scroll button visibility */
-  useEffect(() => {
-    const el = scrollRef.current;
-    if (!el) return;
-    const onScroll = () => {
-      const gap = el.scrollHeight - el.scrollTop - el.clientHeight;
-      setShowScrollBtn(gap > 120);
-    };
-    el.addEventListener("scroll", onScroll, { passive: true });
-    return () => el.removeEventListener("scroll", onScroll);
-  }, []);
-
-  /* Auto-resize textarea */
-  useEffect(() => {
-    const ta = textareaRef.current;
-    if (!ta) return;
-    ta.style.height = "auto";
-    ta.style.height = Math.min(ta.scrollHeight, 120) + "px";
-  }, [input]);
-
   async function handleSend() {
     const text = input.trim();
     if (!text || sending) return;
     setInput("");
     setSending(true);
 
-    // Optimistic user message
     const tempMsg: MessageResponse = {
       id: `temp-${Date.now()}`,
       conversation_id: conversationId ?? "",
@@ -161,7 +111,6 @@ export function MemberChat({ memberId, memberName }: MemberChatProps) {
     try {
       let convId = conversationId;
 
-      // Create conversation if needed
       if (!convId) {
         const conv = await createConversation({
           scope: "member",
@@ -172,7 +121,6 @@ export function MemberChat({ memberId, memberName }: MemberChatProps) {
         setConversationId(convId);
       }
 
-      // Try streaming first
       let fullContent = "";
       try {
         await sendMessageStream(convId, { content: text }, (event: StreamEvent) => {
@@ -182,14 +130,12 @@ export function MemberChat({ memberId, memberName }: MemberChatProps) {
           }
         });
       } catch {
-        // Fallback to non-streaming
         const result = await sendMessage(convId, { content: text });
         fullContent = result.assistant_message.content;
       }
 
       setStreamingContent("");
 
-      // Replace temp user message + add assistant response
       const assistantMsg: MessageResponse = {
         id: `resp-${Date.now()}`,
         conversation_id: convId,
@@ -263,47 +209,16 @@ export function MemberChat({ memberId, memberName }: MemberChatProps) {
         )}
 
         {messages.map((msg) => (
-          <ChatMessage key={msg.id} msg={msg} />
+          <ChatMessage key={msg.id} msg={msg} variant="compact" />
         ))}
 
-        {streamingContent && (
-          <div className="flex gap-2 justify-start">
-            <div className="shrink-0 h-6 w-6 rounded-full bg-primary/10 flex items-center justify-center mt-0.5">
-              <Bot className="h-3.5 w-3.5 text-primary" />
-            </div>
-            <div className="max-w-[80%] rounded-2xl px-3 py-2 text-sm bg-muted">
-              <div className="chat-markdown">
-                <Suspense fallback={<span className="text-muted-foreground">...</span>}>
-                  <MarkdownRenderer content={streamingContent} />
-                </Suspense>
-              </div>
-            </div>
-          </div>
-        )}
+        {sending && <StreamingMessage content={streamingContent} variant="compact" />}
 
-        {sending && !streamingContent && (
-          <div className="flex gap-2 justify-start">
-            <div className="shrink-0 h-6 w-6 rounded-full bg-primary/10 flex items-center justify-center mt-0.5">
-              <Bot className="h-3.5 w-3.5 text-primary" />
-            </div>
-            <div className="rounded-2xl px-3 py-2 bg-muted">
-              <TypingIndicator />
-            </div>
-          </div>
-        )}
-
-        <div ref={chatEndRef} />
+        <div ref={endRef} />
       </div>
 
       {/* Scroll-to-bottom */}
-      {showScrollBtn && (
-        <button
-          onClick={() => scrollToBottom()}
-          className="absolute bottom-20 left-1/2 -translate-x-1/2 z-10 h-7 w-7 rounded-full bg-background border shadow-md flex items-center justify-center hover:bg-muted transition-colors"
-        >
-          <ArrowDown className="h-3.5 w-3.5" />
-        </button>
-      )}
+      {showScrollBtn && <ScrollToBottomButton onClick={() => scrollToBottom()} />}
 
       {/* Input area */}
       <div className="border-t px-3 py-2">

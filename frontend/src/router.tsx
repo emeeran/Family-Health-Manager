@@ -106,7 +106,7 @@ export const router = createBrowserRouter([
       {
         path: "members/:memberId/timeline",
         loader: ({ params }: { params: { memberId?: string } }) => {
-          throw redirect(`/members/${params.memberId}?tab=timeline`);
+          throw redirect(`/members/${params.memberId}?tab=records`);
         },
       },
       {
@@ -124,7 +124,7 @@ export const router = createBrowserRouter([
       {
         path: "members/:memberId/ai",
         loader: ({ params }: { params: { memberId?: string } }) => {
-          throw redirect(`/conversations?memberId=${params.memberId}`);
+          throw redirect(`/members/${params.memberId}?tab=ai`);
         },
       },
       // Record CRUD routes (still separate pages)

@@ -4,6 +4,7 @@ import { getMemberDetail } from "@/lib/api/members";
 import { MemberTabs } from "@/components/members/member-tabs";
 import { Link } from "react-router-dom";
 import { useEffect } from "react";
+import { PageLoader } from "@/components/shared/page-loader";
 
 export default function MemberDetailPage() {
   const { memberId } = useParams<{ memberId: string }>();
@@ -28,9 +29,7 @@ export default function MemberDetailPage() {
         <Link to="/members" className="text-sm text-muted-foreground hover:underline">
           Back to Members
         </Link>
-        <div className="flex items-center justify-center py-12">
-          <p className="text-muted-foreground">Loading...</p>
-        </div>
+        <PageLoader />
       </div>
     );
   }

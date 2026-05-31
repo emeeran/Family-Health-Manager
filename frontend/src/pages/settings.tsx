@@ -6,7 +6,6 @@ import { Label } from "@/components/ui/label";
 import { Skeleton } from "@/components/ui/skeleton";
 import { getHousehold, updateHousehold } from "@/lib/api/household";
 import { getMe } from "@/lib/api/auth";
-import { PasswordInput } from "@/components/shared/password-input";
 import { BackupRestoreSection } from "@/components/content/backup-restore";
 import { toast } from "sonner";
 
@@ -16,12 +15,6 @@ export default function SettingsPage() {
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [originalName, setOriginalName] = useState("");
-
-  // Password change state
-  const [currentPassword, setCurrentPassword] = useState("");
-  const [newPassword, setNewPassword] = useState("");
-  const [confirmPassword, setConfirmPassword] = useState("");
-  const [changingPassword, setChangingPassword] = useState(false);
 
   useEffect(() => {
     async function load() {
@@ -51,30 +44,6 @@ export default function SettingsPage() {
       toast.error("Failed to save household name");
     } finally {
       setSaving(false);
-    }
-  }
-
-  async function handleChangePassword(e: React.FormEvent) {
-    e.preventDefault();
-    if (newPassword !== confirmPassword) {
-      toast.error("Passwords do not match");
-      return;
-    }
-    if (newPassword.length < 6) {
-      toast.error("Password must be at least 6 characters");
-      return;
-    }
-    setChangingPassword(true);
-    try {
-      // TODO: Call backend password change endpoint when available
-      toast.success("Password change will be available once the backend endpoint is added");
-      setCurrentPassword("");
-      setNewPassword("");
-      setConfirmPassword("");
-    } catch {
-      toast.error("Failed to change password");
-    } finally {
-      setChangingPassword(false);
     }
   }
 
@@ -147,60 +116,14 @@ export default function SettingsPage() {
         </CardContent>
       </Card>
 
-      <Card>
+      <Card className="opacity-60">
         <CardHeader className="pb-3">
           <CardTitle className="text-sm">Change Password</CardTitle>
         </CardHeader>
         <CardContent>
-          <form onSubmit={handleChangePassword} className="space-y-3 max-w-md">
-            <div className="grid gap-3 md:grid-cols-3">
-              <div className="space-y-1">
-                <Label htmlFor="current_password" className="text-xs">
-                  Current
-                </Label>
-                <PasswordInput
-                  id="current_password"
-                  value={currentPassword}
-                  onChange={(e) => setCurrentPassword(e.target.value)}
-                  className="h-9"
-                  required
-                />
-              </div>
-              <div className="space-y-1">
-                <Label htmlFor="new_password" className="text-xs">
-                  New
-                </Label>
-                <PasswordInput
-                  id="new_password"
-                  value={newPassword}
-                  onChange={(e) => setNewPassword(e.target.value)}
-                  className="h-9"
-                  required
-                  minLength={6}
-                />
-              </div>
-              <div className="space-y-1">
-                <Label htmlFor="confirm_password" className="text-xs">
-                  Confirm
-                </Label>
-                <PasswordInput
-                  id="confirm_password"
-                  value={confirmPassword}
-                  onChange={(e) => setConfirmPassword(e.target.value)}
-                  className="h-9"
-                  required
-                  minLength={6}
-                />
-              </div>
-            </div>
-            <Button
-              type="submit"
-              size="sm"
-              disabled={changingPassword || !currentPassword || !newPassword || !confirmPassword}
-            >
-              {changingPassword ? "Changing..." : "Change Password"}
-            </Button>
-          </form>
+          <p className="text-xs text-muted-foreground">
+            This feature is coming soon. Contact your administrator to reset your password.
+          </p>
         </CardContent>
       </Card>
 

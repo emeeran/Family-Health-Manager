@@ -419,9 +419,10 @@ button,
     min-width: 44px;
   }
 
-  /* Allow inline elements to be smaller but still tappable */
+  /* Allow inline and compact elements to be smaller but still tappable */
   .inline-flex,
-  .badge {
+  .badge,
+  .touch-compact {
     min-height: unset;
     min-width: unset;
   }

@@ -8,6 +8,7 @@ dist/
 build/
 original*/
 local/
+trash2review/
 
 # Environment
 .env

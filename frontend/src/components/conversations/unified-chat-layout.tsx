@@ -26,7 +26,6 @@ export function UnifiedChatLayout({
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [convMessages, setConvMessages] = useState<MessageResponse[]>([]);
 
-  // Fetch conversations + members
   const { data: pageData, mutate: mutatePageData } = useSWR("conversations-page", async () => {
     const [conversations, members] = await Promise.all([
       listConversations(),
@@ -38,7 +37,6 @@ export function UnifiedChatLayout({
   const conversations: ConversationResponse[] = pageData?.conversations ?? [];
   const members: FamilyMemberResponse[] = pageData?.members ?? [];
 
-  // Fetch active conversation messages
   const { data: convData } = useSWR(
     activeConvId ? `conversation-${activeConvId}` : null,
     async () => {
@@ -48,7 +46,6 @@ export function UnifiedChatLayout({
     { revalidateOnFocus: false, dedupingInterval: 30_000 }
   );
 
-  // Sync conversation data to local state
   useEffect(() => {
     if (convData) {
       setConvMessages(convData.messages);
@@ -60,11 +57,19 @@ export function UnifiedChatLayout({
     setConvMessages([]);
   }
 
+  function findMostRecent(
+    filter: (c: ConversationResponse) => boolean
+  ): ConversationResponse | undefined {
+    return conversations
+      .filter(filter)
+      .sort((a, b) => new Date(b.updated_at).getTime() - new Date(a.updated_at).getTime())[0];
+  }
+
   function handleModeChange(newMode: "general" | "member") {
     setMode(newMode);
     if (newMode === "general") {
       setSelectedMemberId(null);
-      const existing = conversations.find((c) => c.scope === "general");
+      const existing = findMostRecent((c) => c.scope === "general");
       if (existing) {
         setActiveConvId(existing.id);
       } else {
@@ -72,7 +77,7 @@ export function UnifiedChatLayout({
       }
     } else {
       if (selectedMemberId) {
-        const existing = conversations.find(
+        const existing = findMostRecent(
           (c) => c.scope === "member" && c.family_member_id === selectedMemberId
         );
         if (existing) {
@@ -89,7 +94,7 @@ export function UnifiedChatLayout({
   function handleMemberChange(memberId: string | null) {
     setSelectedMemberId(memberId);
     if (memberId) {
-      const existing = conversations.find(
+      const existing = findMostRecent(
         (c) => c.scope === "member" && c.family_member_id === memberId
       );
       if (existing) {
@@ -133,12 +138,13 @@ export function UnifiedChatLayout({
       activeConvId={activeConvId}
       onSelectConversation={handleSelectConversation}
       onNewChat={handleNewChat}
+      onActiveDeleted={clearChat}
     />
   );
 
   if (!pageData) {
     return (
-      <div className="flex items-center justify-center h-full">
+      <div className="flex items-center justify-center h-full bg-card">
         <Skeleton className="h-4 w-40" />
       </div>
     );
@@ -146,8 +152,8 @@ export function UnifiedChatLayout({
 
   return (
     <div className="flex h-full">
-      {/* Desktop sidebar */}
-      <div className="hidden md:flex w-[260px] shrink-0 border-r">{sidebarContent}</div>
+      {/* Desktop sidebar — card background for contrast */}
+      <div className="hidden md:flex w-[280px] shrink-0 bg-card">{sidebarContent}</div>
 
       {/* Mobile sidebar Sheet */}
       <Sheet open={sidebarOpen} onOpenChange={setSidebarOpen}>
@@ -156,7 +162,7 @@ export function UnifiedChatLayout({
         </SheetContent>
       </Sheet>
 
-      {/* Chat area */}
+      {/* Chat area — transparent so main background shows */}
       <div className="flex flex-col flex-1 min-w-0">
         <ChatHeader
           mode={mode}

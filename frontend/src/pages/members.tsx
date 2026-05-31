@@ -16,8 +16,8 @@ import { useSWRConfig } from "swr";
 import useSWR from "swr";
 import { toast } from "sonner";
 import { ErrorState } from "@/components/shared/error-state";
+import { PageLoader } from "@/components/shared/page-loader";
 import { computeAge } from "@/lib/utils";
-import type { FamilyMemberResponse } from "@/lib/types/member";
 
 // Custom modular components
 import { FamilySummaryBar } from "@/components/members/family-summary";
@@ -137,12 +137,7 @@ export default function MembersPage() {
   }, [activeMembers]);
 
   if (error) return <ErrorState onRetry={() => mutate()} />;
-  if (!members)
-    return (
-      <div className="flex items-center justify-center py-12">
-        <p className="text-muted-foreground">Loading...</p>
-      </div>
-    );
+  if (!members) return <PageLoader title="Family Members" />;
 
   function toggleView(v: "grid" | "list") {
     setView(v);

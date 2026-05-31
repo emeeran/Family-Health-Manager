@@ -14,6 +14,7 @@ import { useSWRConfig } from "swr";
 import useSWR from "swr";
 import { toast } from "sonner";
 import { ErrorState } from "@/components/shared/error-state";
+import { PageLoader } from "@/components/shared/page-loader";
 import type { NotificationResponse } from "@/lib/types/notification";
 import { formatRelativeTime } from "@/lib/utils";
 
@@ -188,11 +189,6 @@ export default function NotificationsPage() {
     return listNotifications();
   });
   if (error) return <ErrorState onRetry={() => mutate()} />;
-  if (!notifications)
-    return (
-      <div className="flex items-center justify-center py-12">
-        <p className="text-muted-foreground">Loading...</p>
-      </div>
-    );
+  if (!notifications) return <PageLoader title="Notifications" />;
   return <NotificationsContent notifications={notifications} />;
 }

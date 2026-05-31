@@ -1,15 +1,15 @@
 import { memo, useCallback } from "react";
 import { useSearchParams } from "react-router-dom";
-import { User, FileText, BarChart3 } from "lucide-react";
+import { User, FileText, Sparkles } from "lucide-react";
 import type { MemberDetailResponse } from "@/lib/types/member";
 import { OverviewTab } from "./tabs/overview-tab";
 import { RecordsTab } from "./tabs/records-tab";
-import { TimelineTab } from "./tabs/timeline-tab";
-import { AiLaunchButtons } from "./ai-launch-buttons";
+import { AiAssistantTab } from "./tabs/ai-assistant-tab";
+import { MemberChat } from "./tabs/member-chat";
 
-type TabId = "overview" | "records" | "timeline";
+type TabId = "overview" | "records" | "ai";
 
-const VALID_TABS = new Set<string>(["overview", "records", "timeline"]);
+const VALID_TABS = new Set<string>(["overview", "records", "ai"]);
 
 interface TabConfig {
   id: TabId;
@@ -20,7 +20,7 @@ interface TabConfig {
 const TABS: TabConfig[] = [
   { id: "overview", label: "Overview", icon: User },
   { id: "records", label: "Records", icon: FileText },
-  { id: "timeline", label: "Timeline", icon: BarChart3 },
+  { id: "ai", label: "AI", icon: Sparkles },
 ];
 
 interface MemberTabsProps {
@@ -39,6 +39,8 @@ export const MemberTabs = memo(function MemberTabs({ data }: MemberTabsProps) {
     },
     [setSearchParams]
   );
+
+  const memberName = `${data.member.first_name} ${data.member.last_name}`;
 
   return (
     <div className="space-y-3 max-w-[1400px] mx-auto">
@@ -69,14 +71,18 @@ export const MemberTabs = memo(function MemberTabs({ data }: MemberTabsProps) {
       </div>
 
       {/* Tab content */}
-      <div>
+      <div className="mt-2">
         {activeTab === "overview" && <OverviewTab data={data} />}
         {activeTab === "records" && <RecordsTab data={data} />}
-        {activeTab === "timeline" && <TimelineTab data={data} />}
+        {activeTab === "ai" && (
+          <div className="space-y-4">
+            <AiAssistantTab data={data} />
+            <div className="border-t pt-4">
+              <MemberChat memberId={data.member.id} memberName={memberName} />
+            </div>
+          </div>
+        )}
       </div>
-
-      {/* AI launch buttons */}
-      <AiLaunchButtons data={data} />
     </div>
   );
 });

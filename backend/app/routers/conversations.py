@@ -8,7 +8,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 from app.core.config import get_settings
-from app.core.database import get_db
+from app.core.database import get_db, SessionLocal
 from app.core.deps import get_household_from_token
 from app.core.sse import make_sse_stream
 from app.services.ai_service import AIService
@@ -238,20 +238,31 @@ async def send_message_stream(
                         pass
                 yield chunk
 
-            # Fire verification in background
+            # Fire verification in background with its own DB session
             if settings.AI_VERIFICATION_ENABLED and health_context and message_id:
+                async def _run_verification():
+                    verify_db = SessionLocal()
+                    try:
+                        verify_service = AIService(verify_db)
+                        verification_svc = VerificationService(verify_db, verify_service)
+                        await verification_svc.verify(
+                            question=request.content,
+                            ai_response="",  # already in DB
+                            health_context=health_context,
+                            original_provider=provider or "",
+                            message_id=UUID(message_id),
+                        )
+                        await verify_db.commit()
+                    except Exception as exc:
+                        await verify_db.rollback()
+                        logger.info("Post-stream verification skipped: %s", exc)
+                    finally:
+                        await verify_db.close()
+
                 try:
-                    verification_svc = VerificationService(db, service)
-                    verification_svc_spawn = verification_svc.verify(
-                        question=request.content,
-                        ai_response="",  # already in DB
-                        health_context=health_context,
-                        original_provider=provider or "",
-                        message_id=UUID(message_id),
-                    )
-                    asyncio.ensure_future(verification_svc_spawn)
+                    asyncio.ensure_future(_run_verification())
                 except Exception as exc:
-                    logger.info("Post-stream verification skipped: %s", exc)
+                    logger.info("Post-stream verification spawn failed: %s", exc)
 
     response.body_iterator = VerificationSSEWrapper(response)
     return response
@@ -314,12 +325,14 @@ async def send_message(
     resp = {
         "user_message": {
             "id": user_msg.id,
+            "conversation_id": user_msg.conversation_id,
             "role": user_msg.role,
             "content": user_msg.content,
             "created_at": user_msg.created_at,
         },
         "assistant_message": {
             "id": assistant_msg.id,
+            "conversation_id": assistant_msg.conversation_id,
             "role": assistant_msg.role,
             "content": assistant_msg.content,
             "created_at": assistant_msg.created_at,

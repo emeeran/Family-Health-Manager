@@ -13,7 +13,7 @@ import {
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
-import { RELATIONSHIP_LABELS, RECORD_TYPE_LABELS, HBA1C_CATEGORY_COLORS } from "@/lib/constants";
+import { RECORD_TYPE_LABELS, HBA1C_CATEGORY_COLORS } from "@/lib/constants";
 import { formatDate, formatRelativeTime } from "@/lib/utils";
 import { QuickAddRecordDialog } from "@/components/records/quick-add-record-dialog";
 import { useRecordQuickView } from "@/components/records/record-quick-view-provider";
@@ -23,7 +23,7 @@ import { MedicationSummaryWidget } from "@/components/dashboard/medication-summa
 import { FamilyComparisonChart } from "@/components/dashboard/family-comparison-chart";
 import { DashboardStatCards } from "@/components/dashboard/dashboard-stat-cards";
 import { FamilyHealthGrid } from "@/components/dashboard/family-health-grid";
-import { QuickLogBar } from "@/components/dashboard/quick-log-bar";
+import { SmartEntryBar } from "@/components/records/smart-entry";
 import { useDashboardSummary } from "@/hooks/use-dashboard";
 import { useHba1cChartData } from "@/lib/hba1c-utils";
 import { dismissHealthAlert } from "@/lib/api/health-alerts";
@@ -239,8 +239,8 @@ export const DashboardContent = memo(function DashboardContent({
         riskSummary={summary?.risk_summary}
       />
 
-      {/* ═══ QUICK LOG ═══ */}
-      <QuickLogBar activeMembers={activeMembers} memberNames={memberNames} />
+      {/* ═══ SMART ENTRY ROW ═══ */}
+      <SmartEntryBar members={members} />
 
       {/* ═══ ALERTS ═══ */}
       {alerts.length > 0 && <AlertsFeed alerts={alerts} onDismiss={handleDismissAlert} />}
