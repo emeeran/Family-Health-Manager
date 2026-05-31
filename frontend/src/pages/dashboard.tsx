@@ -5,6 +5,7 @@ import { DashboardContent, DashboardSkeleton } from "@/components/content/dashbo
 import { SmartEntryFAB } from "@/components/records/smart-entry";
 import { useEffect } from "react";
 import type { FamilyMemberResponse } from "@/lib/types/member";
+import type { HealthRecordResponse } from "@/lib/types/health-record";
 
 export default function DashboardPage() {
   const navigate = useNavigate();

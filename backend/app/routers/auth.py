@@ -23,6 +23,7 @@ from app.schemas.auth import (
     RefreshRequest,
     RefreshResponse,
     RegisterRequest,
+    ChangePasswordRequest,
     UserResponse,
 )
 from app.schemas.user import UserResponse as FullUserResponse
@@ -181,6 +182,34 @@ async def logout(
 async def get_me(user: User = Depends(get_current_user)):
     """Get current user profile."""
     return user
+
+
+@router.post("/change-password")
+async def change_password(
+    request: ChangePasswordRequest,
+    user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """Change the current user's password."""
+    from app.core.security import verify_password, hash_password, validate_password_strength
+
+    if not verify_password(request.current_password, user.password_hash):
+        raise HTTPException(status_code=400, detail="Current password is incorrect")
+
+    if request.current_password == request.new_password:
+        raise HTTPException(status_code=400, detail="New password must be different from current password")
+
+    if not validate_password_strength(request.new_password):
+        raise HTTPException(
+            status_code=400,
+            detail="Password must be at least 8 characters with uppercase, digit, and special character",
+        )
+
+    user.password_hash = hash_password(request.new_password)
+    await db.flush()
+
+    logger.info("Password changed for user %s", user.username)
+    return {"message": "Password changed successfully"}
 
 
 # ── 2FA endpoints ──

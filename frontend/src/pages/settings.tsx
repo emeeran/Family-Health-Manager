@@ -5,7 +5,8 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Skeleton } from "@/components/ui/skeleton";
 import { getHousehold, updateHousehold } from "@/lib/api/household";
-import { getMe } from "@/lib/api/auth";
+import { getMe, changePassword } from "@/lib/api/auth";
+import { PasswordInput } from "@/components/shared/password-input";
 import { BackupRestoreSection } from "@/components/content/backup-restore";
 import { toast } from "sonner";
 
@@ -15,6 +16,12 @@ export default function SettingsPage() {
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [originalName, setOriginalName] = useState("");
+
+  // Password change state
+  const [currentPassword, setCurrentPassword] = useState("");
+  const [newPassword, setNewPassword] = useState("");
+  const [confirmPassword, setConfirmPassword] = useState("");
+  const [changingPassword, setChangingPassword] = useState(false);
 
   useEffect(() => {
     async function load() {
@@ -44,6 +51,31 @@ export default function SettingsPage() {
       toast.error("Failed to save household name");
     } finally {
       setSaving(false);
+    }
+  }
+
+  async function handleChangePassword(e: React.FormEvent) {
+    e.preventDefault();
+    if (newPassword !== confirmPassword) {
+      toast.error("Passwords do not match");
+      return;
+    }
+    if (newPassword.length < 8) {
+      toast.error("Password must be at least 8 characters");
+      return;
+    }
+    setChangingPassword(true);
+    try {
+      await changePassword(currentPassword, newPassword);
+      toast.success("Password changed successfully");
+      setCurrentPassword("");
+      setNewPassword("");
+      setConfirmPassword("");
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : "Failed to change password";
+      toast.error(msg);
+    } finally {
+      setChangingPassword(false);
     }
   }
 
@@ -116,14 +148,70 @@ export default function SettingsPage() {
         </CardContent>
       </Card>
 
-      <Card className="opacity-60">
+      <Card>
         <CardHeader className="pb-3">
           <CardTitle className="text-sm">Change Password</CardTitle>
         </CardHeader>
         <CardContent>
-          <p className="text-xs text-muted-foreground">
-            This feature is coming soon. Contact your administrator to reset your password.
-          </p>
+          <form onSubmit={handleChangePassword} className="space-y-3 max-w-md">
+            <div className="space-y-1">
+              <Label htmlFor="current_password" className="text-xs">
+                Current Password
+              </Label>
+              <PasswordInput
+                id="current_password"
+                value={currentPassword}
+                onChange={(e) => setCurrentPassword(e.target.value)}
+                className="h-9"
+                required
+              />
+            </div>
+            <div className="space-y-1">
+              <Label htmlFor="new_password" className="text-xs">
+                New Password
+              </Label>
+              <PasswordInput
+                id="new_password"
+                value={newPassword}
+                onChange={(e) => setNewPassword(e.target.value)}
+                className="h-9"
+                required
+                minLength={8}
+              />
+              <p className="text-[11px] text-muted-foreground">
+                At least 8 characters with uppercase, digit, and special character.
+              </p>
+            </div>
+            <div className="space-y-1">
+              <Label htmlFor="confirm_password" className="text-xs">
+                Confirm New Password
+              </Label>
+              <PasswordInput
+                id="confirm_password"
+                value={confirmPassword}
+                onChange={(e) => setConfirmPassword(e.target.value)}
+                className="h-9"
+                required
+                minLength={8}
+              />
+              {confirmPassword && newPassword !== confirmPassword && (
+                <p className="text-[11px] text-destructive">Passwords do not match</p>
+              )}
+            </div>
+            <Button
+              type="submit"
+              size="sm"
+              disabled={
+                changingPassword ||
+                !currentPassword ||
+                !newPassword ||
+                !confirmPassword ||
+                newPassword !== confirmPassword
+              }
+            >
+              {changingPassword ? "Changing..." : "Change Password"}
+            </Button>
+          </form>
         </CardContent>
       </Card>
 

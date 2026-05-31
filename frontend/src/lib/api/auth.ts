@@ -19,6 +19,13 @@ export function getMe() {
   return apiRequest<UserResponse>("/auth/me");
 }
 
+export function changePassword(currentPassword: string, newPassword: string) {
+  return apiRequest<{ message: string }>("/auth/change-password", {
+    method: "POST",
+    body: { current_password: currentPassword, new_password: newPassword },
+  });
+}
+
 export function setup2FA() {
   return apiRequest<TwoFASetupResponse>("/auth/2fa/setup", { method: "POST" });
 }

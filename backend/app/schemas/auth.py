@@ -18,6 +18,13 @@ class RegisterRequest(BaseModel):
     password: str = Field(..., min_length=8, max_length=128, description="Password")
 
 
+class ChangePasswordRequest(BaseModel):
+    """Change password request."""
+
+    current_password: str = Field(..., min_length=1, max_length=128, description="Current password")
+    new_password: str = Field(..., min_length=8, max_length=128, description="New password")
+
+
 class LoginResponse(BaseModel):
     """Login response."""
 
