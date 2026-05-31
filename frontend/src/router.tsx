@@ -28,6 +28,7 @@ const NewReminderPage = lazy(() => import("@/pages/reminder-new"));
 const EditReminderPage = lazy(() => import("@/pages/reminder-edit"));
 const HouseholdRecordsPage = lazy(() => import("@/pages/household-records"));
 const ConversationsPage = lazy(() => import("@/pages/conversations"));
+const MemberAssistantPage = lazy(() => import("@/pages/member-assistant"));
 const NotificationsPage = lazy(() => import("@/pages/notifications"));
 const SettingsPage = lazy(() => import("@/pages/settings"));
 const OnboardingPage = lazy(() => import("@/pages/onboarding"));
@@ -94,6 +95,7 @@ export const router = createBrowserRouter([
       { path: "members/new", element: withSuspense(NewMemberPage) },
       { path: "members/:memberId", element: withSuspense(MemberDetailPage) },
       { path: "members/:memberId/edit", element: withSuspense(EditMemberPage) },
+      { path: "members/:memberId/assistant", element: withSuspense(MemberAssistantPage) },
       // Sub-route redirects → unified member detail with tab param
       {
         path: "members/:memberId/records",

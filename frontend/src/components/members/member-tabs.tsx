@@ -1,16 +1,15 @@
 import { memo, useCallback } from "react";
 import { useSearchParams } from "react-router-dom";
-import { User, FileText, BarChart3, Sparkles, MessageSquare } from "lucide-react";
+import { User, FileText, BarChart3 } from "lucide-react";
 import type { MemberDetailResponse } from "@/lib/types/member";
 import { OverviewTab } from "./tabs/overview-tab";
 import { RecordsTab } from "./tabs/records-tab";
 import { TimelineTab } from "./tabs/timeline-tab";
-import { AiAssistantTab } from "./tabs/ai-assistant-tab";
-import { AiChatTab } from "./tabs/ai-chat-tab";
+import { AiLaunchButtons } from "./ai-launch-buttons";
 
-type TabId = "overview" | "records" | "timeline" | "chat" | "assistant";
+type TabId = "overview" | "records" | "timeline";
 
-const VALID_TABS = new Set<string>(["overview", "records", "timeline", "chat", "assistant"]);
+const VALID_TABS = new Set<string>(["overview", "records", "timeline"]);
 
 interface TabConfig {
   id: TabId;
@@ -22,8 +21,6 @@ const TABS: TabConfig[] = [
   { id: "overview", label: "Overview", icon: User },
   { id: "records", label: "Records", icon: FileText },
   { id: "timeline", label: "Timeline", icon: BarChart3 },
-  { id: "chat", label: "AI Chat", icon: MessageSquare },
-  { id: "assistant", label: "AI Assistant", icon: Sparkles },
 ];
 
 interface MemberTabsProps {
@@ -76,9 +73,10 @@ export const MemberTabs = memo(function MemberTabs({ data }: MemberTabsProps) {
         {activeTab === "overview" && <OverviewTab data={data} />}
         {activeTab === "records" && <RecordsTab data={data} />}
         {activeTab === "timeline" && <TimelineTab data={data} />}
-        {activeTab === "chat" && <AiChatTab data={data} />}
-        {activeTab === "assistant" && <AiAssistantTab data={data} />}
       </div>
+
+      {/* AI launch buttons */}
+      <AiLaunchButtons data={data} />
     </div>
   );
 });
