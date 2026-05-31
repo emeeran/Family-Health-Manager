@@ -1,10 +1,10 @@
 import { useState, useEffect, lazy, Suspense, memo } from "react";
-// Recharts Tooltip formatter callback — typed to satisfy Formatter<ValueType, NameType>
+// Recharts Tooltip formatter callback lacks precise types — use recharts internal types
+import type { TooltipPayloadEntry, TooltipValueType } from "recharts";
 type RechartsFormatter = (
-  value: string | number | readonly (string | number)[] | undefined,
+  value: TooltipValueType | undefined,
   name: string | number | undefined,
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  item: any
+  item: TooltipPayloadEntry
 ) => [string, string];
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { listRecords } from "@/lib/api/records";
