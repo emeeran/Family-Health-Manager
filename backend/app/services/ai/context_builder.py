@@ -1,4 +1,5 @@
 """Context builder — constructs AI prompts from patient records and member data."""
+import asyncio
 import json
 import logging
 from datetime import date, datetime
@@ -88,6 +89,9 @@ async def build_member_context(
     recent = await db.execute(query)
     records = list(recent.scalars().all())
 
+    # Start medication summary query in parallel with record processing
+    med_summary_task = asyncio.create_task(build_medication_summary(db, member_id))
+
     # Aggregate across records for summary sections
     all_diagnoses: list[str] = []
     all_providers: list[str] = []
@@ -150,7 +154,7 @@ async def build_member_context(
             context += f"  - {f}\n"
 
     # Aggregate ALL medications across ALL records (not limited by record cap)
-    med_summary = await build_medication_summary(db, member_id)
+    med_summary = await med_summary_task
     if med_summary:
         context += f"\n{med_summary}\n"
 

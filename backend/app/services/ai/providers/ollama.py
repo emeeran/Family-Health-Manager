@@ -21,10 +21,13 @@ async def call_ollama_text(prompt: str) -> str | None:
         "model": settings.OLLAMA_TEXT_MODEL,
         "messages": [{"role": "user", "content": prompt}],
         "stream": False,
-        "options": {"num_ctx": 8192},
+        "options": {"num_ctx": 16384, "num_predict": 2048, "temperature": 0.3},
     }
     client = await get_ollama_client()
-    resp = await client.post(url, json=payload)
+    resp = await client.post(
+        url, json=payload,
+        timeout=httpx.Timeout(connect=10, read=120, write=10, pool=10),
+    )
     resp.raise_for_status()
     data = resp.json()
     content = data.get("message", {}).get("content", "")
@@ -43,10 +46,14 @@ async def ollama_chat(model: str, prompt: str) -> str | None:
         "model": model,
         "messages": [{"role": "user", "content": prompt}],
         "stream": False,
+        "options": {"num_ctx": 32768, "num_predict": 4096, "temperature": 0.3},
     }
     try:
         client = await get_ollama_client()
-        resp = await client.post(url, json=payload)
+        resp = await client.post(
+            url, json=payload,
+            timeout=httpx.Timeout(connect=10, read=120, write=10, pool=10),
+        )
         resp.raise_for_status()
         data = resp.json()
         return data.get("message", {}).get("content")
@@ -71,10 +78,13 @@ async def ollama_chat_stream(model: str, prompt: str) -> AsyncGenerator[str, Non
         "model": model,
         "messages": [{"role": "user", "content": prompt}],
         "stream": True,
-        "options": {"num_ctx": 32768},
+        "options": {"num_ctx": 32768, "num_predict": 4096, "temperature": 0.3},
     }
     client = await get_ollama_client()
-    async with client.stream("POST", url, json=payload) as resp:
+    async with client.stream(
+        "POST", url, json=payload,
+        timeout=httpx.Timeout(connect=10, read=120, write=10, pool=10),
+    ) as resp:
         resp.raise_for_status()
         async for line in resp.aiter_lines():
             if not line.strip():
@@ -105,11 +115,14 @@ async def call_ollama_vision(
             "images": [b64_data],
         }],
         "stream": False,
-        "options": {"num_ctx": 8192},
+        "options": {"num_ctx": 8192, "num_predict": 4096, "temperature": 0.2},
     }
     try:
         client = await get_ollama_client()
-        resp = await client.post(url, json=payload)
+        resp = await client.post(
+            url, json=payload,
+            timeout=httpx.Timeout(connect=10, read=120, write=10, pool=10),
+        )
         resp.raise_for_status()
         data = resp.json()
         return data.get("message", {}).get("content")
@@ -136,10 +149,13 @@ async def call_ollama_ocr(
             "images": [b64_data],
         }],
         "stream": False,  # type: ignore[dict-item]
-        "options": {"num_ctx": 8192},
+        "options": {"num_ctx": 8192, "num_predict": 4096, "temperature": 0.1},
     }
     client = await get_ollama_client()
-    resp = await client.post(url, json=payload)
+    resp = await client.post(
+        url, json=payload,
+        timeout=httpx.Timeout(connect=10, read=120, write=10, pool=10),
+    )
     resp.raise_for_status()
     data = resp.json()
     return data.get("message", {}).get("content")

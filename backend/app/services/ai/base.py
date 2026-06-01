@@ -53,7 +53,7 @@ async def get_ollama_client() -> httpx.AsyncClient:
                 if client._transport is None:
                     client = None
         if client is None or client.is_closed:
-            ollama_client = httpx.AsyncClient(timeout=300, limits=_OLLAMA_LIMITS)
+            ollama_client = httpx.AsyncClient(timeout=120, limits=_OLLAMA_LIMITS)
         return ollama_client
 
 

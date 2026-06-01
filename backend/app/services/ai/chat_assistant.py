@@ -1,4 +1,5 @@
 """Chat assistant — chat and chat_stream methods with conversation history."""
+import asyncio
 import json
 import logging
 from collections.abc import AsyncGenerator
@@ -84,8 +85,11 @@ async def chat_stream(
         "created_at": user_msg.created_at.isoformat(),
     })
 
-    # Build health context
+    # Build health context and start history query in parallel
     health_context = ""
+    history_task = asyncio.create_task(
+        _get_conversation_history(db, conversation_id, limit=10)
+    )
     if member_id:
         cache_key = str(member_id)
         if not _base.get_cache(cache_key):
@@ -103,7 +107,7 @@ async def chat_stream(
             ))
         health_context = _base.get_cache(cache_key) or ""
 
-    history = await _get_conversation_history(db, conversation_id, limit=10)
+    history = await history_task
     full_context = f"{health_context}\n{history}" if health_context else history
 
     system_note = _CLINICAL_SYSTEM_NOTE.format(today=fmt_date(date.today()))
@@ -223,24 +227,29 @@ async def chat(
     db.add(user_msg)
     await db.flush()
 
-    history = await _get_conversation_history(db, conversation_id, limit=10)
+    # Build health context and history in parallel
+    async def _build_context() -> str:
+        ctx = ""
+        if member_id:
+            cache_key = str(member_id)
+            if not _base.get_cache(cache_key):
+                _base.put_cache(cache_key, await build_member_context(
+                    db, member_id, fmt_date, comprehensive=True
+                ))
+            ctx = _base.get_cache(cache_key) or ""
+        elif household_id:
+            cache_key = f"hh:{household_id}"
+            if not _base.get_cache(cache_key):
+                _base.put_cache(cache_key, await build_household_context(
+                    db, household_id, fmt_date
+                ))
+            ctx = _base.get_cache(cache_key) or ""
+        return ctx
 
-    # Build health context — member-specific or full household
-    health_context = ""
-    if member_id:
-        cache_key = str(member_id)
-        if not _base.get_cache(cache_key):
-            _base.put_cache(cache_key, await build_member_context(
-                db, member_id, fmt_date, comprehensive=True
-            ))
-        health_context = _base.get_cache(cache_key) or ""
-    elif household_id:
-        cache_key = f"hh:{household_id}"
-        if not _base.get_cache(cache_key):
-            _base.put_cache(cache_key, await build_household_context(
-                db, household_id, fmt_date
-            ))
-        health_context = _base.get_cache(cache_key) or ""
+    health_context, history = await asyncio.gather(
+        _build_context(),
+        _get_conversation_history(db, conversation_id, limit=10),
+    )
 
     full_context = f"{health_context}\n{history}" if health_context else history
 

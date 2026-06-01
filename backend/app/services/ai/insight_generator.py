@@ -63,11 +63,19 @@ async def generate_insight(
         cached = _base.get_cache(cache_key)
         if cached:
             context = cached
+            if health_record_id:
+                context += await build_record_context(db, health_record_id, fmt_date)
+        elif health_record_id:
+            # Build both in parallel
+            member_ctx, record_ctx = await asyncio.gather(
+                build_member_context(db, member_id, fmt_date, comprehensive=comprehensive),
+                build_record_context(db, health_record_id, fmt_date),
+            )
+            _base.put_cache(cache_key, member_ctx)
+            context = member_ctx + record_ctx
         else:
             context = await build_member_context(db, member_id, fmt_date, comprehensive=comprehensive)
             _base.put_cache(cache_key, context)
-        if health_record_id:
-            context += await build_record_context(db, health_record_id, fmt_date)
     elif health_record_id:
         context = await build_record_context(db, health_record_id, fmt_date)
 
@@ -113,67 +121,72 @@ async def generate_insight_stream(
         cached = _base.get_cache(cache_key)
         if cached:
             context = cached
+            if health_record_id:
+                yield sse({"stage": "context", "message": "Loading health record..."})
+                context += await build_record_context(db, health_record_id, fmt_date)
+        elif health_record_id:
+            # Build both in parallel
+            yield sse({"stage": "context", "message": "Loading patient records..."})
+            member_ctx, record_ctx = await asyncio.gather(
+                build_member_context(db, member_id, fmt_date, comprehensive=comprehensive),
+                build_record_context(db, health_record_id, fmt_date),
+            )
+            _base.put_cache(cache_key, member_ctx)
+            context = member_ctx + record_ctx
         else:
             yield sse({"stage": "context", "message": "Loading patient records..."})
             context = await build_member_context(db, member_id, fmt_date, comprehensive=comprehensive)
             _base.put_cache(cache_key, context)
-        if health_record_id:
-            yield sse({"stage": "context", "message": "Loading health record..."})
-            context += await build_record_context(db, health_record_id, fmt_date)
     elif health_record_id:
         yield sse({"stage": "context", "message": "Loading health record..."})
         context = await build_record_context(db, health_record_id, fmt_date)
 
-    # Stage 2: Generate — cloud first (more capable), Ollama as fallback
+    # Stage 2: Generate — Ollama first (streaming), cloud as fallback
     system_note = _CLINICAL_SYSTEM_NOTE.format(today=fmt_date(date.today()))
     full_prompt = f"{system_note}{context}\n\nUser: {prompt}\n\nAssistant:" if context else prompt
 
     full_response = ""
     provider = ""
 
-    # Preferred: cloud providers (streaming-capable, large context)
-    cloud_providers: list[tuple] = []
-    if settings.GEMINI_API_KEY:
-        cloud_providers.append((call_gemini_text, "Google Gemini 2.5 Flash"))
-    if settings.OPENROUTER_API_KEY:
-        cloud_providers.append((call_openrouter_text, "OpenRouter DeepSeek V4 Flash"))
-    if settings.GROQ_API_KEY:
-        cloud_providers.append((call_groq_text, "Groq Llama-4-Scout"))
-
-    if cloud_providers:
+    # Primary: Ollama models (local streaming)
+    ollama_models = [
+        (settings.OLLAMA_MODEL, f"Ollama {settings.OLLAMA_MODEL}"),
+        (settings.OLLAMA_TEXT_MODEL, f"Ollama {settings.OLLAMA_TEXT_MODEL}"),
+    ]
+    for model, label in ollama_models:
         try:
-            yield sse({"stage": "provider", "provider": "Cloud AI"})
-            full_response, provider = await _race_providers(full_prompt, cloud_providers)
-            if full_response:
-                # Stream the complete response token by token for UX
-                for i in range(0, len(full_response), 40):
-                    yield sse({"stage": "token", "content": full_response[i:i+40]})
+            yield sse({"stage": "provider", "provider": label})
+            chunks = []
+            async for chunk in ollama_chat_stream(model, full_prompt):
+                chunks.append(chunk)
+                yield sse({"stage": "token", "content": chunk})
+            result = "".join(chunks)
+            if result:
+                full_response = result
+                provider = label
+                break
         except Exception as exc:
-            logger.warning("Cloud providers failed for streaming insight: %s", exc)
+            logger.warning("Ollama streaming model %s failed: %s", label, exc)
 
-    # Fallback: Ollama models — prefer capable cloud-routed models over small local ones
+    # Fallback: cloud providers (non-streaming)
     if not full_response:
-        ollama_models = []
-        # Capable cloud-routed models via Ollama (much better quality)
-        for m in ["gemma4:31b-cloud"]:
-            ollama_models.append((m, f"Ollama {m}"))
-        # Then the configured models
-        ollama_models.append((settings.OLLAMA_MODEL, f"Ollama {settings.OLLAMA_MODEL}"))
-        ollama_models.append((settings.OLLAMA_TEXT_MODEL, f"Ollama {settings.OLLAMA_TEXT_MODEL}"))
-        for model, label in ollama_models:
+        cloud_providers: list[tuple] = []
+        if settings.GEMINI_API_KEY:
+            cloud_providers.append((call_gemini_text, "Google Gemini 2.5 Flash"))
+        if settings.OPENROUTER_API_KEY:
+            cloud_providers.append((call_openrouter_text, "OpenRouter DeepSeek V4 Flash"))
+        if settings.GROQ_API_KEY:
+            cloud_providers.append((call_groq_text, "Groq Llama-4-Scout"))
+
+        if cloud_providers:
             try:
-                yield sse({"stage": "provider", "provider": label})
-                chunks = []
-                async for chunk in ollama_chat_stream(model, full_prompt):
-                    chunks.append(chunk)
-                    yield sse({"stage": "token", "content": chunk})
-                result = "".join(chunks)
-                if result:
-                    full_response = result
-                    provider = label
-                    break
+                yield sse({"stage": "provider", "provider": "Cloud AI"})
+                full_response, provider = await _race_providers(full_prompt, cloud_providers)
+                if full_response:
+                    for i in range(0, len(full_response), 200):
+                        yield sse({"stage": "token", "content": full_response[i:i+200]})
             except Exception as exc:
-                logger.warning("Ollama streaming model %s failed: %s", label, exc)
+                logger.warning("Cloud providers failed for streaming insight: %s", exc)
 
     # Stage 3: Save to DB
     yield sse({"stage": "context", "message": "Saving insight..."})
@@ -194,11 +207,38 @@ async def generate_insight_stream(
 
 
 async def _call_ollama_insight(prompt: str, context: str) -> tuple[str, str]:
-    """Generate insight — races cloud providers in parallel for speed, Ollama as fallback."""
+    """Generate insight — race Ollama models in parallel, cloud as fallback."""
     system_note = _CLINICAL_SYSTEM_NOTE.format(today=fmt_date(date.today()))
     full_prompt = f"{system_note}{context}\n\nUser: {prompt}\n\nAssistant:" if context else prompt
 
-    # Race cloud providers in parallel — OpenRouter DeepSeek first
+    # Primary: Race Ollama models in parallel
+    ollama_models = [
+        (settings.OLLAMA_MODEL, f"Ollama {settings.OLLAMA_MODEL}"),
+        (settings.OLLAMA_TEXT_MODEL, f"Ollama {settings.OLLAMA_TEXT_MODEL}"),
+    ]
+    tasks: dict[asyncio.Task, str] = {}
+    for model, label in ollama_models:
+        tasks[asyncio.create_task(ollama_chat(model, full_prompt))] = label
+
+    pending = set(tasks.keys())
+    errors: list[Exception] = []
+    while pending:
+        done, pending = await asyncio.wait(pending, return_when=asyncio.FIRST_COMPLETED)
+        for task in done:
+            label = tasks[task]
+            try:
+                result = task.result()
+                if result:
+                    for t in pending:
+                        t.cancel()
+                    await asyncio.gather(*pending, return_exceptions=True)
+                    logger.info("Ollama insight race won by %s", label)
+                    return result, label
+            except Exception as exc:
+                errors.append(exc)
+                logger.debug("Ollama model %s failed in race: %s", label, exc)
+
+    # Fallback: cloud providers
     cloud_providers: list[tuple] = []
     if settings.OPENROUTER_API_KEY:
         cloud_providers.append((call_openrouter_text, "OpenRouter DeepSeek V4 Flash"))
@@ -214,18 +254,6 @@ async def _call_ollama_insight(prompt: str, context: str) -> tuple[str, str]:
                 return result, provider
         except Exception as exc:
             logger.debug("All cloud providers failed for insight: %s", exc)
-
-    # Fallback: try Ollama models — prefer capable cloud-routed models
-    ollama_models = [("gemma4:31b-cloud", "Ollama gemma4:31b-cloud")]
-    ollama_models.append((settings.OLLAMA_MODEL, f"Ollama {settings.OLLAMA_MODEL}"))
-    ollama_models.append((settings.OLLAMA_TEXT_MODEL, f"Ollama {settings.OLLAMA_TEXT_MODEL}"))
-    for model, label in ollama_models:
-        try:
-            result = await ollama_chat(model, full_prompt)
-            if result:
-                return result, label
-        except Exception as exc:
-            logger.warning("Ollama model %s failed: %s", label, exc)
 
     raise ValueError("All AI providers failed for insight generation")
 

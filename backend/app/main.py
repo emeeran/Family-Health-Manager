@@ -103,6 +103,16 @@ async def lifespan(app: FastAPI):
     from app.core.storage import sweep_orphaned_staging
     await sweep_orphaned_staging()
 
+    # Ensure Ollama is running and models are available
+    from app.core.ollama_service import ensure_ollama_ready
+    ollama_ok = await ensure_ollama_ready()
+    if ollama_ok:
+        logger.info("Ollama ready — primary AI provider: %s", settings.OLLAMA_MODEL)
+    else:
+        logger.warning(
+            "Ollama not available — will fall back to cloud providers if configured"
+        )
+
     # Token pruning — clean up expired refresh and revoked tokens daily
     async def _prune_tokens():
         from app.core.database import SessionLocal

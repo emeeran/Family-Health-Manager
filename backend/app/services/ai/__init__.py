@@ -194,51 +194,51 @@ class AIService:
             yield sse({"stage": "context", "message": "Loading health record..."})
             context = await self._build_record_context(health_record_id)
 
-        # Stage 2: Generate
+        # Stage 2: Generate — Ollama first (streaming), cloud as fallback
         system_note = _CLINICAL_SYSTEM_NOTE.format(today=self._fmt_date(date.today()))
         full_prompt = f"{system_note}{context}\n\nUser: {prompt}\n\nAssistant:" if context else prompt
 
         full_response = ""
         provider = ""
 
-        cloud_providers: list[tuple] = []
-        if settings.GEMINI_API_KEY:
-            cloud_providers.append((self._call_gemini_text, "Google Gemini 2.5 Flash"))
-        if settings.OPENROUTER_API_KEY:
-            cloud_providers.append((self._call_openrouter_text, "OpenRouter DeepSeek V4 Flash"))
-        if settings.GROQ_API_KEY:
-            cloud_providers.append((self._call_groq_text, "Groq Llama-4-Scout"))
-
-        if cloud_providers:
+        # Primary: Ollama models (local streaming)
+        ollama_models = [(settings.OLLAMA_MODEL, f"Ollama {settings.OLLAMA_MODEL}")]
+        ollama_models.append(("gemma4:31b-cloud", "Ollama gemma4:31b-cloud"))
+        ollama_models.append((settings.OLLAMA_TEXT_MODEL, f"Ollama {settings.OLLAMA_TEXT_MODEL}"))
+        for model, label in ollama_models:
             try:
-                yield sse({"stage": "provider", "provider": "Cloud AI"})
-                full_response, provider = await self._race_providers(full_prompt, cloud_providers)
-                if full_response:
-                    for i in range(0, len(full_response), 40):
-                        yield sse({"stage": "token", "content": full_response[i:i+40]})
+                yield sse({"stage": "provider", "provider": label})
+                chunks = []
+                async for chunk in self._ollama_chat_stream(model, full_prompt):
+                    chunks.append(chunk)
+                    yield sse({"stage": "token", "content": chunk})
+                result = "".join(chunks)
+                if result:
+                    full_response = result
+                    provider = label
+                    break
             except Exception as exc:
-                logger.warning("Cloud providers failed for streaming insight: %s", exc)
+                logger.warning("Ollama streaming model %s failed: %s", label, exc)
 
+        # Fallback: cloud providers (non-streaming)
         if not full_response:
-            ollama_models = []
-            for m in ["gemma4:31b-cloud"]:
-                ollama_models.append((m, f"Ollama {m}"))
-            ollama_models.append((settings.OLLAMA_MODEL, f"Ollama {settings.OLLAMA_MODEL}"))
-            ollama_models.append((settings.OLLAMA_TEXT_MODEL, f"Ollama {settings.OLLAMA_TEXT_MODEL}"))
-            for model, label in ollama_models:
+            cloud_providers: list[tuple] = []
+            if settings.GEMINI_API_KEY:
+                cloud_providers.append((self._call_gemini_text, "Google Gemini 2.5 Flash"))
+            if settings.OPENROUTER_API_KEY:
+                cloud_providers.append((self._call_openrouter_text, "OpenRouter DeepSeek V4 Flash"))
+            if settings.GROQ_API_KEY:
+                cloud_providers.append((self._call_groq_text, "Groq Llama-4-Scout"))
+
+            if cloud_providers:
                 try:
-                    yield sse({"stage": "provider", "provider": label})
-                    chunks = []
-                    async for chunk in self._ollama_chat_stream(model, full_prompt):
-                        chunks.append(chunk)
-                        yield sse({"stage": "token", "content": chunk})
-                    result = "".join(chunks)
-                    if result:
-                        full_response = result
-                        provider = label
-                        break
+                    yield sse({"stage": "provider", "provider": "Cloud AI"})
+                    full_response, provider = await self._race_providers(full_prompt, cloud_providers)
+                    if full_response:
+                        for i in range(0, len(full_response), 40):
+                            yield sse({"stage": "token", "content": full_response[i:i+40]})
                 except Exception as exc:
-                    logger.warning("Ollama streaming model %s failed: %s", label, exc)
+                    logger.warning("Cloud providers failed for streaming insight: %s", exc)
 
         # Stage 3: Save
         yield sse({"stage": "context", "message": "Saving insight..."})
@@ -520,15 +520,15 @@ class AIService:
     # ---- Internal AI call routing ----
 
     async def _call_ai(self, prompt: str, context: str) -> tuple[str, str]:
-        """Call AI provider with failover chain for text-based chat/insights."""
+        """Call AI provider with failover chain — Ollama first, cloud as fallback."""
         system_note = _CLINICAL_SYSTEM_NOTE.format(today=self._fmt_date(date.today()))
         full_prompt = f"{system_note}{context}\n\nUser: {prompt}\n\nAssistant:" if context else prompt
 
         providers = [
+            (self._call_ollama_text, "Ollama (local)"),
             (self._call_openrouter_text, "OpenRouter DeepSeek V4 Flash"),
             (self._call_groq_text, "Groq Llama-4-Scout"),
             (self._call_gemini_text, "Google Gemini 2.5 Flash"),
-            (self._call_ollama_text, "Ollama (local)"),
         ]
         for provider_fn, label in providers:
             try:
@@ -544,13 +544,13 @@ class AIService:
     async def _call_ai_excluding(
         self, prompt: str, exclude_provider: str
     ) -> tuple[str, str]:
-        """Call AI provider with failover, skipping the provider that generated the original response."""
+        """Call AI provider with failover, skipping the excluded provider."""
         providers = [
+            (self._call_ollama_text, "Ollama (local)"),
             (self._call_openrouter_text, "OpenRouter DeepSeek V4 Flash"),
             (self._call_groq_text, "Groq Llama-4-Scout"),
             (self._call_gemini_text, "Google Gemini 2.5 Flash"),
             (self._call_ollama_text, "Ollama (local)"),
-            (self._call_openrouter_text, "OpenRouter DeepSeek V4 Flash"),
         ]
         for provider_fn, label in providers:
             if label == exclude_provider:
@@ -566,10 +566,23 @@ class AIService:
         raise ValueError("All verification providers failed")
 
     async def _call_ollama_insight(self, prompt: str, context: str) -> tuple[str, str]:
-        """Generate insight -- races cloud providers in parallel, Ollama as fallback."""
+        """Generate insight — Ollama first, cloud providers as fallback."""
         system_note = _CLINICAL_SYSTEM_NOTE.format(today=self._fmt_date(date.today()))
         full_prompt = f"{system_note}{context}\n\nUser: {prompt}\n\nAssistant:" if context else prompt
 
+        # Primary: Ollama models (local first for privacy and speed)
+        ollama_models = [(settings.OLLAMA_MODEL, f"Ollama {settings.OLLAMA_MODEL}")]
+        ollama_models.append(("gemma4:31b-cloud", "Ollama gemma4:31b-cloud"))
+        ollama_models.append((settings.OLLAMA_TEXT_MODEL, f"Ollama {settings.OLLAMA_TEXT_MODEL}"))
+        for model, label in ollama_models:
+            try:
+                result = await self._ollama_chat(model, full_prompt)
+                if result:
+                    return result, label
+            except Exception as exc:
+                logger.debug("Ollama model %s failed: %s", label, exc)
+
+        # Fallback: cloud providers
         cloud_providers: list[tuple] = []
         if settings.OPENROUTER_API_KEY:
             cloud_providers.append((self._call_openrouter_text, "OpenRouter DeepSeek V4 Flash"))
@@ -585,17 +598,6 @@ class AIService:
                     return result, provider
             except Exception as exc:
                 logger.debug("All cloud providers failed for insight: %s", exc)
-
-        ollama_models = [("gemma4:31b-cloud", "Ollama gemma4:31b-cloud")]
-        ollama_models.append((settings.OLLAMA_MODEL, f"Ollama {settings.OLLAMA_MODEL}"))
-        ollama_models.append((settings.OLLAMA_TEXT_MODEL, f"Ollama {settings.OLLAMA_TEXT_MODEL}"))
-        for model, label in ollama_models:
-            try:
-                result = await self._ollama_chat(model, full_prompt)
-                if result:
-                    return result, label
-            except Exception as exc:
-                logger.warning("Ollama model %s failed: %s", label, exc)
 
         raise ValueError("All AI providers failed for insight generation")
 

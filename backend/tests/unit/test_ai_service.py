@@ -75,7 +75,9 @@ async def test_generate_insight_with_member_context(ai_service, mock_db):
 @pytest.mark.asyncio
 async def test_call_ai_failover(ai_service):
     """Test AI provider failover chain — all providers fail with no keys."""
-    with patch("app.services.ai_service.settings") as mock_settings:
+    mock_ollama = AsyncMock(return_value=None)
+    with patch("app.services.ai_service.settings") as mock_settings, \
+         patch.object(ai_service, "_call_ollama_text", mock_ollama):
         mock_settings.OLLAMA_LOCAL_URL = ""
         mock_settings.OLLAMA_MODEL = "medgemma"
         mock_settings.OPENAI_API_KEY = ""
@@ -87,8 +89,8 @@ async def test_call_ai_failover(ai_service):
 
 
 @pytest.mark.asyncio
-async def test_call_ai_groq_first_then_gemini(ai_service):
-    """Test Groq is tried first (fastest), then Gemini in the provider chain."""
+async def test_call_ai_ollama_first_then_cloud(ai_service):
+    """Test Ollama is tried first, then cloud providers as fallback."""
     with patch("app.services.ai_service.settings") as mock_settings:
         mock_settings.OLLAMA_LOCAL_URL = "http://localhost:11434"
         mock_settings.OLLAMA_MODEL = "medgemma"
@@ -107,6 +109,8 @@ async def test_call_ai_groq_first_then_gemini(ai_service):
             result, provider = await ai_service._call_ai("Test prompt", "")
             assert result == "Gemini response"
             assert provider == "Google Gemini 2.5 Flash"
+            # Ollama tried first, then cloud fallback
+            mock_ollama.assert_called_once()
             mock_groq.assert_called_once()
             mock_gemini.assert_called_once()
 
