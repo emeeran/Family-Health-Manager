@@ -9,27 +9,33 @@ const LoginPage = lazy(() => import("@/pages/login"));
 const Login2FAPage = lazy(() => import("@/pages/login-2fa"));
 const RegisterPage = lazy(() => import("@/pages/register"));
 
-// App pages
-const DashboardPage = lazy(() => import("@/pages/dashboard"));
-const MembersPage = lazy(() => import("@/pages/members"));
+// Primary pages
+const HomePage = lazy(() => import("@/pages/home"));
+const PeoplePage = lazy(() => import("@/pages/people"));
+const ChatPage = lazy(() => import("@/pages/chat"));
+
+// Member pages (kept for deep linking)
 const NewMemberPage = lazy(() => import("@/pages/member-new"));
 const MemberDetailPage = lazy(() => import("@/pages/member-detail"));
 const EditMemberPage = lazy(() => import("@/pages/member-edit"));
+
+// Record pages
 const NewRecordPage = lazy(() => import("@/pages/record-new"));
 const RecordDetailPage = lazy(() => import("@/pages/record-detail"));
 const EditRecordPage = lazy(() => import("@/pages/record-edit"));
 const RecordBatchPage = lazy(() => import("@/pages/record-batch"));
-const ProvidersPage = lazy(() => import("@/pages/providers"));
+const HouseholdRecordsPage = lazy(() => import("@/pages/household-records"));
+
+// Provider pages (kept for deep linking)
 const NewProviderPage = lazy(() => import("@/pages/provider-new"));
 const ProviderDetailPage = lazy(() => import("@/pages/provider-detail"));
 const EditProviderPage = lazy(() => import("@/pages/provider-edit"));
-const RemindersPage = lazy(() => import("@/pages/reminders"));
+
+// Reminder pages (kept for deep linking)
 const NewReminderPage = lazy(() => import("@/pages/reminder-new"));
 const EditReminderPage = lazy(() => import("@/pages/reminder-edit"));
-const HouseholdRecordsPage = lazy(() => import("@/pages/household-records"));
-const ConversationsPage = lazy(() => import("@/pages/conversations"));
-const MemberAssistantPage = lazy(() => import("@/pages/member-assistant"));
-const NotificationsPage = lazy(() => import("@/pages/notifications"));
+
+// Other pages
 const SettingsPage = lazy(() => import("@/pages/settings"));
 const OnboardingPage = lazy(() => import("@/pages/onboarding"));
 
@@ -57,8 +63,8 @@ function NotFoundPage() {
       <p className="text-sm text-muted-foreground mb-6">
         The page you're looking for doesn't exist.
       </p>
-      <a href="/dashboard" className="text-sm text-primary hover:underline">
-        Go to Dashboard
+      <a href="/" className="text-sm text-primary hover:underline">
+        Go Home
       </a>
     </div>
   );
@@ -71,11 +77,117 @@ function authGuard() {
 
 export const router = createBrowserRouter([
   {
-    path: "/",
-    element: <></>,
-    loader: () => {
-      throw redirect("/dashboard");
-    },
+    element: <AppLayout />,
+    loader: authGuard,
+    children: [
+      // ── Primary routes ──
+      { index: true, element: withSuspense(HomePage) },
+      { path: "people", element: withSuspense(PeoplePage) },
+      { path: "records", element: withSuspense(HouseholdRecordsPage) },
+      { path: "chat", element: withSuspense(ChatPage) },
+
+      // ── People / Member sub-routes ──
+      { path: "people/new", element: withSuspense(NewMemberPage) },
+      { path: "people/:memberId", element: withSuspense(MemberDetailPage) },
+      { path: "people/:memberId/edit", element: withSuspense(EditMemberPage) },
+      { path: "people/:memberId/records/new", element: withSuspense(NewRecordPage) },
+      { path: "people/:memberId/records/batch", element: withSuspense(RecordBatchPage) },
+      { path: "people/:memberId/records/:recordId", element: withSuspense(RecordDetailPage) },
+      {
+        path: "people/:memberId/records/:recordId/edit",
+        element: withSuspense(EditRecordPage),
+      },
+
+      // ── Provider sub-routes (deep-link) ──
+      { path: "providers/new", element: withSuspense(NewProviderPage) },
+      { path: "providers/:providerId", element: withSuspense(ProviderDetailPage) },
+      { path: "providers/:providerId/edit", element: withSuspense(EditProviderPage) },
+
+      // ── Reminder sub-routes (deep-link) ──
+      { path: "reminders/new", element: withSuspense(NewReminderPage) },
+      { path: "reminders/:reminderId/edit", element: withSuspense(EditReminderPage) },
+
+      // ── Other ──
+      { path: "settings", element: withSuspense(SettingsPage) },
+      { path: "onboarding", element: withSuspense(OnboardingPage) },
+
+      // ── Backwards-compat redirects ──
+      {
+        path: "dashboard",
+        loader: () => {
+          throw redirect("/");
+        },
+      },
+      {
+        path: "members",
+        loader: () => {
+          throw redirect("/people");
+        },
+      },
+      {
+        path: "members/new",
+        loader: () => {
+          throw redirect("/people/new");
+        },
+      },
+      {
+        path: "members/:memberId",
+        loader: ({ params }: { params: { memberId?: string } }) => {
+          throw redirect(`/people/${params.memberId}`);
+        },
+      },
+      {
+        path: "members/:memberId/edit",
+        loader: ({ params }: { params: { memberId?: string } }) => {
+          throw redirect(`/people/${params.memberId}/edit`);
+        },
+      },
+      {
+        path: "members/:memberId/assistant",
+        loader: ({ params }: { params: { memberId?: string } }) => {
+          throw redirect(`/chat?scope=member&memberId=${params.memberId}`);
+        },
+      },
+      {
+        path: "members/:memberId/records/new",
+        loader: ({ params }: { params: { memberId?: string } }) => {
+          throw redirect(`/people/${params.memberId}/records/new`);
+        },
+      },
+      {
+        path: "members/:memberId/records/batch",
+        loader: ({ params }: { params: { memberId?: string } }) => {
+          throw redirect(`/people/${params.memberId}/records/batch`);
+        },
+      },
+      {
+        path: "members/:memberId/records/:recordId",
+        loader: ({ params }: { params: { memberId?: string; recordId?: string } }) => {
+          throw redirect(`/people/${params.memberId}/records/${params.recordId}`);
+        },
+      },
+      {
+        path: "members/:memberId/records/:recordId/edit",
+        loader: ({ params }: { params: { memberId?: string; recordId?: string } }) => {
+          throw redirect(`/people/${params.memberId}/records/${params.recordId}/edit`);
+        },
+      },
+      {
+        path: "conversations",
+        loader: () => {
+          throw redirect("/chat");
+        },
+      },
+      {
+        path: "conversations/:conversationId",
+        loader: ({ params }: { params: { conversationId?: string } }) => {
+          throw redirect(`/chat?conversationId=${params.conversationId}`);
+        },
+      },
+
+      // ── Catch all ──
+      { path: "*", element: <NotFoundPage /> },
+    ],
   },
   {
     element: <AuthLayout />,
@@ -83,74 +195,6 @@ export const router = createBrowserRouter([
       { path: "login", element: withSuspense(LoginPage) },
       { path: "login/2fa", element: withSuspense(Login2FAPage) },
       { path: "register", element: withSuspense(RegisterPage) },
-      { path: "*", element: <NotFoundPage /> },
-    ],
-  },
-  {
-    element: <AppLayout />,
-    loader: authGuard,
-    children: [
-      { path: "dashboard", element: withSuspense(DashboardPage) },
-      { path: "members", element: withSuspense(MembersPage) },
-      { path: "members/new", element: withSuspense(NewMemberPage) },
-      { path: "members/:memberId", element: withSuspense(MemberDetailPage) },
-      { path: "members/:memberId/edit", element: withSuspense(EditMemberPage) },
-      { path: "members/:memberId/assistant", element: withSuspense(MemberAssistantPage) },
-      // Sub-route redirects → unified member detail with tab param
-      {
-        path: "members/:memberId/records",
-        loader: ({ params }: { params: { memberId?: string } }) => {
-          throw redirect(`/members/${params.memberId}?tab=records`);
-        },
-      },
-      {
-        path: "members/:memberId/timeline",
-        loader: ({ params }: { params: { memberId?: string } }) => {
-          throw redirect(`/members/${params.memberId}?tab=records`);
-        },
-      },
-      {
-        path: "members/:memberId/lab-records",
-        loader: ({ params }: { params: { memberId?: string } }) => {
-          throw redirect(`/members/${params.memberId}?tab=records`);
-        },
-      },
-      {
-        path: "members/:memberId/providers",
-        loader: ({ params }: { params: { memberId?: string } }) => {
-          throw redirect(`/members/${params.memberId}?tab=overview`);
-        },
-      },
-      {
-        path: "members/:memberId/ai",
-        loader: ({ params }: { params: { memberId?: string } }) => {
-          throw redirect(`/members/${params.memberId}?tab=ai`);
-        },
-      },
-      // Record CRUD routes (still separate pages)
-      { path: "members/:memberId/records/new", element: withSuspense(NewRecordPage) },
-      { path: "members/:memberId/records/batch", element: withSuspense(RecordBatchPage) },
-      { path: "members/:memberId/records/:recordId", element: withSuspense(RecordDetailPage) },
-      { path: "members/:memberId/records/:recordId/edit", element: withSuspense(EditRecordPage) },
-      { path: "providers", element: withSuspense(ProvidersPage) },
-      { path: "providers/new", element: withSuspense(NewProviderPage) },
-      { path: "providers/:providerId", element: withSuspense(ProviderDetailPage) },
-      { path: "providers/:providerId/edit", element: withSuspense(EditProviderPage) },
-      { path: "reminders", element: withSuspense(RemindersPage) },
-      { path: "reminders/new", element: withSuspense(NewReminderPage) },
-      { path: "reminders/:reminderId/edit", element: withSuspense(EditReminderPage) },
-      { path: "records", element: withSuspense(HouseholdRecordsPage) },
-      { path: "conversations", element: withSuspense(ConversationsPage) },
-      {
-        path: "conversations/:conversationId",
-        loader: ({ params }: { params: { conversationId?: string } }) => {
-          throw redirect(`/conversations?conversationId=${params.conversationId}`);
-        },
-      },
-      { path: "notifications", element: withSuspense(NotificationsPage) },
-      { path: "settings", element: withSuspense(SettingsPage) },
-      { path: "onboarding", element: withSuspense(OnboardingPage) },
-      { path: "*", element: <NotFoundPage /> },
     ],
   },
 ]);

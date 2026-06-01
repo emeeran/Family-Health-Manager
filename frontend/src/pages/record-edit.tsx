@@ -68,7 +68,7 @@ export default function EditRecordPage() {
         mutate(["record-edit", mid, rid]);
         mutate("dashboard");
 
-        navigate(`/members/${mid}/records/${rid}`);
+        navigate(`/people/${mid}/records/${rid}`);
         return null;
       } catch (e) {
         return { error: e instanceof Error ? e.message : "Failed to update record" };
@@ -88,7 +88,7 @@ export default function EditRecordPage() {
   return (
     <div className="space-y-6">
       <div className="flex items-center gap-2 text-sm text-muted-foreground">
-        <Link to={`/members/${memberId}/records/${recordId}`} className="hover:underline">
+        <Link to={`/people/${memberId}/records/${recordId}`} className="hover:underline">
           Record
         </Link>
         <span>/</span>

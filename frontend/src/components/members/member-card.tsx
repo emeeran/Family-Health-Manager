@@ -202,7 +202,7 @@ export const MemberCard = memo(function MemberCard({
           <div className="flex-1 min-w-0">
             <div className="flex items-center justify-between gap-2">
               <Link
-                to={`/members/${member.id}`}
+                to={`/people/${member.id}`}
                 className="text-base font-bold text-foreground hover:text-(--brand-primary) transition-colors truncate block"
               >
                 {fullName}
@@ -273,17 +273,17 @@ export const MemberCard = memo(function MemberCard({
         {/* Row 4: Quick actions */}
         <div className="flex items-center gap-0.5 mt-3 pt-2.5 border-t border-border/50">
           <TooltipActionLink
-            to={`/members/${member.id}/records/new`}
+            to={`/people/${member.id}/records/new`}
             icon={<FileText className="h-3.5 w-3.5" />}
             label="Add Record"
           />
           <TooltipActionLink
-            to={`/members/${member.id}/timeline`}
+            to={`/people/${member.id}/timeline`}
             icon={<Calendar className="h-3.5 w-3.5" />}
             label="Timeline"
           />
           <TooltipActionLink
-            to={`/members/${member.id}/edit`}
+            to={`/people/${member.id}/edit`}
             icon={<Pencil className="h-3.5 w-3.5" />}
             label="Edit"
           />
@@ -330,7 +330,7 @@ export const MemberRow = memo(function MemberRow({ member, scoreData, onDelete }
       />
 
       {/* Health score / avatar */}
-      <Link to={`/members/${member.id}`} className="shrink-0">
+      <Link to={`/people/${member.id}`} className="shrink-0">
         {scoreData !== undefined ? (
           <HealthScoreRing score={scoreData.score} initials={initials} size={40} />
         ) : (
@@ -345,7 +345,7 @@ export const MemberRow = memo(function MemberRow({ member, scoreData, onDelete }
       {/* Name + details */}
       <div className="flex-1 min-w-0">
         <Link
-          to={`/members/${member.id}`}
+          to={`/people/${member.id}`}
           className="text-sm font-semibold text-foreground hover:text-(--brand-primary) transition-colors truncate block"
         >
           {fullName}
@@ -401,19 +401,19 @@ export const MemberRow = memo(function MemberRow({ member, scoreData, onDelete }
       {/* Actions */}
       <div className="hidden md:flex items-center gap-0.5 shrink-0">
         <TooltipActionLink
-          to={`/members/${member.id}/records/new`}
+          to={`/people/${member.id}/records/new`}
           icon={<FileText className="h-3.5 w-3.5" />}
           label="Add Record"
           compact
         />
         <TooltipActionLink
-          to={`/members/${member.id}/timeline`}
+          to={`/people/${member.id}/timeline`}
           icon={<Calendar className="h-3.5 w-3.5" />}
           label="Timeline"
           compact
         />
         <TooltipActionLink
-          to={`/members/${member.id}/edit`}
+          to={`/people/${member.id}/edit`}
           icon={<Pencil className="h-3.5 w-3.5" />}
           label="Edit"
           compact

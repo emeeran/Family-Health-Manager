@@ -124,7 +124,7 @@ export function ProvidersContent({ providers }: ProvidersContentProps) {
                     {provider.assigned_members.map((m) => (
                       <Link
                         key={m.family_member_id}
-                        to={`/members/${m.family_member_id}`}
+                        to={`/people/${m.family_member_id}`}
                         className="flex items-center justify-between text-xs rounded px-1.5 py-1 hover:bg-muted/50 transition-colors"
                       >
                         <span className="flex items-center gap-1.5 min-w-0">

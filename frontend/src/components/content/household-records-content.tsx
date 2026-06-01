@@ -49,29 +49,29 @@ export function HouseholdRecordsContent({
   }, [records, searchText, typeFilter, memberFilter, memberNames]);
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-4">
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-2xl font-bold">All Records</h1>
-          <p className="text-sm text-muted-foreground mt-0.5">
+          <h1 className="text-lg font-semibold">Records</h1>
+          <p className="text-sm text-muted-foreground">
             {records.length} record{records.length !== 1 ? "s" : ""} across all family members
           </p>
         </div>
       </div>
 
-      {/* Filters */}
-      <div className="flex flex-col sm:flex-row gap-3">
+      {/* Inline filters */}
+      <div className="flex items-center gap-2">
         <div className="relative flex-1">
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
           <Input
             placeholder="Search records..."
             value={searchText}
             onChange={(e) => setSearchText(e.target.value)}
-            className="pl-9"
+            className="pl-9 h-9"
           />
         </div>
         <Select value={typeFilter} onValueChange={(v) => setTypeFilter(v ?? "all")}>
-          <SelectTrigger className="w-full sm:w-44">
+          <SelectTrigger className="h-9 w-40 hidden sm:flex">
             <SelectValue placeholder="All types" />
           </SelectTrigger>
           <SelectContent>
@@ -84,7 +84,7 @@ export function HouseholdRecordsContent({
           </SelectContent>
         </Select>
         <Select value={memberFilter} onValueChange={(v) => setMemberFilter(v ?? "all")}>
-          <SelectTrigger className="w-full sm:w-48">
+          <SelectTrigger className="h-9 w-40 hidden sm:flex">
             <SelectValue placeholder="All members" />
           </SelectTrigger>
           <SelectContent>

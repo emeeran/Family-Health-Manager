@@ -58,7 +58,7 @@ const NAV_ITEMS: SearchResult[] = [
     type: "navigation",
     id: "nav-members",
     label: "Go to Family Members",
-    href: "/members",
+    href: "/people",
     icon: <Users className="h-4 w-4 text-blue-500" />,
   },
   {
@@ -100,7 +100,7 @@ const NAV_ITEMS: SearchResult[] = [
     type: "action",
     id: "act-member",
     label: "Add Family Member",
-    href: "/members/new",
+    href: "/people/new",
     icon: <Plus className="h-4 w-4 text-blue-500" />,
   },
   {
@@ -241,7 +241,7 @@ export function GlobalSearch({ open, onOpenChange }: GlobalSearchProps) {
         id: r.id,
         label: r.diagnosis || typeLabel,
         sublabel: `${memberName ? memberName + " — " : ""}${typeLabel} · ${r.record_date}`,
-        href: `/members/${r.family_member_id}/records/${r.id}`,
+        href: `/people/${r.family_member_id}/records/${r.id}`,
         icon: recordIcons[r.record_type] || <FileText className="h-4 w-4 text-slate-500" />,
       };
     });
@@ -273,7 +273,7 @@ export function GlobalSearch({ open, onOpenChange }: GlobalSearchProps) {
           id: m.id,
           label: name,
           sublabel: "Family member",
-          href: `/members/${m.id}`,
+          href: `/people/${m.id}`,
           icon: <Users className="h-4 w-4 text-blue-500" />,
         });
       }
@@ -288,7 +288,7 @@ export function GlobalSearch({ open, onOpenChange }: GlobalSearchProps) {
           id: `add-record-${m.id}`,
           label: `Add Record for ${name}`,
           sublabel: m.relationship || undefined,
-          href: `/members/${m.id}/records/new`,
+          href: `/people/${m.id}/records/new`,
           icon: <Plus className="h-4 w-4 text-teal-500" />,
         });
       }
@@ -331,7 +331,7 @@ export function GlobalSearch({ open, onOpenChange }: GlobalSearchProps) {
         id: r.id,
         label: r.diagnosis || typeLabel,
         sublabel: `${memberName ? memberName + " — " : ""}${typeLabel} · ${r.record_date}`,
-        href: `/members/${r.family_member_id}/records/${r.id}`,
+        href: `/people/${r.family_member_id}/records/${r.id}`,
         icon: recordIcons[r.record_type] || <FileText className="h-4 w-4 text-slate-500" />,
       });
     }
@@ -357,8 +357,8 @@ export function GlobalSearch({ open, onOpenChange }: GlobalSearchProps) {
     (result: SearchResult) => {
       onOpenChange(false);
       if (result.type === "record" && result.id && result.href) {
-        // Extract memberId from href pattern: /members/{memberId}/records/{recordId}
-        const match = result.href.match(/\/members\/([^/]+)\/records\/([^/]+)/);
+        // Extract memberId from href pattern: /people/{memberId}/records/{recordId}
+        const match = result.href.match(/\/people\/([^/]+)\/records\/([^/]+)/);
         if (match) {
           openQuickView(match[2], match[1]);
           return;

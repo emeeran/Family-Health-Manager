@@ -1,13 +1,25 @@
 import { useNavigate } from "react-router-dom";
-import { createMember } from "@/lib/api/members";
+import {
+  Sheet,
+  SheetContent,
+  SheetHeader,
+  SheetTitle,
+  SheetDescription,
+} from "@/components/ui/sheet";
 import { MemberForm } from "@/components/members/member-form";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Link } from "react-router-dom";
-import type { Gender, Relationship } from "@/lib/types/enums";
+import { createMember } from "@/lib/api/members";
 import { mutate } from "swr";
+import type { Gender, Relationship } from "@/lib/types/enums";
 
-function createMemberClientAction(navigate: ReturnType<typeof useNavigate>) {
-  return async function (prevState: unknown, formData: FormData) {
+interface MemberFormSheetProps {
+  open: boolean;
+  onOpenChange: (open: boolean) => void;
+}
+
+export function MemberFormSheet({ open, onOpenChange }: MemberFormSheetProps) {
+  const navigate = useNavigate();
+
+  async function action(prevState: unknown, formData: FormData) {
     const heightStr = formData.get("height_cm") as string;
     const weightStr = formData.get("weight_kg") as string;
     const allergiesRaw = formData.get("allergies_json") as string;
@@ -45,35 +57,24 @@ function createMemberClientAction(navigate: ReturnType<typeof useNavigate>) {
       await createMember(data);
       mutate("dashboard");
       mutate("members");
-      navigate("/people");
+      onOpenChange(false);
       return null;
     } catch (e) {
       return { error: e instanceof Error ? e.message : "Failed to create member" };
     }
-  };
-}
-
-export default function NewMemberPage() {
-  const navigate = useNavigate();
-  const action = createMemberClientAction(navigate);
+  }
 
   return (
-    <div className="space-y-6">
-      <div className="flex items-center gap-2">
-        <Link to="/people" className="text-sm text-muted-foreground hover:underline">
-          People
-        </Link>
-        <span className="text-sm text-muted-foreground">/</span>
-        <h1 className="text-2xl font-bold">New Member</h1>
-      </div>
-      <Card>
-        <CardHeader>
-          <CardTitle>Add Family Member</CardTitle>
-        </CardHeader>
-        <CardContent>
+    <Sheet open={open} onOpenChange={onOpenChange}>
+      <SheetContent side="right" className="w-full sm:max-w-lg overflow-y-auto">
+        <SheetHeader>
+          <SheetTitle>New Member</SheetTitle>
+          <SheetDescription>Add a family member to start tracking their health.</SheetDescription>
+        </SheetHeader>
+        <div className="mt-4">
           <MemberForm action={action} />
-        </CardContent>
-      </Card>
-    </div>
+        </div>
+      </SheetContent>
+    </Sheet>
   );
 }

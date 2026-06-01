@@ -11,19 +11,14 @@ import {
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { EmptyState } from "@/components/shared/empty-state";
 import { ConfirmDialog } from "@/components/shared/confirm-dialog";
-import { deleteMember, getBatchScores, listMembers } from "@/lib/api/members";
+import { deleteMember, getBatchScores } from "@/lib/api/members";
 import { useSWRConfig } from "swr";
-import useSWR from "swr";
 import { toast } from "sonner";
 import { ErrorState } from "@/components/shared/error-state";
-import { PageLoader } from "@/components/shared/page-loader";
 import { computeAge } from "@/lib/utils";
-
-// Custom modular components
 import { FamilySummaryBar } from "@/components/members/family-summary";
 import { MemberCard, MemberRow } from "@/components/members/member-card";
-
-/* ── Relationship filter groups ── */
+import type { FamilyMemberResponse } from "@/lib/types/member";
 
 const FILTER_GROUPS = [
   { key: "all", label: "All" },
@@ -41,8 +36,6 @@ const FILTER_GROUPS = [
   },
 ];
 
-/* ── Sort options ── */
-
 const SORT_OPTIONS = [
   { key: "name-asc", label: "Name (A-Z)" },
   { key: "name-desc", label: "Name (Z-A)" },
@@ -53,23 +46,24 @@ const SORT_OPTIONS = [
   { key: "recent", label: "Recently Added" },
 ];
 
-/* ── Storage keys ── */
 const VIEW_KEY = "members-view";
 const SORT_KEY = "members-sort";
 
-/* ── Score data type ── */
 interface ScoreData {
   score: number;
   medications: number;
   conditions: number;
 }
 
-/* ── Page header ── */
+interface MembersContentProps {
+  members: FamilyMemberResponse[];
+}
+
 function PageHeader({ count, total }: { count: number; total?: number }) {
   return (
     <div className="flex items-end justify-between select-none">
       <div>
-        <h1 className="text-2xl font-bold tracking-tight">Family Members</h1>
+        <h1 className="text-lg font-semibold tracking-tight">Family Members</h1>
         <p className="text-sm text-muted-foreground mt-0.5">
           {count} active member{count !== 1 ? "s" : ""}
           {total !== undefined && total !== count && ` · ${total - count} inactive`}
@@ -79,16 +73,8 @@ function PageHeader({ count, total }: { count: number; total?: number }) {
   );
 }
 
-export default function MembersPage() {
-  const {
-    data: members,
-    error,
-    mutate,
-  } = useSWR("members", async () => {
-    return listMembers();
-  });
-
-  const _navigate = useNavigate();
+export function MembersContent({ members }: MembersContentProps) {
+  const navigate = useNavigate();
   const { mutate: swrMutate } = useSWRConfig();
 
   const [deleteOpen, setDeleteOpen] = useState(false);
@@ -109,7 +95,6 @@ export default function MembersPage() {
 
   const activeMembers = useMemo(() => (members ?? []).filter((m) => m.is_active), [members]);
 
-  /* ── Fetch health scores via single batch call ── */
   useEffect(() => {
     if (!activeMembers.length) {
       setScoresLoading(false);
@@ -136,9 +121,6 @@ export default function MembersPage() {
       });
   }, [activeMembers]);
 
-  if (error) return <ErrorState onRetry={() => mutate()} />;
-  if (!members) return <PageLoader title="Family Members" />;
-
   function toggleView(v: "grid" | "list") {
     setView(v);
     localStorage.setItem(VIEW_KEY, v);
@@ -153,8 +135,6 @@ export default function MembersPage() {
 
   const filtered = useMemo(() => {
     let result = activeMembers;
-
-    // Search filter
     if (search.trim()) {
       const q = search.toLowerCase();
       result = result.filter(
@@ -164,8 +144,6 @@ export default function MembersPage() {
           `${m.first_name} ${m.last_name}`.toLowerCase().includes(q)
       );
     }
-
-    // Relationship filter
     if (filterKey !== "all") {
       const group = FILTER_GROUPS.find((g) => g.key === filterKey);
       if (group?.matches) {
@@ -174,7 +152,6 @@ export default function MembersPage() {
         result = result.filter((m) => m.relationship === filterKey);
       }
     }
-
     return result;
   }, [activeMembers, search, filterKey]);
 
@@ -221,23 +198,22 @@ export default function MembersPage() {
     }
   }
 
-  /* ── Empty state ── */
   if (members.length === 0) {
     return (
       <div className="space-y-6">
         <PageHeader count={0} />
         <EmptyState
           icon={
-            <div className="flex h-16 w-16 items-center justify-center rounded-2xl bg-gradient-to-br from-(--brand-accent)/15 to-(--brand-primary)/15">
-              <Users className="h-8 w-8 text-(--brand-accent)" />
+            <div className="flex h-16 w-16 items-center justify-center rounded-2xl bg-primary/10">
+              <Users className="h-8 w-8 text-primary" />
             </div>
           }
           title="No family members yet"
           description="Add your first family member to start tracking their health records."
           action={
             <Link
-              to="/members/new"
-              className="inline-flex items-center gap-1.5 rounded-lg bg-gradient-to-r from-(--brand-accent) to-(--brand-primary) px-4 h-9 text-sm font-semibold text-white hover:opacity-90 transition-opacity shadow-md"
+              to="/people/new"
+              className="inline-flex items-center gap-1.5 rounded-lg bg-primary px-4 h-9 text-sm font-semibold text-primary-foreground hover:bg-primary/90 transition-colors"
             >
               <Plus className="h-4 w-4" />
               Add your first member
@@ -250,10 +226,9 @@ export default function MembersPage() {
 
   return (
     <TooltipProvider>
-      <div className="space-y-5">
+      <div className="space-y-4">
         <PageHeader count={activeMembers.length} total={members.length} />
 
-        {/* ── Summary bar ── */}
         <FamilySummaryBar
           activeCount={activeMembers.length}
           scores={healthScores}
@@ -261,9 +236,7 @@ export default function MembersPage() {
           loading={scoresLoading}
         />
 
-        {/* ── Toolbar ── */}
         <div className="flex flex-col sm:flex-row items-start sm:items-center gap-3">
-          {/* Search */}
           <div className="relative flex-1 w-full sm:max-w-xs">
             <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground/50" />
             <input
@@ -271,11 +244,10 @@ export default function MembersPage() {
               value={search}
               onChange={(e) => setSearch(e.target.value)}
               placeholder="Search members..."
-              className="w-full h-9 rounded-lg border border-border/60 bg-background pl-9 pr-3 text-sm placeholder:text-muted-foreground/50 focus:outline-none focus:ring-2 focus:ring-(--brand-primary)/20 focus:border-(--brand-primary)/30 transition-all"
+              className="w-full h-9 rounded-lg border border-border/60 bg-background pl-9 pr-3 text-sm placeholder:text-muted-foreground/50 focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary/30 transition-all"
             />
           </div>
 
-          {/* Relationship filter pills */}
           <div className="flex items-center gap-1 flex-wrap">
             {FILTER_GROUPS.map((g) => (
               <button
@@ -283,7 +255,7 @@ export default function MembersPage() {
                 onClick={() => setFilterKey(g.key)}
                 className={`rounded-lg px-3 py-1.5 text-xs font-medium transition-all duration-200 ${
                   filterKey === g.key
-                    ? "bg-(--brand-primary)/10 text-(--brand-primary) dark:text-(--brand-accent) shadow-sm"
+                    ? "bg-primary/10 text-primary shadow-sm"
                     : "text-muted-foreground hover:bg-muted/50 hover:text-foreground"
                 }`}
               >
@@ -292,7 +264,6 @@ export default function MembersPage() {
             ))}
           </div>
 
-          {/* Sort + View toggle + Add */}
           <div className="flex items-center gap-2 ml-auto">
             <Select value={sortKey} onValueChange={handleSortChange}>
               <SelectTrigger size="sm" className="h-9 gap-1.5 text-xs">
@@ -324,17 +295,16 @@ export default function MembersPage() {
                 <List className="h-4 w-4" />
               </button>
             </div>
-            <Link
-              to="/members/new"
-              className="inline-flex items-center gap-1.5 rounded-lg bg-gradient-to-r from-(--brand-accent) to-(--brand-primary) px-3.5 h-9 text-sm font-semibold text-white hover:opacity-90 transition-opacity shadow-md"
+            <button
+              onClick={() => navigate("/people/new")}
+              className="inline-flex items-center gap-1.5 rounded-lg bg-primary px-3.5 h-9 text-sm font-semibold text-primary-foreground hover:bg-primary/90 transition-colors"
             >
               <Plus className="h-4 w-4" />
               <span className="hidden sm:inline">Add Member</span>
-            </Link>
+            </button>
           </div>
         </div>
 
-        {/* ── Members display ── */}
         {filtered.length === 0 ? (
           <div className="text-center py-12">
             <p className="text-sm text-muted-foreground">No members match your search.</p>

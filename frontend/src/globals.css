@@ -527,3 +527,8 @@ button,
     border-radius: 0 !important;
   }
 }
+
+/* Feed item utility */
+.feed-item {
+  transition: background-color 150ms ease;
+}

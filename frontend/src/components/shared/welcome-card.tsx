@@ -50,7 +50,7 @@ export function WelcomeCard({
     {
       id: "member",
       label: "Add a family member",
-      href: "/members/new",
+      href: "/people/new",
       icon: <Users className="h-4 w-4" />,
       check: hasMembers,
     },

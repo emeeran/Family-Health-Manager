@@ -108,7 +108,7 @@ export function ProviderDetailContent({ provider, assignedMembers }: ProviderDet
               {assignedMembers.map((a) => (
                 <Link
                   key={a.id}
-                  to={`/members/${a.family_member_id}`}
+                  to={`/people/${a.family_member_id}`}
                   className="flex items-center justify-between py-2.5 first:pt-0 last:pb-0 hover:bg-muted/30 -mx-2 px-2 rounded transition-colors"
                 >
                   <div className="min-w-0">

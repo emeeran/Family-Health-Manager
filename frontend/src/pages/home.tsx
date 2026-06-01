@@ -1,13 +1,12 @@
 import useSWR from "swr";
 import { useNavigate } from "react-router-dom";
 import { getDashboardSummary } from "@/lib/api/dashboard";
-import { DashboardContent, DashboardSkeleton } from "@/components/content/dashboard-content";
-import { SmartEntryFAB } from "@/components/records/smart-entry";
+import { HomeContent, HomeSkeleton } from "@/components/content/home-content";
 import { useEffect } from "react";
 import type { FamilyMemberResponse } from "@/lib/types/member";
 import type { HealthRecordResponse } from "@/lib/types/health-record";
 
-export default function DashboardPage() {
+export default function HomePage() {
   const navigate = useNavigate();
   const { data: summary, error } = useSWR("dashboard", () => getDashboardSummary(), {
     revalidateOnFocus: false,
@@ -26,7 +25,7 @@ export default function DashboardPage() {
   if (error) {
     return (
       <div className="flex flex-col items-center justify-center py-20 text-center">
-        <p className="text-lg font-semibold text-destructive mb-2">Failed to load dashboard</p>
+        <p className="text-lg font-semibold text-destructive mb-2">Failed to load</p>
         <p className="text-sm text-muted-foreground mb-4">{error.message}</p>
         <button
           onClick={() => navigate("/login")}
@@ -38,7 +37,7 @@ export default function DashboardPage() {
     );
   }
 
-  if (!summary) return <DashboardSkeleton />;
+  if (!summary) return <HomeSkeleton />;
 
   // Redirect to onboarding if no members
   if (!summary.members || summary.members.length === 0) {
@@ -46,7 +45,6 @@ export default function DashboardPage() {
     return null;
   }
 
-  // Map dashboard API members to FamilyMemberResponse shape
   const members = summary.members.map(
     (m): FamilyMemberResponse => ({
       id: m.id,
@@ -73,19 +71,16 @@ export default function DashboardPage() {
   const records = (summary.recent_records || []) as unknown as HealthRecordResponse[];
 
   return (
-    <>
-      <DashboardContent
-        members={members}
-        householdName={summary.household_name || "My Family"}
-        stats={{
-          providersCount: summary.providers_count || 0,
-          conversationsCount: summary.conversations_count || 0,
-          unreadNotifications: summary.unread_notifications || 0,
-          upcomingReminders: summary.upcoming_reminders || [],
-        }}
-        records={records}
-      />
-      <SmartEntryFAB members={members} />
-    </>
+    <HomeContent
+      members={members}
+      householdName={summary.household_name || "My Family"}
+      stats={{
+        providersCount: summary.providers_count || 0,
+        conversationsCount: summary.conversations_count || 0,
+        unreadNotifications: summary.unread_notifications || 0,
+        upcomingReminders: summary.upcoming_reminders || [],
+      }}
+      records={records}
+    />
   );
 }

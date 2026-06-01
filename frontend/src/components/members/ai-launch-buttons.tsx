@@ -1,5 +1,6 @@
 import { memo, useCallback } from "react";
-import { MessageSquare, Sparkles, ExternalLink } from "lucide-react";
+import { useNavigate } from "react-router-dom";
+import { MessageSquare, Sparkles } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import type { MemberDetailResponse } from "@/lib/types/member";
@@ -11,14 +12,15 @@ interface AiLaunchButtonsProps {
 export const AiLaunchButtons = memo(function AiLaunchButtons({ data }: AiLaunchButtonsProps) {
   const { member } = data;
   const memberName = `${member.first_name} ${member.last_name}`;
+  const navigate = useNavigate();
 
   const openChat = useCallback(() => {
-    window.open(`/conversations?memberId=${member.id}`, "_blank", "width=900,height=700");
-  }, [member.id]);
+    navigate(`/chat?scope=member&memberId=${member.id}`);
+  }, [navigate, member.id]);
 
   const openAssistant = useCallback(() => {
-    window.open(`/members/${member.id}/assistant`, "_blank", "width=1000,height=750");
-  }, [member.id]);
+    navigate(`/chat?scope=member&memberId=${member.id}`);
+  }, [navigate, member.id]);
 
   return (
     <div className="grid gap-3 sm:grid-cols-2 mt-4">
@@ -33,8 +35,7 @@ export const AiLaunchButtons = memo(function AiLaunchButtons({ data }: AiLaunchB
               Chat about {memberName}&apos;s health records
             </p>
           </div>
-          <Button variant="outline" size="sm" onClick={openChat} className="gap-1.5 shrink-0">
-            <ExternalLink className="h-3.5 w-3.5" />
+          <Button variant="outline" size="sm" onClick={openChat} className="shrink-0">
             Open
           </Button>
         </CardContent>
@@ -50,8 +51,7 @@ export const AiLaunchButtons = memo(function AiLaunchButtons({ data }: AiLaunchB
               Insights, drug checks &amp; pre-consultation
             </p>
           </div>
-          <Button variant="outline" size="sm" onClick={openAssistant} className="gap-1.5 shrink-0">
-            <ExternalLink className="h-3.5 w-3.5" />
+          <Button variant="outline" size="sm" onClick={openAssistant} className="shrink-0">
             Open
           </Button>
         </CardContent>

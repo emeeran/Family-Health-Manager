@@ -190,7 +190,7 @@ export const OverviewTab = memo(function OverviewTab({ data }: OverviewTabProps)
     try {
       await deleteMember(member.id);
       toast.success("Member deleted");
-      navigate("/members");
+      navigate("/people");
     } catch {
       toast.error("Failed to delete member");
     }
@@ -372,7 +372,7 @@ ${sectionHtml}
           {/* Breadcrumb + actions */}
           <div className="flex items-center justify-between mb-4">
             <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
-              <Link to="/members" className="hover:text-primary transition-colors">
+              <Link to="/people" className="hover:text-primary transition-colors">
                 Members
               </Link>
               <span className="text-muted-foreground/30">/</span>
@@ -388,7 +388,7 @@ ${sectionHtml}
                 <Printer className="h-3 w-3" />
                 PDF
               </Button>
-              <Link to={`/members/${member.id}/edit`}>
+              <Link to={`/people/${member.id}/edit`}>
                 <Button variant="outline" size="sm" className="h-7 text-xs rounded-lg px-2.5">
                   Edit
                 </Button>
@@ -631,7 +631,7 @@ ${sectionHtml}
       <div className="flex items-center gap-1 print:hidden">
         {quickActions.map((action) => {
           const Icon = action.icon;
-          const linkTo = action.href ?? `/members/${member.id}${action.hrefSuffix}`;
+          const linkTo = action.href ?? `/people/${member.id}${action.hrefSuffix}`;
           return (
             <Link
               key={linkTo}

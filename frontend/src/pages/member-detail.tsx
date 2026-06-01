@@ -26,8 +26,8 @@ export default function MemberDetailPage() {
   if (!detail) {
     return (
       <div className="space-y-4">
-        <Link to="/members" className="text-sm text-muted-foreground hover:underline">
-          Back to Members
+        <Link to="/people" className="text-sm text-muted-foreground hover:underline">
+          Back to People
         </Link>
         <PageLoader />
       </div>

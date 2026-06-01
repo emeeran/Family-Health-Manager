@@ -73,11 +73,11 @@ export function RecordsListContent({ records, member, onRefresh }: RecordsListCo
   return (
     <div className="space-y-6">
       <div className="flex items-center gap-2 text-sm text-muted-foreground">
-        <Link to="/members" className="hover:underline">
+        <Link to="/people" className="hover:underline">
           Members
         </Link>
         <span>/</span>
-        <Link to={`/members/${member.id}`} className="hover:underline">
+        <Link to={`/people/${member.id}`} className="hover:underline">
           {member.first_name} {member.last_name}
         </Link>
         <span>/</span>
@@ -93,13 +93,13 @@ export function RecordsListContent({ records, member, onRefresh }: RecordsListCo
               Cleanup
             </Button>
           )}
-          <Link to={`/members/${member.id}/records/batch`}>
+          <Link to={`/people/${member.id}/records/batch`}>
             <Button variant="outline">
               <Upload className="h-4 w-4 mr-1" />
               Batch Upload
             </Button>
           </Link>
-          <Link to={`/members/${member.id}/records/new`}>
+          <Link to={`/people/${member.id}/records/new`}>
             <Button>
               <Plus className="h-4 w-4 mr-1" />
               Add Record
@@ -190,7 +190,7 @@ export function RecordsListContent({ records, member, onRefresh }: RecordsListCo
           }
           action={
             records.length === 0 ? (
-              <Link to={`/members/${member.id}/records/new`}>
+              <Link to={`/people/${member.id}/records/new`}>
                 <Button>Add First Record</Button>
               </Link>
             ) : undefined
@@ -199,7 +199,7 @@ export function RecordsListContent({ records, member, onRefresh }: RecordsListCo
       ) : (
         <RecordsTable
           records={filtered}
-          onRowClick={(r) => navigate(`/members/${member.id}/records/${r.id}`)}
+          onRowClick={(r) => navigate(`/people/${member.id}/records/${r.id}`)}
           selectedIds={selectedIds}
           onSelectionChange={setSelectedIds}
         />

@@ -1,7 +1,7 @@
 import { useSearchParams } from "react-router-dom";
 import { UnifiedChatLayout } from "@/components/conversations/unified-chat-layout";
 
-export default function ConversationsPage() {
+export default function ChatPage() {
   const [searchParams] = useSearchParams();
   const conversationId = searchParams.get("conversationId") ?? undefined;
   const memberId = searchParams.get("memberId") ?? undefined;

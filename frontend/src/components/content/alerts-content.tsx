@@ -118,7 +118,7 @@ export function AlertsContent() {
                       )}
                       {alert.record_id && (
                         <Link
-                          to={`/members/${alert.family_member_id}/records/${alert.record_id}`}
+                          to={`/people/${alert.family_member_id}/records/${alert.record_id}`}
                           className="text-xs text-blue-500 hover:underline"
                         >
                           View Record

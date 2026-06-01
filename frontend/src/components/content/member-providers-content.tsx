@@ -74,11 +74,11 @@ export function MemberProvidersContent({
   return (
     <div className="space-y-6">
       <div className="flex items-center gap-2 text-sm text-muted-foreground">
-        <Link to="/members" className="hover:underline">
+        <Link to="/people" className="hover:underline">
           Members
         </Link>
         <span>/</span>
-        <Link to={`/members/${member.id}`} className="hover:underline">
+        <Link to={`/people/${member.id}`} className="hover:underline">
           {member.first_name} {member.last_name}
         </Link>
         <span>/</span>

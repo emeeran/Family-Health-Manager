@@ -74,7 +74,7 @@ export default function NewRecordPage() {
   return (
     <div className="space-y-6">
       <div className="flex items-center gap-2 text-sm text-muted-foreground">
-        <Link to={`/members/${memberId}/records`} className="hover:underline">
+        <Link to={`/people/${memberId}/records`} className="hover:underline">
           Records
         </Link>
         <span>/</span>
@@ -92,7 +92,7 @@ export default function NewRecordPage() {
             defaultType={defaultType}
             defaultProviderId={defaultProviderId}
             defaultChiefComplaint={defaultChiefComplaint}
-            onSaveComplete={() => navigate(`/members/${memberId}/records`)}
+            onSaveComplete={() => navigate(`/people/${memberId}/records`)}
           />
         </CardContent>
       </Card>

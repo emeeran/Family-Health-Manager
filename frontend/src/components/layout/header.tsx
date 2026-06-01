@@ -22,21 +22,15 @@ import { getProvider } from "@/lib/api/providers";
 import { useNotifications } from "@/hooks/use-notifications";
 
 const STATIC_LABELS: Record<string, string> = {
-  dashboard: "Dashboard",
-  members: "Family Members",
+  home: "Home",
+  people: "People",
   records: "Records",
+  chat: "Chat",
   new: "New",
   edit: "Edit",
-  timeline: "Timeline",
-  "lab-records": "Lab Records",
   providers: "Providers",
-  ai: "AI Insights",
-  conversations: "Conversations",
   reminders: "Reminders",
-  notifications: "Notifications",
   settings: "Settings",
-  household: "Household",
-  audit: "Audit Log",
   onboarding: "Onboarding",
 };
 
@@ -47,7 +41,7 @@ function useBreadcrumbLabel(segment: string, parentSegment: string | undefined) 
     isUuid ? `breadcrumb-${segment}` : null,
     async () => {
       try {
-        if (parentSegment === "members") {
+        if (parentSegment === "members" || parentSegment === "people") {
           const m = await getMember(segment);
           return `${m.first_name} ${m.last_name}`;
         }
@@ -170,10 +164,12 @@ export function Header() {
           >
             <Search className="h-4 w-4" />
           </button>
-          <Link
-            to="/notifications"
+          <button
             className="relative rounded-lg p-2 text-muted-foreground hover:bg-muted/50 hover:text-foreground transition-colors"
             aria-label={`Notifications${unreadCount > 0 ? ` (${unreadCount} unread)` : ""}`}
+            onClick={() => {
+              // Notifications are shown via toast/toaster; bell is visual indicator only
+            }}
           >
             <Bell className="h-4 w-4" />
             {unreadCount > 0 && (
@@ -181,7 +177,7 @@ export function Header() {
                 {unreadCount > 9 ? "9+" : unreadCount}
               </span>
             )}
-          </Link>
+          </button>
           <ThemeToggle />
           <DropdownMenu>
             <DropdownMenuTrigger className="focus:outline-none focus-visible:ring-2 focus-visible:ring-ring rounded-full">

@@ -174,7 +174,7 @@ export const RecordsTab = memo(function RecordsTab({ data }: RecordsTabProps) {
       </Card>
 
       <a
-        href={`/members/${member.id}/records`}
+        href={`/people/${member.id}/records`}
         className="inline-flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-xs font-semibold text-teal-600 hover:bg-teal-50 transition-colors"
       >
         <FileText className="h-3.5 w-3.5" />

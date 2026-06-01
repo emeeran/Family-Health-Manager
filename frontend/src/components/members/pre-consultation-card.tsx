@@ -201,7 +201,7 @@ export const PreConsultationCard = memo(function PreConsultationCard({
                 const params = new URLSearchParams({ type: "doctor_visit" });
                 if (symptoms.trim()) params.set("chief_complaint", symptoms.trim());
                 if (selectedProviderId) params.set("provider_id", selectedProviderId);
-                navigate(`/members/${memberId}/records/new?${params.toString()}`);
+                navigate(`/people/${memberId}/records/new?${params.toString()}`);
               }}
             >
               <FilePlus2 className="h-3.5 w-3.5 mr-1" />

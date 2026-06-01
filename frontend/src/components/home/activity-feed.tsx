@@ -1,0 +1,166 @@
+import { memo, useMemo } from "react";
+import { Link } from "react-router-dom";
+import { Badge } from "@/components/ui/badge";
+import { RECORD_TYPE_LABELS } from "@/lib/constants";
+import { formatDate, formatRelativeTime } from "@/lib/utils";
+import { useRecordQuickView } from "@/components/records/record-quick-view-provider";
+import { CalendarClock, FileText } from "lucide-react";
+import type { HealthRecordResponse } from "@/lib/types/health-record";
+
+interface DashboardReminder {
+  id: string;
+  title: string;
+  start_datetime: string | null;
+  reminder_type: string;
+  family_member_id: string | null;
+}
+
+interface ActivityFeedProps {
+  records: HealthRecordResponse[];
+  memberNames: Record<string, string>;
+  upcomingReminders: DashboardReminder[];
+}
+
+function extractPreview(
+  clinicalData: string | null | undefined,
+  diagnosis: string | null | undefined
+): string {
+  if (diagnosis) return diagnosis;
+  if (!clinicalData) return "";
+  try {
+    const parsed = JSON.parse(clinicalData);
+    if (parsed.chief_complaint) return parsed.chief_complaint;
+    if (parsed.glucose_value) return `Glucose: ${parsed.glucose_value} mg/dL`;
+    if (parsed.hba1c_value) return `HbA1c: ${parsed.hba1c_value}%`;
+    if (Array.isArray(parsed.lab_results) && parsed.lab_results.length > 0)
+      return `${parsed.lab_results.length} tests`;
+  } catch {
+    const first = clinicalData.split("\n")[0];
+    return first.length > 60 ? first.slice(0, 60) + "..." : first;
+  }
+  return "";
+}
+
+export const ActivityFeed = memo(function ActivityFeed({
+  records,
+  memberNames,
+  upcomingReminders,
+}: ActivityFeedProps) {
+  const { openQuickView } = useRecordQuickView();
+
+  // Combine records and reminders into a single feed sorted by date
+  const feedItems = useMemo(() => {
+    const items: {
+      id: string;
+      type: "record" | "reminder";
+      title: string;
+      subtitle: string;
+      badge?: string;
+      date: string;
+      onClick?: () => void;
+      overdue?: boolean;
+    }[] = [];
+
+    for (const r of records.slice(0, 8)) {
+      const preview = extractPreview(r.clinical_data, r.diagnosis);
+      items.push({
+        id: r.id,
+        type: "record",
+        title: memberNames[r.family_member_id] || "Unknown",
+        subtitle: preview,
+        badge: (RECORD_TYPE_LABELS as Record<string, string>)[r.record_type] || r.record_type,
+        date: r.record_date,
+        onClick: () => openQuickView(r.id, r.family_member_id),
+      });
+    }
+
+    for (const rem of upcomingReminders.slice(0, 3)) {
+      const isOverdue = rem.start_datetime ? new Date(rem.start_datetime) < new Date() : false;
+      items.push({
+        id: rem.id,
+        type: "reminder",
+        title: rem.title,
+        subtitle: rem.start_datetime ? formatRelativeTime(rem.start_datetime) : "No date",
+        date: rem.start_datetime || "",
+        overdue: isOverdue,
+      });
+    }
+
+    return items;
+  }, [records, upcomingReminders, memberNames, openQuickView]);
+
+  if (feedItems.length === 0) {
+    return (
+      <div className="space-y-2">
+        <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">
+          Activity
+        </p>
+        <div className="text-center py-8 text-sm text-muted-foreground">
+          <FileText className="h-6 w-6 mx-auto mb-2 text-muted-foreground/30" />
+          No recent activity
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div className="space-y-2">
+      <div className="flex items-center justify-between">
+        <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">
+          Activity
+        </p>
+        <Link to="/records" className="text-xs text-primary hover:underline underline-offset-2">
+          View all
+        </Link>
+      </div>
+      <div className="space-y-0.5">
+        {feedItems.map((item) => (
+          <button
+            key={item.id}
+            onClick={item.onClick}
+            className="feed-item flex items-center gap-3 w-full text-left rounded-lg px-3 py-2 hover:bg-muted/50 transition-colors"
+          >
+            <div className="shrink-0">
+              {item.type === "record" ? (
+                <div className="h-7 w-7 rounded-full bg-primary/10 flex items-center justify-center">
+                  <FileText className="h-3.5 w-3.5 text-primary" />
+                </div>
+              ) : (
+                <div
+                  className={`h-7 w-7 rounded-full flex items-center justify-center ${
+                    item.overdue ? "bg-amber-100 dark:bg-amber-900/30" : "bg-muted"
+                  }`}
+                >
+                  <CalendarClock
+                    className={`h-3.5 w-3.5 ${item.overdue ? "text-amber-600" : "text-muted-foreground"}`}
+                  />
+                </div>
+              )}
+            </div>
+            <div className="flex-1 min-w-0">
+              <div className="flex items-center gap-2">
+                <p className="text-sm font-medium truncate">{item.title}</p>
+                {item.badge && (
+                  <Badge variant="outline" className="text-[10px] shrink-0 px-1.5 py-0">
+                    {item.badge}
+                  </Badge>
+                )}
+                {item.overdue && (
+                  <span className="text-[10px] font-bold text-red-700 bg-red-100 px-1.5 py-0.5 rounded border border-red-200 shrink-0">
+                    OVERDUE
+                  </span>
+                )}
+              </div>
+              {item.subtitle && (
+                <p className="text-xs text-muted-foreground truncate">{item.subtitle}</p>
+              )}
+            </div>
+            <span className="text-[10px] text-muted-foreground shrink-0">
+              {item.type === "record" ? formatDate(item.date) : ""}
+            </span>
+          </button>
+        ))}
+      </div>
+    </div>
+  );
+});

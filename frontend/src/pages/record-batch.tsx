@@ -15,7 +15,7 @@ export default function BatchRecordPage() {
   return (
     <div className="space-y-6">
       <div className="flex items-center gap-2 text-sm text-muted-foreground">
-        <Link to={`/members/${memberId}/records`} className="hover:underline">
+        <Link to={`/people/${memberId}/records`} className="hover:underline">
           Records
         </Link>
         <span>/</span>
@@ -32,7 +32,7 @@ export default function BatchRecordPage() {
           <BatchUploadQueue
             memberId={memberId}
             initialFiles={initialFiles}
-            onComplete={() => navigate(`/members/${memberId}/records`)}
+            onComplete={() => navigate(`/people/${memberId}/records`)}
           />
         </CardContent>
       </Card>

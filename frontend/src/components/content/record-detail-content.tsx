@@ -147,7 +147,7 @@ export function RecordDetailContent({ record: initialRecord, member }: RecordDet
     try {
       await deleteRecord(member.id, record.id);
       toast.success("Record deleted");
-      navigate(`/members/${member.id}/records`);
+      navigate(`/people/${member.id}/records`);
     } catch {
       toast.error("Failed to delete record");
     }
@@ -184,15 +184,15 @@ export function RecordDetailContent({ record: initialRecord, member }: RecordDet
 
       {/* Breadcrumbs */}
       <div className="flex items-center gap-2 text-sm text-muted-foreground print:hidden">
-        <Link to="/members" className="hover:underline">
+        <Link to="/people" className="hover:underline">
           Members
         </Link>
         <span>/</span>
-        <Link to={`/members/${member.id}`} className="hover:underline">
+        <Link to={`/people/${member.id}`} className="hover:underline">
           {memberName}
         </Link>
         <span>/</span>
-        <Link to={`/members/${member.id}/records`} className="hover:underline">
+        <Link to={`/people/${member.id}/records`} className="hover:underline">
           Records
         </Link>
         <span>/</span>
@@ -212,7 +212,7 @@ export function RecordDetailContent({ record: initialRecord, member }: RecordDet
             <Printer className="h-3.5 w-3.5" />
             Export
           </Button>
-          <Link to={`/members/${member.id}/records/${record.id}/edit`}>
+          <Link to={`/people/${member.id}/records/${record.id}/edit`}>
             <Button variant="outline" size="sm">
               Edit
             </Button>

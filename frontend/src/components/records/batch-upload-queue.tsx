@@ -241,7 +241,7 @@ export function BatchUploadQueue({ memberId, onComplete, initialFiles }: BatchUp
         duration: 8000,
         action: {
           label: "View",
-          onClick: () => navigate(`/members/${memberId}/records/batch`),
+          onClick: () => navigate(`/people/${memberId}/records/batch`),
         },
       });
     }
@@ -317,7 +317,7 @@ export function BatchUploadQueue({ memberId, onComplete, initialFiles }: BatchUp
             duration: 8000,
             action: {
               label: "View",
-              onClick: () => navigate(`/members/${memberId}/records/batch`),
+              onClick: () => navigate(`/people/${memberId}/records/batch`),
             },
           });
         }

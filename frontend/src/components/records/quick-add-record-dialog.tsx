@@ -77,7 +77,7 @@ export function QuickAddRecordDialog({ open, onOpenChange, members }: QuickAddRe
       } else {
         // Navigate to full form for complex types
         handleClose(false);
-        navigate(`/members/${selectedMember!.id}/records/new?type=${type}`);
+        navigate(`/people/${selectedMember!.id}/records/new?type=${type}`);
       }
     },
     [selectedMember, handleClose, navigate]

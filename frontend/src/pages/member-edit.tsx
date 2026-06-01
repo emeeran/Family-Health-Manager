@@ -82,7 +82,7 @@ export default function EditMemberPage() {
         mutate(`member-${memberId}`);
         mutate(`member-dashboard-${memberId}`);
         mutate("dashboard");
-        navigate(`/members/${memberId}`);
+        navigate(`/people/${memberId}`);
         return null;
       } catch (e) {
         return { error: e instanceof Error ? e.message : "Failed to update member" };
@@ -104,7 +104,7 @@ export default function EditMemberPage() {
   return (
     <div className="space-y-6">
       <div className="flex items-center gap-2">
-        <Link to={`/members/${memberId}`} className="text-sm text-muted-foreground hover:underline">
+        <Link to={`/people/${memberId}`} className="text-sm text-muted-foreground hover:underline">
           {member.first_name} {member.last_name}
         </Link>
         <span className="text-sm text-muted-foreground">/</span>

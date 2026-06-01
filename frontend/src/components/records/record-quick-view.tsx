@@ -123,7 +123,7 @@ export function RecordQuickView() {
         {/* Footer actions */}
         {record && memberId && (
           <div className="border-t px-4 py-3 flex gap-2">
-            <Link to={`/members/${memberId}/records/${record.id}/edit`} className="flex-1">
+            <Link to={`/people/${memberId}/records/${record.id}/edit`} className="flex-1">
               <Button variant="outline" size="sm" className="w-full gap-1.5">
                 <Pencil className="h-3.5 w-3.5" />
                 Edit
