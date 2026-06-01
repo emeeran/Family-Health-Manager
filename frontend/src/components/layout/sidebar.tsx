@@ -69,7 +69,7 @@ export const Sidebar = memo(function Sidebar() {
       {/* Header: Logo + toggle */}
       <div
         className={cn(
-          "px-2 pt-4 pb-3 flex items-center",
+          "px-2 pt-4 pb-3 flex items-center border-b border-border/50",
           collapsed ? "flex-col gap-2" : "justify-between"
         )}
       >
@@ -155,10 +155,13 @@ const SidebarLink = memo(function SidebarLink({
         collapsed ? "justify-center w-10 h-10 mx-auto" : "px-2.5 py-2",
         active
           ? "bg-primary/10 text-primary font-semibold"
-          : "text-muted-foreground hover:bg-muted/40 hover:text-foreground"
+          : "text-muted-foreground hover:bg-muted/60 hover:text-foreground"
       )}
     >
       <Icon className="h-4 w-4 shrink-0" />
+      {active && (
+        <div className="absolute left-0 top-1/4 bottom-1/4 w-[3px] rounded-full bg-gradient-to-b from-[var(--brand-accent)] to-[var(--brand-primary)]" />
+      )}
       {!collapsed && <span className="text-sm truncate">{label}</span>}
     </Link>
   );

@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { useLocation, useNavigate } from "react-router-dom";
+import { useLocation } from "react-router-dom";
 import { Plus, X, FileText, Users, Stethoscope, CalendarClock } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { MemberFormSheet } from "@/components/members/member-form-sheet";
@@ -13,11 +13,11 @@ interface QuickAddOption {
   label: string;
   icon: React.ComponentType<{ className?: string }>;
   action: () => void;
+  colorDot: string;
 }
 
 export function UniversalQuickAdd() {
   const location = useLocation();
-  const navigate = useNavigate();
   const [open, setOpen] = useState(false);
   const [memberSheetOpen, setMemberSheetOpen] = useState(false);
   const [providerSheetOpen, setProviderSheetOpen] = useState(false);
@@ -38,6 +38,7 @@ export function UniversalQuickAdd() {
         setOpen(false);
         setRecordDialogOpen(true);
       },
+      colorDot: "bg-blue-500",
     },
     {
       label: "Add Member",
@@ -46,6 +47,7 @@ export function UniversalQuickAdd() {
         setOpen(false);
         setMemberSheetOpen(true);
       },
+      colorDot: "bg-emerald-500",
     },
     {
       label: "Add Provider",
@@ -54,6 +56,7 @@ export function UniversalQuickAdd() {
         setOpen(false);
         setProviderSheetOpen(true);
       },
+      colorDot: "bg-violet-500",
     },
     {
       label: "Add Reminder",
@@ -62,6 +65,7 @@ export function UniversalQuickAdd() {
         setOpen(false);
         setReminderSheetOpen(true);
       },
+      colorDot: "bg-amber-500",
     },
   ];
 
@@ -74,8 +78,9 @@ export function UniversalQuickAdd() {
           className={cn(
             "hidden md:flex fixed bottom-6 right-6 z-40",
             "h-12 w-12 items-center justify-center rounded-full",
-            "bg-primary text-primary-foreground shadow-lg",
-            "hover:bg-primary/90 transition-all hover:scale-105"
+            "bg-gradient-to-br from-[var(--brand-accent)] to-[var(--brand-primary)] text-white",
+            "shadow-lg shadow-[var(--brand-accent)]/20",
+            "hover:scale-105 transition-all animate-float"
           )}
           aria-label="Quick add"
         >
@@ -87,17 +92,19 @@ export function UniversalQuickAdd() {
           <div className="fixed inset-0 z-40 bg-black/20" onClick={() => setOpen(false)} />
           {/* Options menu */}
           <div className="hidden md:flex fixed bottom-6 right-6 z-50 flex-col gap-2">
-            {options.map((opt) => {
+            {options.map((opt, index) => {
               const Icon = opt.icon;
               return (
                 <button
                   key={opt.label}
                   onClick={opt.action}
                   className={cn(
-                    "flex items-center gap-2 rounded-lg bg-card border px-4 py-2.5 shadow-md",
+                    "animate-fade-in-up flex items-center gap-2.5 rounded-lg bg-card border px-4 py-2.5 shadow-md",
                     "text-sm font-medium hover:bg-muted/50 transition-colors"
                   )}
+                  style={{ animationDelay: `${index * 60}ms` }}
                 >
+                  <div className={`h-2 w-2 rounded-full ${opt.colorDot}`} />
                   <Icon className="h-4 w-4 text-primary" />
                   {opt.label}
                 </button>

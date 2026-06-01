@@ -14,7 +14,7 @@ export function MobileBottomNav() {
 
   return (
     <nav
-      className="md:hidden fixed bottom-0 left-0 right-0 z-40 bg-background/90 backdrop-blur-xl border-t border-border/50 safe-area-bottom"
+      className="md:hidden fixed bottom-0 left-0 right-0 z-40 bg-background/80 backdrop-blur-xl border-t border-border/50 safe-area-bottom"
       role="navigation"
       aria-label="Mobile navigation"
     >
@@ -33,16 +33,14 @@ export function MobileBottomNav() {
                 active ? "" : "text-muted-foreground/70 active:text-foreground"
               )}
             >
-              {active && (
-                <div className="absolute inset-x-2 inset-y-0.5 rounded-xl bg-primary/10" />
-              )}
-              <div className="relative">
-                <Icon className={cn("h-5 w-5", active ? "text-primary" : "")} />
+              <div className="relative" style={active ? { transform: "scale(1.05)" } : undefined}>
+                <Icon className={cn("h-5 w-5", active ? "text-[var(--brand-accent)]" : "")} />
               </div>
+              {active && <div className="h-[3px] w-[3px] rounded-full bg-[var(--brand-accent)]" />}
               <span
                 className={cn(
                   "text-[10px] truncate relative",
-                  active ? "font-bold text-primary" : "font-medium"
+                  active ? "font-bold text-[var(--brand-accent)]" : "font-medium"
                 )}
               >
                 {item.label}

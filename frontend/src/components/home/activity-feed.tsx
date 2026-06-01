@@ -2,7 +2,7 @@ import { memo, useMemo } from "react";
 import { Link } from "react-router-dom";
 import { Badge } from "@/components/ui/badge";
 import { RECORD_TYPE_LABELS } from "@/lib/constants";
-import { formatDate, formatRelativeTime } from "@/lib/utils";
+import { formatRelativeTime } from "@/lib/utils";
 import { useRecordQuickView } from "@/components/records/record-quick-view-provider";
 import { CalendarClock, FileText } from "lucide-react";
 import type { HealthRecordResponse } from "@/lib/types/health-record";
@@ -41,6 +41,19 @@ function extractPreview(
   return "";
 }
 
+const RECORD_BORDER_COLORS: Record<string, string> = {
+  lab_record: "border-l-blue-500",
+  consultation: "border-l-emerald-500",
+  prescription: "border-l-violet-500",
+  vitals: "border-l-amber-500",
+  reminder: "border-l-orange-500",
+};
+
+function getRecordBorderColor(type: string, recordType?: string): string {
+  if (type === "reminder") return "border-l-orange-500";
+  return (recordType && RECORD_BORDER_COLORS[recordType]) || "border-l-muted-foreground/20";
+}
+
 export const ActivityFeed = memo(function ActivityFeed({
   records,
   memberNames,
@@ -53,6 +66,7 @@ export const ActivityFeed = memo(function ActivityFeed({
     const items: {
       id: string;
       type: "record" | "reminder";
+      recordType?: string;
       title: string;
       subtitle: string;
       badge?: string;
@@ -66,6 +80,7 @@ export const ActivityFeed = memo(function ActivityFeed({
       items.push({
         id: r.id,
         type: "record",
+        recordType: r.record_type,
         title: memberNames[r.family_member_id] || "Unknown",
         subtitle: preview,
         badge: (RECORD_TYPE_LABELS as Record<string, string>)[r.record_type] || r.record_type,
@@ -92,7 +107,8 @@ export const ActivityFeed = memo(function ActivityFeed({
   if (feedItems.length === 0) {
     return (
       <div className="space-y-2">
-        <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">
+        <p className="section-label">
+          <span className="inline-block h-1.5 w-1.5 rounded-full bg-[var(--brand-accent)] mr-2 align-middle" />
           Activity
         </p>
         <div className="text-center py-8 text-sm text-muted-foreground">
@@ -106,7 +122,8 @@ export const ActivityFeed = memo(function ActivityFeed({
   return (
     <div className="space-y-2">
       <div className="flex items-center justify-between">
-        <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">
+        <p className="section-label">
+          <span className="inline-block h-1.5 w-1.5 rounded-full bg-[var(--brand-accent)] mr-2 align-middle" />
           Activity
         </p>
         <Link to="/records" className="text-xs text-primary hover:underline underline-offset-2">
@@ -118,7 +135,7 @@ export const ActivityFeed = memo(function ActivityFeed({
           <button
             key={item.id}
             onClick={item.onClick}
-            className="feed-item flex items-center gap-3 w-full text-left rounded-lg px-3 py-2 hover:bg-muted/50 transition-colors"
+            className={`feed-item flex items-center gap-3 w-full text-left rounded-lg px-3 py-2 border-l-[3px] rounded-l-none hover:bg-muted/30 transition-colors ${getRecordBorderColor(item.type, item.recordType)}`}
           >
             <div className="shrink-0">
               {item.type === "record" ? (
@@ -156,7 +173,7 @@ export const ActivityFeed = memo(function ActivityFeed({
               )}
             </div>
             <span className="text-[10px] text-muted-foreground shrink-0">
-              {item.type === "record" ? formatDate(item.date) : ""}
+              {item.date ? formatRelativeTime(item.date) : ""}
             </span>
           </button>
         ))}

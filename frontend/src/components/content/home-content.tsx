@@ -1,6 +1,5 @@
 import React, { memo, useState, useMemo, useCallback, useEffect, Suspense } from "react";
 import { Link } from "react-router-dom";
-import { Plus } from "lucide-react";
 import { Skeleton } from "@/components/ui/skeleton";
 import { SmartEntryBar } from "@/components/records/smart-entry";
 import { AlertStrip } from "@/components/home/alert-strip";
@@ -33,6 +32,21 @@ interface HomeContentProps {
   householdName: string;
   stats: DashboardStats;
   records: HealthRecordResponse[];
+}
+
+function getGreeting() {
+  const hour = new Date().getHours();
+  if (hour < 12) return "Good morning";
+  if (hour < 18) return "Good afternoon";
+  return "Good evening";
+}
+
+function getCurrentDate() {
+  return new Date().toLocaleDateString("en-US", {
+    weekday: "long",
+    month: "long",
+    day: "numeric",
+  });
 }
 
 export const HomeContent = memo(function HomeContent({
@@ -74,21 +88,15 @@ export const HomeContent = memo(function HomeContent({
   return (
     <div className="space-y-4 max-w-3xl mx-auto">
       {/* Greeting */}
-      <div className="flex items-center justify-between">
-        <div>
-          <h1 className="text-lg font-semibold tracking-tight">{householdName}</h1>
-          <p className="text-sm text-muted-foreground">
-            {activeMembers.length} member{activeMembers.length !== 1 ? "s" : ""} &middot;{" "}
-            {activeRecords.length} record{activeRecords.length !== 1 ? "s" : ""}
-          </p>
-        </div>
-        <Link
-          to="/people/new"
-          className="inline-flex items-center gap-1.5 rounded-lg bg-primary text-primary-foreground px-3.5 h-8 text-sm font-semibold hover:bg-primary/90 transition-colors"
-        >
-          <Plus className="h-3.5 w-3.5" />
-          Add Member
-        </Link>
+      <div className="space-y-1">
+        <h1 className="text-lg font-semibold tracking-tight bg-gradient-to-r from-foreground to-foreground/70 bg-clip-text text-transparent">
+          {getGreeting()}, {householdName}
+        </h1>
+        <p className="text-xs text-muted-foreground">
+          {getCurrentDate()} &middot; {activeMembers.length} member
+          {activeMembers.length !== 1 ? "s" : ""} &middot; {activeRecords.length} record
+          {activeRecords.length !== 1 ? "s" : ""}
+        </p>
       </div>
 
       {/* Smart Entry Bar */}

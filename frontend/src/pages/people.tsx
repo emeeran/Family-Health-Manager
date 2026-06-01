@@ -68,14 +68,22 @@ export default function PeoplePage() {
               key={tab.key}
               onClick={() => handleTabChange(tab.key)}
               className={cn(
-                "flex items-center gap-1.5 rounded-md px-3 py-1.5 text-sm font-medium transition-all",
+                "relative flex items-center gap-1.5 rounded-md px-3 py-1.5 text-sm font-medium transition-all",
                 activeTab === tab.key
-                  ? "bg-card text-foreground shadow-sm"
+                  ? "bg-card text-foreground shadow-sm ring-1 ring-[var(--brand-accent)]/20"
                   : "text-muted-foreground hover:text-foreground"
               )}
             >
-              <Icon className="h-3.5 w-3.5" />
+              <Icon
+                className={cn(
+                  "h-3.5 w-3.5",
+                  activeTab === tab.key ? "text-[var(--brand-accent)]" : ""
+                )}
+              />
               {tab.label}
+              {activeTab === tab.key && (
+                <div className="absolute bottom-0 left-1/4 right-1/4 h-[2px] rounded-full bg-[var(--brand-accent)]" />
+              )}
             </button>
           );
         })}

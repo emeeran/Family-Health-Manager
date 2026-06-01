@@ -175,8 +175,8 @@ export function SmartEntryBar({ members }: SmartEntryBarProps) {
   return (
     <>
       {/* Compact single-line bar */}
-      <div className="flex items-center gap-2">
-        <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-primary/5 text-primary">
+      <div className="flex items-center gap-2 rounded-xl border shadow-sm bg-card p-2">
+        <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-[var(--brand-accent)]/10 text-[var(--brand-accent)]">
           <Activity className="h-4 w-4" />
         </div>
         <form
@@ -190,7 +190,7 @@ export function SmartEntryBar({ members }: SmartEntryBarProps) {
             placeholder='Describe: "dad visited doctor, prescribed metformin 500mg" or "blood sugar 120"'
             value={input}
             onChange={(e) => setInput(e.target.value)}
-            className="flex-1 h-9 text-sm"
+            className="flex-1 h-9 text-sm focus-visible:ring-[var(--brand-accent)]/30"
             disabled={extracting}
           />
           <input
@@ -216,7 +216,12 @@ export function SmartEntryBar({ members }: SmartEntryBarProps) {
             )}
             <span className="hidden sm:inline">Upload</span>
           </Button>
-          <Button type="submit" size="sm" disabled={!input.trim()} className="h-9 shrink-0">
+          <Button
+            type="submit"
+            size="sm"
+            disabled={!input.trim()}
+            className="h-9 shrink-0 bg-[var(--brand-accent)] text-white hover:bg-[var(--brand-accent)]/90"
+          >
             Parse
           </Button>
         </form>
