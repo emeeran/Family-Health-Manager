@@ -55,6 +55,7 @@ class Settings(BaseSettings):
 
     # Storage
     STORAGE_PATH: str = "./data/attachments"
+    STORAGE_BACKEND: str = "local"
 
     # AI Verification
     AI_VERIFICATION_ENABLED: bool = True

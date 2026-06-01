@@ -115,6 +115,10 @@ erDiagram
         string mime_type
         integer file_size
         datetime uploaded_at
+        string content_hash "nullable, indexed — SHA-256"
+        string storage_backend "default 'local'"
+        string thumbnail_path "nullable"
+        boolean encrypted "default false"
     }
 
     AI_INSIGHT {
@@ -356,7 +360,7 @@ class HealthRecord(Base):
 @dataclass
 class Attachment(Base):
     __tablename__ = "attachments"
-    
+
     id: Mapped[UUID] = mapped_column(primary_key=True, default=uuid4)
     health_record_id: Mapped[UUID] = mapped_column(ForeignKey("health_records.id"), nullable=False)
     file_path: Mapped[str] = mapped_column(String(500), nullable=False)
@@ -364,7 +368,11 @@ class Attachment(Base):
     mime_type: Mapped[str] = mapped_column(String(50), nullable=False)
     file_size: Mapped[int] = mapped_column(Integer, nullable=False)
     uploaded_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, nullable=False)
-    
+    content_hash: Mapped[str | None] = mapped_column(String(64), nullable=True, index=True)
+    storage_backend: Mapped[str] = mapped_column(String(20), nullable=False, default="local")
+    thumbnail_path: Mapped[str | None] = mapped_column(String(500), nullable=True)
+    encrypted: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
+
     health_record: Mapped[HealthRecord] = relationship("HealthRecord", back_populates="attachments")
 
 @dataclass
@@ -674,11 +682,15 @@ class AttachmentResponse(BaseModel):
     model_config = ConfigDict(from_attributes=True)
     id: UUID = Field(..., description="Attachment ID", example=UUID("123e4567-e89b-12d3-a456-426614174000"))
     health_record_id: UUID = Field(..., description="Health record ID", example=UUID("123e4567-e89b-12d3-a456-426614174001"))
-    file_path: str = Field(..., description="Storage path", example="/data/attachments/abc123.pdf")
+    file_path: str = Field(..., description="Storage path", example="/data/attachments/files/ab/cdef0123...pdf")
     file_name: str = Field(..., description="Original filename", example="lab_result.pdf")
     mime_type: str = Field(..., description="MIME type", example="application/pdf")
     file_size: int = Field(..., description="File size in bytes", example=1048576)
     uploaded_at: datetime = Field(..., description="Upload timestamp", example="2024-01-15T10:30:00Z")
+    content_hash: str | None = Field(None, description="SHA-256 content hash for dedup")
+    storage_backend: str = Field("local", description="Storage backend name")
+    thumbnail_path: str | None = Field(None, description="Thumbnail storage path")
+    encrypted: bool = Field(False, description="Whether file is encrypted at rest")
 ```
 
 ### 3.8 AI Insight Schemas
@@ -1333,7 +1345,7 @@ class ErrorResponse(BaseModel):
 
 ### 5.7 Attachments
 
-#### POST /api/v1/members/{member_id}/records/{record_id}/attachments
+#### POST /api/v1/attachments/records/{record_id}
 **Summary:** Upload an attachment to a health record
 
 **Auth:** Required
@@ -1345,6 +1357,8 @@ class ErrorResponse(BaseModel):
 |-------|------|-------------|
 | `file` | `binary` | File (max 25 MB, PDF/JPEG/PNG only) |
 
+**Storage:** Files are stored using content-addressable storage (SHA-256 hash-based sharding at `files/ab/<hash>.ext`). Duplicate files are deduplicated. Thumbnails are generated automatically for images and PDFs.
+
 **Response:** `201 Created` — `AttachmentResponse`
 
 **Errors:** `400` (invalid MIME/size), `404` (record not found), `422` (validation)
@@ -1352,20 +1366,33 @@ class ErrorResponse(BaseModel):
 ---
 
 #### GET /api/v1/attachments/{attachment_id}
-**Summary:** Download an attachment
+**Summary:** Download an attachment (streaming response)
 
 **Auth:** Required
 
-**Response:** `200 OK` — Binary file with appropriate `Content-Type`
+**Response:** `200 OK` — StreamingResponse with `Content-Type` and `Content-Disposition` headers. Encrypted files are transparently decrypted.
 
 **Errors:** `404` (not found)
 
 ---
 
-#### DELETE /api/v1/attachments/{attachment_id}
-**Summary:** Delete an attachment
+#### GET /api/v1/attachments/{attachment_id}/thumbnail
+**Summary:** Get thumbnail for an attachment
 
 **Auth:** Required
+
+**Response:** `200 OK` — StreamingResponse with `Content-Type: image/webp`, cached for 24 hours
+
+**Errors:** `404` (not found or thumbnail not available)
+
+---
+
+#### DELETE /api/v1/attachments/{attachment_id}
+**Summary:** Delete an attachment (reference-counted)
+
+**Auth:** Required
+
+**Behavior:** Physical file is only deleted if no other attachment references the same content hash. Thumbnail is also cleaned up.
 
 **Response:** `204 No Content`
 
@@ -1860,24 +1887,34 @@ class IAttachmentService(ABC):
         self,
         record_id: UUID,
         file: UploadFile,
-        storage_path: str
+        household_id: UUID
     ) -> Attachment:
-        """Upload and validate attachment."""
+        """Upload and validate attachment using content-addressable storage."""
         pass
-    
+
     @abstractmethod
-    def get_attachment(self, attachment_id: UUID) -> Attachment:
-        """Get attachment metadata."""
+    def get_attachment(self, attachment_id: UUID, household_id: UUID) -> Attachment:
+        """Get attachment metadata, verifying household ownership."""
         pass
-    
+
     @abstractmethod
-    def download_attachment(self, attachment_id: UUID) -> tuple[bytes, str]:
-        """Download attachment content with MIME type."""
+    def download_attachment(self, attachment_id: UUID, household_id: UUID) -> tuple:
+        """Download attachment — returns (stream, mime_type, file_name) for streaming response."""
         pass
-    
+
     @abstractmethod
-    def delete_attachment(self, attachment_id: UUID) -> None:
-        """Delete an attachment."""
+    def delete_attachment(self, attachment_id: UUID, household_id: UUID) -> None:
+        """Delete an attachment with reference-counted file deletion."""
+        pass
+
+    @abstractmethod
+    def attach_staged_file(
+        self,
+        record_id: UUID,
+        staging_file_id: str,
+        original_file_name: str | None = None
+    ) -> Attachment:
+        """Move a staged file to content-addressable storage and link to a health record."""
         pass
 
 # backend/app/services/ai_service.py

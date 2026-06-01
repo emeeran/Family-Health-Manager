@@ -4,7 +4,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from uuid import UUID, uuid4
-from sqlalchemy import ForeignKey
+from sqlalchemy import Boolean, ForeignKey
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 from sqlalchemy.types import String, Integer, DateTime
 from app.models.base import Base
@@ -25,5 +25,9 @@ class Attachment(Base):
     uploaded_at: Mapped[datetime] = mapped_column(
         DateTime, default=lambda: datetime.now(timezone.utc), nullable=False
     )
+    content_hash: Mapped[str | None] = mapped_column(String(64), nullable=True, index=True)
+    storage_backend: Mapped[str] = mapped_column(String(20), nullable=False, default="local")
+    thumbnail_path: Mapped[str | None] = mapped_column(String(500), nullable=True)
+    encrypted: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
 
     health_record: Mapped["HealthRecord"] = relationship(back_populates="attachments")

@@ -1,8 +1,11 @@
 """Attachment router."""
+from pathlib import Path
 from uuid import UUID
+
 from fastapi import APIRouter, Depends, HTTPException, UploadFile, File
-from fastapi.responses import Response
+from fastapi.responses import StreamingResponse
 from sqlalchemy.ext.asyncio import AsyncSession
+
 from app.core.database import get_db
 from app.core.deps import get_household_from_token
 from app.services.attachment_service import AttachmentService
@@ -38,15 +41,49 @@ async def download_attachment(
     household: Household = Depends(get_household_from_token),
     db: AsyncSession = Depends(get_db),
 ):
-    """Download an attachment."""
+    """Download an attachment as a streaming response."""
     service = AttachmentService(db)
 
     try:
-        content, mime_type = await service.download_attachment(attachment_id, household.id)
+        stream, mime_type, file_name = await service.download_attachment(
+            attachment_id, household.id
+        )
     except ValueError:
         raise HTTPException(status_code=404, detail="Attachment not found")
 
-    return Response(content=content, media_type=mime_type)
+    return StreamingResponse(
+        stream,
+        media_type=mime_type,
+        headers={"Content-Disposition": f'inline; filename="{file_name}"'},
+    )
+
+
+@router.get("/{attachment_id}/thumbnail")
+async def get_thumbnail(
+    attachment_id: UUID,
+    household: Household = Depends(get_household_from_token),
+    db: AsyncSession = Depends(get_db),
+):
+    """Get a thumbnail for an attachment."""
+    service = AttachmentService(db)
+
+    try:
+        attachment = await service.get_attachment(attachment_id, household.id)
+    except ValueError:
+        raise HTTPException(status_code=404, detail="Attachment not found")
+
+    if not attachment.thumbnail_path:
+        raise HTTPException(status_code=404, detail="Thumbnail not available")
+
+    thumb_path = Path(attachment.thumbnail_path)
+    if not thumb_path.exists():
+        raise HTTPException(status_code=404, detail="Thumbnail file not found")
+
+    return StreamingResponse(
+        open(thumb_path, "rb"),
+        media_type="image/webp",
+        headers={"Cache-Control": "public, max-age=86400"},
+    )
 
 
 @router.delete("/{attachment_id}", status_code=204)

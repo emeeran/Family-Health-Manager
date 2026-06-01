@@ -169,7 +169,11 @@ graph TD
 | `security.py` | Password hashing, JWT token operations | `hash_password()`, `verify_password()`, `create_token()`, `decode_token()` |
 | `deps.py` | Dependency injection for routers | `get_current_user()`, service providers, `PaginationParams` |
 | `rate_limiter.py` | Sliding window rate limiting | `RateLimiter` class, in-memory store, `check_limit()` |
-| `storage.py` | File storage abstraction | `save_file()`, `get_file()`, `delete_file()`, MIME validation |
+| `storage.py` | File storage abstraction | `save_file()`, `save_file_hashed()`, `stream_file()`, `get_file()`, `delete_file()`, `hash_existing_file()`, `sweep_orphaned_staging()`, MIME validation, streaming I/O |
+| `storage_backends/` | Pluggable storage backends | `StorageBackend` protocol, `LocalStorageBackend` (sharded content-addressable), `get_storage_backend()` factory |
+| `thumbnails.py` | Thumbnail generation | `generate_thumbnail()` (Pillow for images, PyMuPDF for PDFs → 300px WebP) |
+| `encryption.py` | Encryption at rest | `encrypt_bytes()`, `decrypt_bytes()`, `encrypt_file()`, `decrypt_file()` (Fernet via PBKDF2) |
+| `migrate_files.py` | One-time data migration | `migrate_all()` — migrate flat files to content-addressed, compute hashes, generate thumbnails, encrypt |
 
 ### 2.2 Main Entry (`app/main.py`)
 
@@ -182,7 +186,8 @@ graph TD
 | Router registration | Include all routers with `/api/v1` prefix |
 | Exception handlers | Global HTTPException handler, validation error formatter |
 | Health check endpoint | `GET /api/v1/health` (no auth) |
-| Startup/shutdown events | DB connection init, reminder scheduler start |
+| Startup/shutdown events | DB connection init, reminder scheduler start, staging file sweep |
+| Background jobs | Reminders (60s), backup rotation (24h), AI health check (5m), anomaly detection (6h), staging cleanup (1h), file integrity check (24h), token pruning (24h), DB backup (24h) |
 
 ### 2.3 Routers (`app/routers/`)
 
@@ -193,7 +198,7 @@ graph TD
 | `members.py` | `/api/v1/members` | GET list, POST create; GET/PUT/DELETE {id}; GET {id}/dashboard | `IMemberService` |
 | `providers.py` | `/api/v1/providers` | GET list, POST create; GET/PUT/DELETE {id} | `IProviderService` |
 | `health_records.py` | `/api/v1/members/{id}/records` | GET list, POST create; GET/PUT/DELETE {record_id}; GET timeline, lab-records, export-pdf | `IHealthRecordService` |
-| `attachments.py` | `/api/v1/attachments` | POST upload, GET download, DELETE | `IAttachmentService` |
+| `attachments.py` | `/api/v1/attachments` | POST upload, GET download (streaming), GET thumbnail, DELETE | `IAttachmentService` |
 | `ai.py` | `/api/v1/ai` | POST insights, explain | `IAIService` |
 | `conversations.py` | `/api/v1/conversations` | GET list, POST create; GET {id}, DELETE {id}; POST {id}/messages | `IAIService` |
 | `reminders.py` | `/api/v1/reminders` | GET list, POST create; GET/PUT/DELETE {id} | `IReminderService` |
@@ -209,21 +214,21 @@ graph TD
 | `MemberService` | `create_member()`, `get_member()`, `list_members()`, `update_member()`, `soft_delete_member()`, `get_brief_medical_history()`, `get_active_medications()` | `FamilyMember`, `HealthRecord`, `DB` |
 | `ProviderService` | `create_provider()`, `get_provider()`, `list_providers()`, `update_provider()`, `delete_provider()`, `assign_provider_to_member()`, `get_member_providers()`, `remove_provider_assignment()` | `Provider`, `ProviderAssignment`, `DB` |
 | `HealthRecordService` | `create_record()`, `get_record()`, `list_records()`, `update_record()`, `soft_delete_record()`, `get_timeline()`, `get_lab_records_view()` | `HealthRecord`, `Provider`, `DB` |
-| `AttachmentService` | `upload_attachment()`, `get_attachment()`, `download_attachment()`, `delete_attachment()` | `Attachment`, `Storage`, `DB` |
+| `AttachmentService` | `upload_attachment()`, `get_attachment()`, `download_attachment()` (streaming), `delete_attachment()` (ref-counted), `attach_staged_file()` | `Attachment`, `Storage`, `Thumbnails`, `Encryption`, `DB` |
 | `AIService` | `generate_insight()`, `explain_records()`, `chat()`, `detect_trends()`, `check_drug_interactions()` | `AIInsight`, `Message`, `AIProviders`, `DB` |
 | `ReminderService` | `create_reminder()`, `get_reminder()`, `list_reminders()`, `update_reminder()`, `delete_reminder()`, `process_due_reminders()` | `Reminder`, `Notification`, `DB` |
 | `NotificationService` | `list_notifications()`, `mark_as_read()`, `delete_notification()` | `Notification`, `DB` |
 | `AuditService` | `log_action()`, `list_audit_logs()` | `AuditLog`, `DB` |
 
-### 2.5 Models (`app/models/base.py`)
+### 2.5 Models (`app/models/`)
 
-Single module containing all 14 SQLAlchemy 2.x mapped dataclasses:
+Domain-specific model modules, re-exported from `app/models/base.py`:
 - `User`, `Household`, `FamilyMember`
 - `Provider`, `ProviderAssignment`
-- `HealthRecord`, `Attachment`, `AIInsight`
+- `HealthRecord`, `Attachment` (with `content_hash`, `storage_backend`, `thumbnail_path`, `encrypted` columns), `AIInsight`
 - `Conversation`, `Message`
 - `Reminder`, `Notification`
-- `AuditLog`
+- `AuditLog`, `HealthAlert`
 
 Plus enum types: `Gender`, `Relationship`, `RecordType`, `ReminderType`, `ScheduleType`, `MessageRole`, `ConversationScope`.
 
@@ -237,7 +242,7 @@ Plus enum types: `Gender`, `Relationship`, `RecordType`, `ReminderType`, `Schedu
 | `provider.py` | `ProviderCreate`, `ProviderUpdate`, `ProviderResponse` |
 | `provider_assignment.py` | `ProviderAssignmentCreate`, `ProviderAssignmentResponse` |
 | `health_record.py` | `HealthRecordCreate`, `HealthRecordUpdate`, `HealthRecordResponse` |
-| `attachment.py` | `AttachmentResponse` |
+| `attachment.py` | `AttachmentResponse` (with `content_hash`, `storage_backend`, `thumbnail_path`, `encrypted` fields) |
 | `ai_insight.py` | `AIInsightRequest`, `AIInsightResponse` |
 | `conversation.py` | `ConversationCreate`, `ConversationResponse` |
 | `message.py` | `MessageCreate`, `MessageResponse` |
@@ -487,7 +492,17 @@ backend/app/
 │   ├── security.py         # Password hashing, JWT
 │   ├── deps.py             # Dependency injection
 │   ├── rate_limiter.py     # Sliding window limiter
-│   └── storage.py          # File storage abstraction
+│   ├── storage.py          # File storage (streaming I/O, content-addressable)
+│   ├── thumbnails.py       # Thumbnail generation (Pillow, PyMuPDF → WebP)
+│   ├── encryption.py       # Fernet encryption at rest
+│   ├── migrate_files.py    # One-time storage migration script
+│   ├── storage_backends/   # Pluggable storage backend
+│   │   ├── __init__.py
+│   │   ├── protocol.py     # StorageBackend Protocol
+│   │   ├── local.py        # LocalStorageBackend
+│   │   └── factory.py      # get_storage_backend() factory
+│   ├── jobs.py             # Background jobs (reminders, staging cleanup, integrity check)
+│   └── scheduler.py        # APScheduler wrapper
 ├── routers/
 │   ├── __init__.py
 │   ├── auth.py
@@ -545,7 +560,8 @@ backend/app/
 | **Password Hashing** | Argon2 | Winner of Password Hashing Competition, memory-hard |
 | **Pagination** | Cursor-based | Stable for real-time data, no offset drift |
 | **Rate Limiting** | Sliding window, in-memory | Simple, no external Redis dependency for v1 |
-| **File Storage** | Local filesystem | Self-hosted, no cloud dependency |
+| **File Storage** | Local filesystem, content-addressable, sharded | Self-hosted, deduplication via SHA-256, pluggable backend protocol |
+| **File Encryption** | Fernet (cryptography library) | PBKDF2-derived key from SECRET_KEY, 480k iterations |
 | **AI Failover** | Ordered provider chain | Maximizes availability, transparent to user |
 | **Scheduler** | APScheduler | Lightweight, embedded, no external service |
 
@@ -683,6 +699,7 @@ networks:
 | ADR-003 | Cursor-based Pagination for List Endpoints | `ADR/003-pagination-cursor.md` |
 | ADR-004 | Multi-provider AI Failover Chain | `ADR/004-ai-provider-failover.md` |
 | ADR-005 | In-memory Rate Limiting for v1 | `ADR/005-rate-limit-in-memory.md` |
+| ADR-006 | Content-Addressable Storage with Dedup and Encryption | `ADR/006-content-addressable-storage.md` |
 
 ---
 

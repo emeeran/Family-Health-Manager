@@ -9,6 +9,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 
 import httpx
+import aiofiles
 from sqlalchemy import select
 from sqlalchemy.orm import selectinload
 
@@ -261,6 +262,91 @@ async def detect_anomalies():
         except Exception:
             await db.rollback()
             logger.exception("Failed to run anomaly detection")
+
+
+async def cleanup_staging_files():
+    """Delete staging files older than 24 hours."""
+    import time
+
+    staging_dir = Path(settings.STORAGE_PATH) / "staging"
+    if not staging_dir.exists():
+        return
+
+    now = time.time()
+    cutoff = now - 86400  # 24 hours
+    deleted = 0
+
+    for entry in staging_dir.iterdir():
+        if entry.is_file() and entry.stat().st_mtime < cutoff:
+            try:
+                entry.unlink()
+                deleted += 1
+            except OSError:
+                logger.warning("Failed to delete old staging file: %s", entry)
+
+    if deleted:
+        logger.info("Cleaned up %d staging files older than 24 hours", deleted)
+
+
+async def verify_file_integrity():
+    """Periodically verify SHA-256 hashes of stored attachments."""
+    import hashlib
+
+    async with SessionLocal() as db:
+        try:
+            # Check attachments with content_hash set
+            from app.models.base import Attachment
+            att_result = await db.execute(
+                select(Attachment).where(Attachment.content_hash.isnot(None))
+            )
+            attachments = list(att_result.scalars().all())
+
+            verified = 0
+            failed = 0
+
+            for att in attachments:
+                file_path = Path(att.file_path)
+                if not file_path.exists():
+                    logger.warning(
+                        "Integrity check: file missing for attachment %s", att.id
+                    )
+                    failed += 1
+                    continue
+
+                try:
+                    hasher = hashlib.sha256()
+                    async with aiofiles.open(file_path, "rb") as f:
+                        while True:
+                            chunk = await f.read(1024 * 1024)
+                            if not chunk:
+                                break
+                            hasher.update(chunk)
+
+                    actual_hash = hasher.hexdigest()
+                    if actual_hash != att.content_hash:
+                        logger.error(
+                            "Integrity check FAILED for attachment %s: "
+                            "expected %s, got %s",
+                            att.id, att.content_hash[:12], actual_hash[:12],
+                        )
+                        failed += 1
+                    else:
+                        verified += 1
+                except Exception:
+                    failed += 1
+                    logger.exception(
+                        "Integrity check error for attachment %s", att.id
+                    )
+
+            if failed:
+                logger.warning(
+                    "File integrity check: %d verified, %d FAILED", verified, failed
+                )
+            else:
+                logger.info("File integrity check: %d files verified OK", verified)
+
+        except Exception:
+            logger.exception("Failed to run file integrity verification")
 
 
 async def backup_database():

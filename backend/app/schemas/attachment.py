@@ -15,3 +15,7 @@ class AttachmentResponse(BaseModel):
     mime_type: str = Field(..., description="MIME type")
     file_size: int = Field(..., description="File size in bytes")
     uploaded_at: datetime = Field(..., description="Upload timestamp")
+    content_hash: str | None = Field(None, description="SHA-256 content hash")
+    storage_backend: str = Field("local", description="Storage backend name")
+    thumbnail_path: str | None = Field(None, description="Thumbnail storage path")
+    encrypted: bool = Field(False, description="Whether file is encrypted at rest")

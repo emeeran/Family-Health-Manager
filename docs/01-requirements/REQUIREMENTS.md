@@ -96,7 +96,7 @@
 |----|----------|-----------|
 | NFR-001 | MUST | **Response time**: API endpoints must respond within 500 ms for 95th percentile of requests (excluding AI calls, which are bound by provider latency). |
 | NFR-002 | MUST | **Availability**: The self-hosted application targets 99% uptime when the host machine is running. |
-| NFR-003 | MUST | **Data encryption at rest**: SQLite database encrypted via SQLCipher (AES-256). |
+| NFR-003 | MUST | **Data encryption at rest**: Database encrypted via SQLCipher (AES-256). File attachments encrypted using Fernet (symmetric encryption, key derived from SECRET_KEY via PBKDF2). |
 | NFR-004 | MUST | **Data encryption in transit**: All HTTP traffic served over TLS (via reverse proxy or direct). |
 | NFR-005 | MUST | **Password strength**: Minimum 8 characters; enforce at least one uppercase, one digit, one special character. |
 | NFR-006 | MUST | **Session management**: Session tokens expire after 24 hours of inactivity. |

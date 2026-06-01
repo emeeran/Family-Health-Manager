@@ -90,6 +90,45 @@ async def create_tables():
                     conn.commit()
                     logger.info("Added 'role' column to users table")
 
+            # Attachment storage columns
+            if "attachments" in inspector.get_table_names():
+                att_cols = {c["name"] for c in inspector.get_columns("attachments")}
+                if "content_hash" not in att_cols:
+                    conn.execute(
+                        __import__("sqlalchemy").text(
+                            "ALTER TABLE attachments ADD COLUMN content_hash VARCHAR(64)"
+                        )
+                    )
+                    conn.execute(
+                        __import__("sqlalchemy").text(
+                            "CREATE INDEX IF NOT EXISTS ix_attachments_content_hash "
+                            "ON attachments (content_hash)"
+                        )
+                    )
+                if "storage_backend" not in att_cols:
+                    conn.execute(
+                        __import__("sqlalchemy").text(
+                            "ALTER TABLE attachments ADD COLUMN storage_backend VARCHAR(20) "
+                            "NOT NULL DEFAULT 'local'"
+                        )
+                    )
+                if "thumbnail_path" not in att_cols:
+                    conn.execute(
+                        __import__("sqlalchemy").text(
+                            "ALTER TABLE attachments ADD COLUMN thumbnail_path VARCHAR(500)"
+                        )
+                    )
+                if "encrypted" not in att_cols:
+                    conn.execute(
+                        __import__("sqlalchemy").text(
+                            "ALTER TABLE attachments ADD COLUMN encrypted BOOLEAN "
+                            "NOT NULL DEFAULT 0"
+                        )
+                    )
+                if "content_hash" not in att_cols or "storage_backend" not in att_cols:
+                    conn.commit()
+                    logger.info("Added storage columns to attachments table")
+
         sync_engine.dispose()
     else:
         # Production: migrations should be run separately

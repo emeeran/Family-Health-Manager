@@ -96,6 +96,12 @@ async def lifespan(app: FastAPI):
     register_job("rotate_backups", 86400, _jobs.rotate_backups)
     register_job("check_ai_providers", 300, _jobs.check_ai_providers)
     register_job("detect_anomalies", 21600, _jobs.detect_anomalies)
+    register_job("cleanup_staging", 3600, _jobs.cleanup_staging_files)
+    register_job("verify_file_integrity", 86400, _jobs.verify_file_integrity)
+
+    # Sweep orphaned staging files from crashed sessions
+    from app.core.storage import sweep_orphaned_staging
+    await sweep_orphaned_staging()
 
     # Token pruning — clean up expired refresh and revoked tokens daily
     async def _prune_tokens():

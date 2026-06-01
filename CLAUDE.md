@@ -28,6 +28,11 @@ sdd-health-manager/
 │   ├── app/
 │   │   ├── main.py          # FastAPI entry point
 │   │   ├── core/            # Config, DB session, security
+│   │   │   ├── storage.py          # File storage (streaming I/O, content-addressable dedup)
+│   │   │   ├── storage_backends/   # Pluggable storage backend (protocol + local impl)
+│   │   │   ├── thumbnails.py       # Image/PDF thumbnail generation
+│   │   │   ├── encryption.py       # Fernet encryption at rest for files
+│   │   │   └── migrate_files.py   # One-time storage migration script
 │   │   ├── routers/         # Route handlers
 │   │   ├── models/          # ORM models
 │   │   ├── schemas/         # Pydantic schemas
