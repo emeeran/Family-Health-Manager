@@ -1,6 +1,6 @@
 """Health record schemas."""
 import json
-from pydantic import BaseModel, Field, ConfigDict, computed_field
+from pydantic import BaseModel, Field, ConfigDict, model_validator
 from datetime import datetime, date, time
 from uuid import UUID
 from app.models.base import RecordType
@@ -35,7 +35,7 @@ class HealthRecordUpdate(BaseModel):
 class HealthRecordResponse(BaseModel):
     """Health record response."""
 
-    model_config = ConfigDict(from_attributes=True)
+    model_config = ConfigDict(from_attributes=True, populate_by_name=True)
     id: UUID = Field(..., description="Health record ID")
     family_member_id: UUID = Field(..., description="Family member ID")
     provider_id: UUID | None = Field(None, description="Provider ID")
@@ -52,22 +52,25 @@ class HealthRecordResponse(BaseModel):
     updated_at: datetime = Field(..., description="Last update timestamp")
     attachments: list[AttachmentResponse] = Field(default_factory=list, description="File attachments")
 
-    # Internal — excluded from API output
-    tags_json: str | None = Field(None, exclude=True, alias="tags")
+    # Parsed once from the raw tags column (JSON text → list[str])
+    tags: list[str] | None = Field(None, description="Record tags")
 
-    @computed_field
-    @property
-    def tags(self) -> list[str] | None:
-        """Parse tags from JSON column."""
-        if not self.tags_json:
-            return None
-        try:
-            items = json.loads(self.tags_json)
-            if isinstance(items, list) and len(items) > 0:
-                return items
-        except (json.JSONDecodeError, ValueError):
-            pass
-        return None
+    @model_validator(mode="before")
+    @classmethod
+    def _parse_tags(cls, data):
+        """Parse tags JSON column once during construction."""
+        if isinstance(data, dict):
+            raw = data.get("tags")
+            if isinstance(raw, str):
+                try:
+                    items = json.loads(raw)
+                    if isinstance(items, list) and len(items) > 0:
+                        data["tags"] = items
+                    else:
+                        data["tags"] = None
+                except (json.JSONDecodeError, ValueError):
+                    data["tags"] = None
+        return data
 
 
 class ExtractedFields(BaseModel):

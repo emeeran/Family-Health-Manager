@@ -6,12 +6,15 @@ from datetime import date, datetime
 from uuid import UUID
 
 from sqlalchemy import select
-from sqlalchemy.orm import selectinload
+from sqlalchemy.orm import joinedload
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.base import FamilyMember, HealthRecord
 
 logger = logging.getLogger(__name__)
+
+# Cache for formatted allergy strings keyed by member_id
+_allergy_cache: dict[str, str] = {}
 
 
 async def build_member_context(
@@ -47,27 +50,36 @@ async def build_member_context(
     elif member.weight_kg:
         context += f"Weight: {member.weight_kg} kg\n"
 
-    # Allergies
+    # Allergies (cached to avoid re-parsing JSON every time)
     if member.allergies_json:
-        try:
-            allergies = json.loads(member.allergies_json)
-            if isinstance(allergies, list) and allergies:
-                allergy_lines = []
-                for a in allergies:
-                    if isinstance(a, dict):
-                        name = a.get("name") or a.get("allergy") or ""
-                        severity = a.get("severity") or a.get("reaction") or ""
-                        line = name
-                        if severity:
-                            line += f" ({severity})"
-                        if line:
-                            allergy_lines.append(line)
-                    elif isinstance(a, str) and a:
-                        allergy_lines.append(a)
-                if allergy_lines:
-                    context += f"Allergies: {'; '.join(allergy_lines)}\n"
-        except (json.JSONDecodeError, ValueError):
-            pass
+        allergy_key = str(member_id)
+        cached_allergy = _allergy_cache.get(allergy_key)
+        if cached_allergy is not None:
+            context += cached_allergy
+        else:
+            allergy_text = ""
+            try:
+                allergies = json.loads(member.allergies_json)
+                if isinstance(allergies, list) and allergies:
+                    allergy_lines = []
+                    for a in allergies:
+                        if isinstance(a, dict):
+                            name = a.get("name") or a.get("allergy") or ""
+                            severity = a.get("severity") or a.get("reaction") or ""
+                            line = name
+                            if severity:
+                                line += f" ({severity})"
+                            if line:
+                                allergy_lines.append(line)
+                        elif isinstance(a, str) and a:
+                            allergy_lines.append(a)
+                    if allergy_lines:
+                        allergy_text = f"Allergies: {'; '.join(allergy_lines)}\n"
+            except (json.JSONDecodeError, ValueError):
+                pass
+            _allergy_cache[allergy_key] = allergy_text
+            if allergy_text:
+                context += allergy_text
 
     if member.medical_history_summary:
         context += f"Medical History: {member.medical_history_summary}\n"
@@ -77,7 +89,7 @@ async def build_member_context(
     # --- Health Records ---
     query = (
         select(HealthRecord)
-        .options(selectinload(HealthRecord.provider))
+        .options(joinedload(HealthRecord.provider))
         .where(
             HealthRecord.family_member_id == member_id,
             HealthRecord.is_deleted.is_(False),
@@ -87,7 +99,7 @@ async def build_member_context(
     query = query.limit(20 if comprehensive else 5)
 
     recent = await db.execute(query)
-    records = list(recent.scalars().all())
+    records = list(recent.unique().scalars().all())
 
     # Start medication summary query in parallel with record processing
     med_summary_task = asyncio.create_task(build_medication_summary(db, member_id))

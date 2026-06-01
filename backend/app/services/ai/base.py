@@ -1,6 +1,7 @@
 """Shared httpx clients, cache, and lock management for AI service."""
 import asyncio
 import logging
+import time
 from collections import OrderedDict
 
 import httpx
@@ -8,8 +9,10 @@ import httpx
 logger = logging.getLogger(__name__)
 
 # Proper LRU cache using OrderedDict — survives across per-request instances
-member_context_cache: OrderedDict[str, str] = OrderedDict()
+# Values are (content, timestamp) tuples for TTL support
+member_context_cache: OrderedDict[str, tuple[str, float]] = OrderedDict()
 MAX_CACHE_SIZE = 64
+CACHE_TTL_SECONDS = 600  # 10 minutes
 
 # Shared httpx clients for connection pooling — reused across all instances
 cloud_client: httpx.AsyncClient | None = None
@@ -64,17 +67,24 @@ def invalidate_member_cache(member_id: "UUID | str") -> None:  # noqa: F821
 
 
 def put_cache(key: str, value: str) -> None:
-    """Store value in LRU cache, evicting the least-recently-used entry."""
+    """Store value in LRU cache with TTL, evicting the least-recently-used entry."""
     if key in member_context_cache:
         member_context_cache.move_to_end(key)
     elif len(member_context_cache) >= MAX_CACHE_SIZE:
         member_context_cache.popitem(last=False)
-    member_context_cache[key] = value
+    member_context_cache[key] = (value, time.monotonic())
 
 
 def get_cache(key: str) -> str | None:
-    """Retrieve value from LRU cache, promoting it as most-recently-used."""
+    """Retrieve value from LRU cache, promoting it as most-recently-used.
+
+    Returns None if the key is missing or the entry has expired.
+    """
     if key in member_context_cache:
+        value, ts = member_context_cache[key]
+        if time.monotonic() - ts > CACHE_TTL_SECONDS:
+            member_context_cache.pop(key)
+            return None
         member_context_cache.move_to_end(key)
-        return member_context_cache[key]
+        return value
     return None

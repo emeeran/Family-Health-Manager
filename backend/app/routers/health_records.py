@@ -290,6 +290,27 @@ async def create_record(
         except (json.JSONDecodeError, ValueError, TypeError, AttributeError) as exc:
             logger.warning("Outdated prescription cleanup skipped: %s", exc)
 
+    # Sync medications and lab results into first-class tables
+    if request.clinical_data:
+        try:
+            from app.services.medication_service import MedicationService
+            from app.services.lab_result_service import LabResultService
+            provider_name_val = None
+            if record.provider:
+                provider_name_val = record.provider.name
+            med_svc = MedicationService(db)
+            await med_svc.sync_from_record(
+                member_id, record.id, request.clinical_data,
+                request.record_date, provider_name_val,
+            )
+            lab_svc = LabResultService(db)
+            await lab_svc.sync_from_record(
+                member_id, record.id, request.clinical_data,
+                request.record_date,
+            )
+        except (json.JSONDecodeError, ValueError, TypeError, AttributeError) as exc:
+            logger.warning("Medication/lab sync skipped: %s", exc)
+
     # Fire-and-forget AI insight generation
     try:
         from app.services.insight_service import spawn_insight_task
@@ -444,6 +465,27 @@ async def update_record(
 
     record = await record_service.update_record(record_id, **update_data)
     AIService.invalidate_member_cache(member_id)
+
+    # Sync medications and lab results if clinical_data was updated
+    if "clinical_data" in update_data and update_data.get("clinical_data"):
+        try:
+            from app.services.medication_service import MedicationService
+            from app.services.lab_result_service import LabResultService
+            provider_name_val = None
+            if record.provider:
+                provider_name_val = record.provider.name
+            med_svc = MedicationService(db)
+            await med_svc.sync_from_record(
+                member_id, record.id, update_data["clinical_data"],
+                record.record_date, provider_name_val,
+            )
+            lab_svc = LabResultService(db)
+            await lab_svc.sync_from_record(
+                member_id, record.id, update_data["clinical_data"],
+                record.record_date,
+            )
+        except (json.JSONDecodeError, ValueError, TypeError, AttributeError) as exc:
+            logger.warning("Medication/lab sync on update skipped: %s", exc)
 
     # Auto-create FOLLOW_UP reminder if next_review_date was just set (deduped)
     if "next_review_date" in update_data and record.next_review_date:

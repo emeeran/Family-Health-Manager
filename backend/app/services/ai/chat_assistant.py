@@ -25,6 +25,10 @@ from app.services.ai.providers.ollama import ollama_chat_stream
 settings = get_settings()
 logger = logging.getLogger(__name__)
 
+# Short-lived cache for conversation history — avoids re-querying on rapid back-and-forth
+_history_cache: dict[str, tuple[str, float]] = {}
+_HISTORY_TTL = 120.0  # 2 minutes
+
 _CLINICAL_SYSTEM_NOTE = (
     "You are a senior clinical reviewer AI, functioning as an attending physician "
     "conducting a thorough chart review. Your role is to produce professional clinical "
@@ -116,42 +120,61 @@ async def chat_stream(
     full_response = ""
     provider = ""
 
-    # Try Ollama streaming first
-    for model, label in [
+    # Race all Ollama streaming models in parallel
+    ollama_models = [
         (settings.OLLAMA_MODEL, f"Ollama {settings.OLLAMA_MODEL}"),
-    ]:
+        (settings.OLLAMA_TEXT_MODEL, f"Ollama {settings.OLLAMA_TEXT_MODEL}"),
+    ]
+    yield sse({"stage": "provider", "provider": ", ".join(lbl for _, lbl in ollama_models)})
+    queue: asyncio.Queue[tuple[str, str] | None] = asyncio.Queue()
+    stream_tasks: list[asyncio.Task] = []
+
+    async def _pump_stream(model: str, label: str) -> None:
+        """Pump tokens from a stream into the shared queue."""
         try:
-            yield sse({"stage": "provider", "provider": label})
-            chunks = []
             async for chunk in ollama_chat_stream(model, full_prompt):
-                chunks.append(chunk)
-                yield sse({"stage": "token", "content": chunk})
-            result = "".join(chunks)
-            if result:
-                full_response = result
-                provider = label
-                break
+                await queue.put((label, chunk))
         except Exception as exc:
             logger.warning("Ollama streaming model %s failed: %s", label, exc)
+        finally:
+            await queue.put(None)
 
-    # Fallback: other Ollama models
-    if not full_response:
-        for model, label in [
-            (settings.OLLAMA_TEXT_MODEL, f"Ollama {settings.OLLAMA_TEXT_MODEL}"),
-        ]:
-            try:
-                yield sse({"stage": "provider", "provider": label})
-                chunks = []
-                async for chunk in ollama_chat_stream(model, full_prompt):
-                    chunks.append(chunk)
-                    yield sse({"stage": "token", "content": chunk})
-                result = "".join(chunks)
-                if result:
-                    full_response = result
-                    provider = label
-                    break
-            except Exception as exc:
-                logger.warning("Ollama streaming model %s failed: %s", label, exc)
+    for model, label in ollama_models:
+        stream_tasks.append(asyncio.create_task(_pump_stream(model, label)))
+
+    chunks_by_label: dict[str, list[str]] = {}
+    active_streams = len(stream_tasks)
+
+    while active_streams > 0:
+        item = await queue.get()
+        if item is None:
+            active_streams -= 1
+            continue
+        label, chunk = item
+        chunks_by_label.setdefault(label, []).append(chunk)
+        yield sse({"stage": "token", "content": chunk})
+
+    # Drain remaining items
+    while not queue.empty():
+        item = queue.get_nowait()
+        if item is None:
+            continue
+        label, chunk = item
+        chunks_by_label.setdefault(label, []).append(chunk)
+        yield sse({"stage": "token", "content": chunk})
+
+    # Cancel and pick the first model with content
+    for t in stream_tasks:
+        t.cancel()
+    await asyncio.gather(*stream_tasks, return_exceptions=True)
+
+    for label in [lbl for _, lbl in ollama_models]:
+        chunks = chunks_by_label.get(label, [])
+        result = "".join(chunks)
+        if result:
+            full_response = result
+            provider = label
+            break
 
     # Fallback: cloud providers (non-streaming, sent as single token)
     if not full_response:
@@ -275,7 +298,17 @@ async def chat(
 
 
 async def _get_conversation_history(db: AsyncSession, conversation_id: UUID, limit: int = 10) -> str:
-    """Get recent conversation history."""
+    """Get recent conversation history, with short-lived cache."""
+    import time
+
+    cache_key = str(conversation_id)
+    cached = _history_cache.get(cache_key)
+    if cached:
+        value, ts = cached
+        if time.monotonic() - ts < _HISTORY_TTL:
+            return value
+        _history_cache.pop(cache_key, None)
+
     result = await db.execute(
         select(Message)
         .where(Message.conversation_id == conversation_id)
@@ -289,6 +322,8 @@ async def _get_conversation_history(db: AsyncSession, conversation_id: UUID, lim
     for msg in messages:
         role = "User" if msg.role == MessageRole.USER else "Assistant"
         history += f"{role}: {msg.content}\n"
+
+    _history_cache[cache_key] = (history, time.monotonic())
     return history
 
 

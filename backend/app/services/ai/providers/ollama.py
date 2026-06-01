@@ -1,4 +1,5 @@
 """Ollama local AI provider — text, chat, streaming, and vision."""
+import asyncio
 import json
 import logging
 from collections.abc import AsyncGenerator
@@ -12,6 +13,34 @@ settings = get_settings()
 logger = logging.getLogger(__name__)
 
 
+def _ollama_timeout(prompt_len: int) -> httpx.Timeout:
+    """Adaptive timeout: shorter for small prompts, longer for complex ones."""
+    read = min(30 + prompt_len // 500, 120)
+    return httpx.Timeout(connect=10, read=read, write=10, pool=10)
+
+
+async def _retry_request(fn, retries: int = 2, base_delay: float = 0.5):
+    """Retry an httpx request with exponential backoff. Resets client on last failure."""
+    for attempt in range(retries + 1):
+        try:
+            return await fn()
+        except (httpx.TimeoutException, httpx.ConnectError, httpx.ReadError) as exc:
+            if attempt == retries:
+                # Final failure — reset shared client
+                from app.services.ai import base as _base
+                if _base.ollama_client:
+                    try:
+                        await _base.ollama_client.aclose()
+                    except Exception:
+                        pass
+                    _base.ollama_client = None
+                raise
+            delay = base_delay * (2 ** attempt)
+            logger.debug("Ollama request failed (attempt %d/%d), retrying in %.1fs: %s",
+                         attempt + 1, retries + 1, delay, exc)
+            await asyncio.sleep(delay)
+
+
 async def call_ollama_text(prompt: str) -> str | None:
     """Call local Ollama API for text generation — uses lighter model."""
     if not settings.OLLAMA_LOCAL_URL:
@@ -23,13 +52,15 @@ async def call_ollama_text(prompt: str) -> str | None:
         "stream": False,
         "options": {"num_ctx": 16384, "num_predict": 2048, "temperature": 0.3},
     }
-    client = await get_ollama_client()
-    resp = await client.post(
-        url, json=payload,
-        timeout=httpx.Timeout(connect=10, read=120, write=10, pool=10),
-    )
-    resp.raise_for_status()
-    data = resp.json()
+    timeout = _ollama_timeout(len(prompt))
+
+    async def _do():
+        client = await get_ollama_client()
+        resp = await client.post(url, json=payload, timeout=timeout)
+        resp.raise_for_status()
+        return resp.json()
+
+    data = await _retry_request(_do)
     content = data.get("message", {}).get("content", "")
     if not content or not content.strip():
         logger.warning("Ollama text (%s) returned empty content", settings.OLLAMA_TEXT_MODEL)
@@ -48,24 +79,18 @@ async def ollama_chat(model: str, prompt: str) -> str | None:
         "stream": False,
         "options": {"num_ctx": 32768, "num_predict": 4096, "temperature": 0.3},
     }
-    try:
+    timeout = _ollama_timeout(len(prompt))
+
+    async def _do():
         client = await get_ollama_client()
-        resp = await client.post(
-            url, json=payload,
-            timeout=httpx.Timeout(connect=10, read=120, write=10, pool=10),
-        )
+        resp = await client.post(url, json=payload, timeout=timeout)
         resp.raise_for_status()
-        data = resp.json()
+        return resp.json()
+
+    try:
+        data = await _retry_request(_do)
         return data.get("message", {}).get("content")
     except Exception:
-        # Reset shared client on failure — connection pool may be corrupted
-        from app.services.ai import base as _base
-        if _base.ollama_client:
-            try:
-                await _base.ollama_client.aclose()
-            except Exception:
-                pass
-            _base.ollama_client = None
         raise
 
 
@@ -83,7 +108,7 @@ async def ollama_chat_stream(model: str, prompt: str) -> AsyncGenerator[str, Non
     client = await get_ollama_client()
     async with client.stream(
         "POST", url, json=payload,
-        timeout=httpx.Timeout(connect=10, read=120, write=10, pool=10),
+        timeout=_ollama_timeout(len(prompt)),
     ) as resp:
         resp.raise_for_status()
         async for line in resp.aiter_lines():
@@ -121,7 +146,7 @@ async def call_ollama_vision(
         client = await get_ollama_client()
         resp = await client.post(
             url, json=payload,
-            timeout=httpx.Timeout(connect=10, read=120, write=10, pool=10),
+            timeout=_ollama_timeout(len(extraction_prompt)),
         )
         resp.raise_for_status()
         data = resp.json()
@@ -154,7 +179,7 @@ async def call_ollama_ocr(
     client = await get_ollama_client()
     resp = await client.post(
         url, json=payload,
-        timeout=httpx.Timeout(connect=10, read=120, write=10, pool=10),
+        timeout=_ollama_timeout(len(ocr_prompt)),
     )
     resp.raise_for_status()
     data = resp.json()

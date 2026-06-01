@@ -104,6 +104,8 @@ from app.models.reminder import Reminder, Notification  # noqa: E402
 from app.models.vaccination import Vaccination  # noqa: E402
 from app.models.verification import ResponseVerification  # noqa: E402
 from app.models.health_alert import HealthAlert, AlertType, AlertSeverity  # noqa: E402
+from app.models.medication import Medication  # noqa: E402
+from app.models.lab_result import LabResult  # noqa: E402
 
 __all__ = [
     "Base",
@@ -132,4 +134,6 @@ __all__ = [
     "HealthAlert",
     "AlertType",
     "AlertSeverity",
+    "Medication",
+    "LabResult",
 ]

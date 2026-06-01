@@ -1,6 +1,6 @@
 """Family member schemas."""
 import json
-from pydantic import BaseModel, Field, ConfigDict, computed_field
+from pydantic import BaseModel, Field, ConfigDict, computed_field, model_validator
 from datetime import datetime, date
 from uuid import UUID
 from app.models.base import Gender, Relationship
@@ -82,22 +82,27 @@ class FamilyMemberResponse(BaseModel):
     is_active: bool = Field(..., description="Active status")
     created_at: datetime = Field(..., description="Creation timestamp")
 
-    # Internal field to hold the raw JSON — excluded from API output
-    allergies_json: str | None = Field(None, exclude=True)
+    # Parsed once from the raw allergies_json column
+    allergies: list[AllergyEntry] | None = Field(None, description="Structured allergies")
 
-    @computed_field
-    @property
-    def allergies(self) -> list[AllergyEntry] | None:
-        """Parse structured allergies from JSON column."""
-        if not self.allergies_json:
-            return None
-        try:
-            items = json.loads(self.allergies_json)
-            if isinstance(items, list) and len(items) > 0:
-                return [AllergyEntry(**a) for a in items]
-        except (json.JSONDecodeError, ValueError):
-            pass
-        return None
+    @model_validator(mode="before")
+    @classmethod
+    def _parse_allergies(cls, data):
+        """Parse allergies JSON column once during construction."""
+        if isinstance(data, dict):
+            raw = data.get("allergies_json")
+            if isinstance(raw, str):
+                try:
+                    items = json.loads(raw)
+                    if isinstance(items, list) and len(items) > 0:
+                        data["allergies"] = [AllergyEntry(**a) for a in items]
+                    else:
+                        data["allergies"] = None
+                except (json.JSONDecodeError, ValueError):
+                    data["allergies"] = None
+            # Remove allergies_json so Pydantic doesn't reject the unknown field
+            data.pop("allergies_json", None)
+        return data
 
     @computed_field
     @property

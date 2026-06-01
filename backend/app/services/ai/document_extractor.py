@@ -157,9 +157,12 @@ async def extract_medical_data(
             # Chunk OCR text by page markers to keep prompts small for local models
             page_chunks = chunk_ocr_text(ocr_text, pages_per_chunk=3)
             all_extracted = ExtractedFields()
-            for i, chunk in enumerate(page_chunks):
-                logger.info("Extracting OCR chunk %d/%d (%d chars)...", i + 1, len(page_chunks), len(chunk))
-                raw_text = await call_text_extraction(chunk[:10000], last_provider_ref)
+            # Process all chunks in parallel
+            chunk_results = await asyncio.gather(*[
+                call_text_extraction(chunk[:10000], last_provider_ref)
+                for chunk in page_chunks
+            ])
+            for raw_text in chunk_results:
                 chunk_result = parse_extraction(raw_text, ExtractedFields)
                 all_extracted = merge_extractions(all_extracted, chunk_result)
             if all_extracted.has_any_data():

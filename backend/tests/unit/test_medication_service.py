@@ -10,6 +10,11 @@ from app.services.medication_service import MedicationService
 from app.core.parsing import parse_duration
 
 
+def _empty_scalars():
+    """Return a mock result whose .scalars().all() returns []."""
+    return MagicMock(scalars=MagicMock(return_value=MagicMock(all=MagicMock(return_value=[]))))
+
+
 # ── _parse_duration ──────────────────────────────────────────────────
 
 
@@ -102,9 +107,12 @@ async def test_get_active_medications_single_record(med_service, mock_db):
         clinical_data=_clinical_data(rx),
     )
 
+    # First call: Medication table (empty) → triggers JSON fallback
+    # Second call: HealthRecord table (has data)
+    scalars_empty = _empty_scalars()
     scalars_result = MagicMock()
     scalars_result.scalars.return_value.all.return_value = [record]
-    mock_db.execute = AsyncMock(return_value=scalars_result)
+    mock_db.execute = AsyncMock(side_effect=[scalars_empty, scalars_result])
 
     result = await med_service.get_active_medications(uuid4())
 
@@ -128,9 +136,10 @@ async def test_get_active_medications_deduplication(med_service, mock_db):
     old_record = _make_record(record_date=old_date, clinical_data=_clinical_data(old_rx))
     new_record = _make_record(record_date=new_date, clinical_data=_clinical_data(new_rx))
 
+    scalars_empty = _empty_scalars()
     scalars_result = MagicMock()
     scalars_result.scalars.return_value.all.return_value = [new_record, old_record]
-    mock_db.execute = AsyncMock(return_value=scalars_result)
+    mock_db.execute = AsyncMock(side_effect=[scalars_empty, scalars_result])
 
     result = await med_service.get_active_medications(member_id)
 
@@ -149,9 +158,10 @@ async def test_get_active_medications_completed_status(med_service, mock_db):
         clinical_data=_clinical_data(rx),
     )
 
+    scalars_empty = _empty_scalars()
     scalars_result = MagicMock()
     scalars_result.scalars.return_value.all.return_value = [record]
-    mock_db.execute = AsyncMock(return_value=scalars_result)
+    mock_db.execute = AsyncMock(side_effect=[scalars_empty, scalars_result])
 
     result = await med_service.get_active_medications(uuid4())
 
@@ -169,9 +179,10 @@ async def test_get_active_medications_skips_sync_false(med_service, mock_db):
         clinical_data=_clinical_data(rx, medication_sync=False),
     )
 
+    scalars_empty = _empty_scalars()
     scalars_result = MagicMock()
     scalars_result.scalars.return_value.all.return_value = [record]
-    mock_db.execute = AsyncMock(return_value=scalars_result)
+    mock_db.execute = AsyncMock(side_effect=[scalars_empty, scalars_result])
 
     result = await med_service.get_active_medications(uuid4())
     assert result == []
@@ -185,9 +196,10 @@ async def test_get_active_medications_skips_null_clinical_data(med_service, mock
         clinical_data=None,
     )
 
+    scalars_empty = _empty_scalars()
     scalars_result = MagicMock()
     scalars_result.scalars.return_value.all.return_value = [record]
-    mock_db.execute = AsyncMock(return_value=scalars_result)
+    mock_db.execute = AsyncMock(side_effect=[scalars_empty, scalars_result])
 
     result = await med_service.get_active_medications(uuid4())
     assert result == []
@@ -201,9 +213,10 @@ async def test_get_active_medications_skips_non_structured(med_service, mock_db)
         clinical_data=json.dumps({"prescriptions": [{"medicine": "Test"}]}),
     )
 
+    scalars_empty = _empty_scalars()
     scalars_result = MagicMock()
     scalars_result.scalars.return_value.all.return_value = [record]
-    mock_db.execute = AsyncMock(return_value=scalars_result)
+    mock_db.execute = AsyncMock(side_effect=[scalars_empty, scalars_result])
 
     result = await med_service.get_active_medications(uuid4())
     assert result == []
@@ -221,9 +234,10 @@ async def test_get_active_medications_skips_empty_medicine_name(med_service, moc
         clinical_data=_clinical_data(rx),
     )
 
+    scalars_empty = _empty_scalars()
     scalars_result = MagicMock()
     scalars_result.scalars.return_value.all.return_value = [record]
-    mock_db.execute = AsyncMock(return_value=scalars_result)
+    mock_db.execute = AsyncMock(side_effect=[scalars_empty, scalars_result])
 
     result = await med_service.get_active_medications(uuid4())
     assert len(result) == 1

@@ -1,5 +1,6 @@
 """Medication expiry / refill tracking service."""
 import json
+import logging
 from datetime import date, timedelta
 from uuid import UUID
 
@@ -8,9 +9,11 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import load_only
 
 from app.models.base import HealthRecord, RecordType
+from app.models.medication import Medication
 from app.core.parsing import parse_duration
 
 MEDICATION_SYNC_KEY = "_medication_sync"
+logger = logging.getLogger(__name__)
 
 
 class MedicationService:
@@ -19,18 +22,123 @@ class MedicationService:
     def __init__(self, db: AsyncSession):
         self.db = db
 
+    async def sync_from_record(
+        self,
+        member_id: UUID,
+        record_id: UUID,
+        clinical_data_str: str,
+        record_date: date,
+        provider_name: str | None = None,
+    ) -> int:
+        """Extract prescriptions from clinical_data and upsert into medications table.
+
+        Returns the number of medication rows inserted/updated.
+        """
+        parsed = self._parse_clinical_data(clinical_data_str)
+        if not parsed or parsed.get("_type") != "structured":
+            return 0
+        if parsed.get(MEDICATION_SYNC_KEY) is False:
+            return 0
+
+        prescriptions = parsed.get("prescriptions", [])
+        if not isinstance(prescriptions, list):
+            return 0
+
+        today = date.today()
+        synced = 0
+
+        for i, rx in enumerate(prescriptions):
+            medicine = (rx.get("medicine") or "").strip()
+            if not medicine:
+                continue
+            medicine_key = self._normalize_medicine_name(medicine)
+            if not medicine_key:
+                continue
+
+            duration_days = parse_duration(rx.get("duration"))
+            end_date = record_date + timedelta(days=duration_days)
+            status = "active" if end_date >= today else "completed"
+
+            # Supersede any existing active medication with the same key
+            existing = await self.db.execute(
+                select(Medication).where(
+                    Medication.family_member_id == member_id,
+                    Medication.medicine_key == medicine_key,
+                    Medication.status == "active",
+                )
+            )
+            for old_med in existing.scalars().all():
+                old_med.status = "superseded"
+
+            self.db.add(Medication(
+                family_member_id=member_id,
+                health_record_id=record_id,
+                medicine=medicine,
+                medicine_key=medicine_key,
+                type=rx.get("type", ""),
+                dosage=rx.get("dosage", ""),
+                timing=rx.get("timing", ""),
+                duration=rx.get("duration", ""),
+                duration_days=duration_days,
+                note=rx.get("note", ""),
+                start_date=record_date,
+                end_date=end_date,
+                status=status,
+                prescription_index=i,
+                provider_name=provider_name or "",
+            ))
+            synced += 1
+
+        if synced:
+            await self.db.flush()
+        return synced
+
     async def get_active_medications(self, member_id: UUID) -> list[dict]:
         """Get currently active medications for a member.
 
-        Looks at the most recent doctor_visit records with structured
-        clinical_data containing a 'prescriptions' array.  Each prescription
-        has: medicine, type, dosage, duration, timing, note.
-
-        Returns list of dicts with:
-            medicine, type, dosage, timing, start_date, end_date, status
-        Status is 'active' if end_date is in the future, 'completed' otherwise.
-        end_date is computed from record_date + parsed duration.
+        Fast path: query the Medication table directly.
+        Slow path (fallback): scan health_records JSON for pre-migration data.
         """
+        # ── Fast path: Medication table ───────────────────────────────
+        result = await self.db.execute(
+            select(Medication)
+            .where(
+                Medication.family_member_id == member_id,
+                Medication.status.in_(["active", "completed"]),
+            )
+            .order_by(Medication.start_date.desc())
+        )
+        meds = result.scalars().all()
+
+        if meds:
+            # Deduplicate by medicine_key, keeping the latest (first seen)
+            seen: set[str] = set()
+            medications: list[dict] = []
+            for m in meds:
+                if m.medicine_key in seen:
+                    continue
+                seen.add(m.medicine_key)
+                medications.append({
+                    "medicine": m.medicine,
+                    "type": m.type,
+                    "dosage": m.dosage,
+                    "timing": m.timing,
+                    "start_date": m.start_date.isoformat() if m.start_date else "",
+                    "end_date": m.end_date.isoformat() if m.end_date else "",
+                    "duration": m.duration,
+                    "note": m.note,
+                    "status": m.status,
+                    "record_id": str(m.health_record_id) if m.health_record_id else "",
+                    "prescription_index": m.prescription_index,
+                    "provider_name": m.provider_name,
+                })
+            return medications
+
+        # ── Slow path: scan JSON (pre-migration fallback) ─────────────
+        return await self._get_active_medications_from_json(member_id)
+
+    async def _get_active_medications_from_json(self, member_id: UUID) -> list[dict]:
+        """Fallback: scan health_records JSON for medication data."""
         result = await self.db.execute(
             select(HealthRecord)
             .options(load_only(HealthRecord.id, HealthRecord.record_date, HealthRecord.clinical_data))
@@ -103,25 +211,54 @@ class MedicationService:
     async def get_refill_reminders(self, member_id: UUID) -> list[dict]:
         """Get medications that need refill within 7 days.
 
-        Returns active medications whose end_date falls within the next 7 days
-        (inclusive of today).
+        Queries the Medication table directly for active meds
+        whose end_date falls within the next 7 days (inclusive of today).
         """
-        active_meds = await self.get_active_medications(member_id)
-
         today = date.today()
         cutoff = today + timedelta(days=7)
 
-        reminders: list[dict] = []
-        for med in active_meds:
-            if med["status"] != "active":
-                continue
-            end = date.fromisoformat(med["end_date"])
-            if today <= end <= cutoff:
-                med["days_until_end"] = (end - today).days
-                reminders.append(med)
+        result = await self.db.execute(
+            select(Medication).where(
+                Medication.family_member_id == member_id,
+                Medication.status == "active",
+                Medication.end_date >= today,
+                Medication.end_date <= cutoff,
+            ).order_by(Medication.end_date)
+        )
+        meds = result.scalars().all()
 
-        # Sort by days until end (soonest first)
-        reminders.sort(key=lambda m: m["days_until_end"])
+        if not meds:
+            # Fallback to old method for pre-migration data
+            active_meds = await self.get_active_medications(member_id)
+            reminders: list[dict] = []
+            for med in active_meds:
+                if med["status"] != "active":
+                    continue
+                end = date.fromisoformat(med["end_date"])
+                if today <= end <= cutoff:
+                    med["days_until_end"] = (end - today).days
+                    reminders.append(med)
+            reminders.sort(key=lambda m: m["days_until_end"])
+            return reminders
+
+        reminders: list[dict] = []
+        for m in meds:
+            days_left = (m.end_date - today).days if m.end_date else 0
+            reminders.append({
+                "medicine": m.medicine,
+                "type": m.type,
+                "dosage": m.dosage,
+                "timing": m.timing,
+                "start_date": m.start_date.isoformat() if m.start_date else "",
+                "end_date": m.end_date.isoformat() if m.end_date else "",
+                "duration": m.duration,
+                "note": m.note,
+                "status": m.status,
+                "record_id": str(m.health_record_id) if m.health_record_id else "",
+                "prescription_index": m.prescription_index,
+                "provider_name": m.provider_name,
+                "days_until_end": days_left,
+            })
         return reminders
 
     async def remove_outdated_prescriptions(

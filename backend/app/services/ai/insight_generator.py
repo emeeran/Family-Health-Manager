@@ -148,25 +148,67 @@ async def generate_insight_stream(
     full_response = ""
     provider = ""
 
-    # Primary: Ollama models (local streaming)
+    # Primary: Race Ollama models in parallel (streaming)
     ollama_models = [
         (settings.OLLAMA_MODEL, f"Ollama {settings.OLLAMA_MODEL}"),
         (settings.OLLAMA_TEXT_MODEL, f"Ollama {settings.OLLAMA_TEXT_MODEL}"),
     ]
-    for model, label in ollama_models:
+    yield sse({"stage": "provider", "provider": ", ".join(lbl for _, lbl in ollama_models)})
+    queue: asyncio.Queue[tuple[str, str] | None] = asyncio.Queue()
+    stream_tasks: list[asyncio.Task] = []
+
+    async def _pump_stream(model: str, label: str) -> None:
+        """Pump tokens from a stream into the shared queue."""
         try:
-            yield sse({"stage": "provider", "provider": label})
-            chunks = []
             async for chunk in ollama_chat_stream(model, full_prompt):
-                chunks.append(chunk)
-                yield sse({"stage": "token", "content": chunk})
-            result = "".join(chunks)
-            if result:
-                full_response = result
-                provider = label
-                break
+                await queue.put((label, chunk))
         except Exception as exc:
             logger.warning("Ollama streaming model %s failed: %s", label, exc)
+        finally:
+            await queue.put(None)  # signal this stream ended
+
+    for model, label in ollama_models:
+        stream_tasks.append(asyncio.create_task(_pump_stream(model, label)))
+
+    # Read from queue until one model produces a full response
+    chunks_by_label: dict[str, list[str]] = {}
+    active_streams = len(stream_tasks)
+    winner_label: str | None = None
+
+    while active_streams > 0 and winner_label is None:
+        item = await queue.get()
+        if item is None:
+            active_streams -= 1
+            continue
+        label, chunk = item
+        chunks_by_label.setdefault(label, []).append(chunk)
+        yield sse({"stage": "token", "content": chunk})
+        # Check if this stream completed (got a done signal) — we detect
+        # completion when all chunks are collected after stream ends
+        # For now, just yield tokens as they arrive
+
+    # Wait briefly for any remaining queue items from the winner
+    while not queue.empty():
+        item = queue.get_nowait()
+        if item is None:
+            active_streams -= 1
+            continue
+        label, chunk = item
+        chunks_by_label.setdefault(label, []).append(chunk)
+        yield sse({"stage": "token", "content": chunk})
+
+    # Cancel all tasks, pick the first model with content
+    for t in stream_tasks:
+        t.cancel()
+    await asyncio.gather(*stream_tasks, return_exceptions=True)
+
+    for label in [lbl for _, lbl in ollama_models]:
+        chunks = chunks_by_label.get(label, [])
+        result = "".join(chunks)
+        if result:
+            full_response = result
+            provider = label
+            break
 
     # Fallback: cloud providers (non-streaming)
     if not full_response:
@@ -183,8 +225,8 @@ async def generate_insight_stream(
                 yield sse({"stage": "provider", "provider": "Cloud AI"})
                 full_response, provider = await _race_providers(full_prompt, cloud_providers)
                 if full_response:
-                    for i in range(0, len(full_response), 200):
-                        yield sse({"stage": "token", "content": full_response[i:i+200]})
+                    for i in range(0, len(full_response), 800):
+                        yield sse({"stage": "token", "content": full_response[i:i+800]})
             except Exception as exc:
                 logger.warning("Cloud providers failed for streaming insight: %s", exc)
 

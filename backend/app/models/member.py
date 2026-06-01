@@ -44,3 +44,5 @@ class FamilyMember(Base):
     conversations: Mapped[list["Conversation"]] = relationship(back_populates="family_member")
     reminders: Mapped[list["Reminder"]] = relationship(back_populates="family_member")
     vaccinations: Mapped[list["Vaccination"]] = relationship(back_populates="family_member", cascade="all, delete-orphan")
+    medications: Mapped[list["Medication"]] = relationship(back_populates="family_member", cascade="all, delete-orphan")
+    lab_results: Mapped[list["LabResult"]] = relationship(back_populates="family_member", cascade="all, delete-orphan")
