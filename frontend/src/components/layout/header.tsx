@@ -196,11 +196,11 @@ export function Header() {
                 <p className="text-xs text-muted-foreground">Family Admin</p>
               </div>
               <DropdownMenuSeparator />
-              <DropdownMenuItem>
-                <Link to="/settings" className="flex items-center gap-2 cursor-pointer">
-                  <Settings className="h-4 w-4" />
-                  Settings
-                </Link>
+              <DropdownMenuItem
+                render={<Link to="/settings" className="flex items-center gap-2 cursor-pointer" />}
+              >
+                <Settings className="h-4 w-4" />
+                Settings
               </DropdownMenuItem>
               <DropdownMenuSeparator />
               <DropdownMenuItem>
