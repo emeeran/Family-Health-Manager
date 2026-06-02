@@ -13,6 +13,16 @@ import type { RecordType } from "@/lib/types/enums";
 import { useSWRConfig } from "swr";
 import { toast } from "sonner";
 import {
+  validatePrescriptionRow,
+  validateLabTestRow,
+  normalizeDate,
+  normalizeTime,
+  VALID_RECORD_TYPES,
+} from "@/components/records/record-form-utils";
+import { MedicationSyncDialog } from "@/components/records/medication-sync-dialog";
+import { computeMedicationDiff, applyMedicationSync } from "@/lib/api/members";
+import type { MedicationDiffResponse } from "@/lib/types/health-record";
+import {
   Dialog,
   DialogContent,
   DialogHeader,
@@ -57,6 +67,10 @@ export function SmartEntryBar({ members }: SmartEntryBarProps) {
   const [clinicalNotes, setClinicalNotes] = useState("");
   const [saving, setSaving] = useState(false);
 
+  // Medication sync
+  const [medSyncDiff, setMedSyncDiff] = useState<MedicationDiffResponse | null>(null);
+  const [showMedSyncDialog, setShowMedSyncDialog] = useState(false);
+
   const activeMembers = members.filter((m) => m.is_active);
 
   /* ── NL Text parse ── */
@@ -67,8 +81,12 @@ export function SmartEntryBar({ members }: SmartEntryBarProps) {
       const result = await parseNaturalLanguage(text);
       setParsed(result);
       if (result.member) setSelectedMemberId(result.member.id);
-      setRecordType((result.record_type as RecordType) || "misc_record");
-      setRecordDate(result.record_date || todayISO());
+      setRecordType(
+        VALID_RECORD_TYPES.has(result.record_type ?? "")
+          ? (result.record_type as RecordType)
+          : "misc_record"
+      );
+      setRecordDate(normalizeDate(result.record_date) || todayISO());
       setDiagnosis(result.diagnosis || "");
       setPrescriptionText(result.prescription_text || "");
       setClinicalNotes(result.clinical_notes || "");
@@ -92,8 +110,12 @@ export function SmartEntryBar({ members }: SmartEntryBarProps) {
         const response = await extractFromDocument(memberId, file);
         setExtractedData(response);
         setSelectedMemberId(memberId);
-        setRecordType((response.extracted.record_type as RecordType) || "misc_record");
-        setRecordDate(response.extracted.record_date || todayISO());
+        setRecordType(
+          VALID_RECORD_TYPES.has(response.extracted.record_type ?? "")
+            ? (response.extracted.record_type as RecordType)
+            : "misc_record"
+        );
+        setRecordDate(normalizeDate(response.extracted.record_date) || todayISO());
         setDiagnosis(response.extracted.diagnosis || "");
         setPrescriptionText(response.extracted.prescription_text || "");
         setClinicalNotes(response.extracted.clinical_data || "");
@@ -120,17 +142,42 @@ export function SmartEntryBar({ members }: SmartEntryBarProps) {
     if (!selectedMemberId) return;
     setSaving(true);
     try {
-      await createRecord(
+      // Build structured clinical_data when prescriptions were extracted from a document
+      let clinicalDataValue = clinicalNotes;
+      let validatedPrescriptions: Record<string, string>[] = [];
+      const rawPrescriptions = extractedData?.extracted?.prescriptions;
+      if (rawPrescriptions && rawPrescriptions.length > 0) {
+        validatedPrescriptions = rawPrescriptions
+          .map(validatePrescriptionRow)
+          .filter((r): r is Record<string, string> => r !== null);
+        const structured: Record<string, unknown> = {
+          _type: "structured",
+          _version: 1,
+          _recordType: recordType,
+        };
+        if (clinicalNotes) structured._notes = clinicalNotes;
+        if (validatedPrescriptions.length > 0) structured.prescriptions = validatedPrescriptions;
+        const rawLabTests = extractedData?.extracted?.lab_tests;
+        if (rawLabTests && rawLabTests.length > 0) {
+          const labTests = rawLabTests
+            .map(validateLabTestRow)
+            .filter((r): r is Record<string, string> => r !== null);
+          if (labTests.length > 0) structured.lab_tests = labTests;
+        }
+        clinicalDataValue = JSON.stringify(structured);
+      }
+
+      const record = await createRecord(
         selectedMemberId,
         {
           record_type: recordType,
           record_date: recordDate || todayISO(),
-          record_time: extractedData?.extracted.record_time || nowTime(),
-          clinical_data: clinicalNotes,
+          record_time: normalizeTime(extractedData?.extracted.record_time) || nowTime(),
+          clinical_data: clinicalDataValue,
           diagnosis: diagnosis || null,
           prescription_text: prescriptionText || null,
           provider_id: null,
-          next_review_date: extractedData?.extracted.next_review_date || null,
+          next_review_date: normalizeDate(extractedData?.extracted.next_review_date) || null,
           tags: null,
         },
         extractedData?.staging_file_id || undefined,
@@ -138,6 +185,32 @@ export function SmartEntryBar({ members }: SmartEntryBarProps) {
       );
 
       toast.success("Record saved!");
+
+      // Check for medication sync if we sent structured prescriptions
+      if (validatedPrescriptions.length > 0) {
+        try {
+          const diff = await computeMedicationDiff(
+            selectedMemberId,
+            validatedPrescriptions,
+            record.id
+          );
+          const totalChanges = diff.added.length + diff.updated.length + diff.removed.length;
+          if (totalChanges > 0) {
+            setMedSyncDiff(diff);
+            setShowMedSyncDialog(true);
+            await Promise.all([
+              mutate("dashboard"),
+              mutate("members"),
+              mutate(`member-detail-${selectedMemberId}`),
+            ]);
+            return; // Don't reset yet — wait for dialog
+          }
+        } catch (err) {
+          // Non-critical — medication sync is best-effort
+          console.error("Medication diff failed:", err);
+        }
+      }
+
       resetState();
       await Promise.all([
         mutate("dashboard"),
@@ -170,6 +243,8 @@ export function SmartEntryBar({ members }: SmartEntryBarProps) {
     setDiagnosis("");
     setPrescriptionText("");
     setClinicalNotes("");
+    setMedSyncDiff(null);
+    setShowMedSyncDialog(false);
   }
 
   return (
@@ -354,6 +429,31 @@ export function SmartEntryBar({ members }: SmartEntryBarProps) {
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      {medSyncDiff && (
+        <MedicationSyncDialog
+          open={showMedSyncDialog}
+          onOpenChange={(open) => {
+            setShowMedSyncDialog(open);
+            if (!open) {
+              resetState();
+              mutate("dashboard");
+              mutate("members");
+              mutate(`member-detail-${selectedMemberId}`);
+            }
+          }}
+          diff={medSyncDiff}
+          onApply={async (added, updated, removed) => {
+            try {
+              await applyMedicationSync(selectedMemberId, added, updated, removed);
+              toast.success("Medications updated!");
+            } catch (err) {
+              toast.error(err instanceof Error ? err.message : "Failed to update medications");
+              throw err; // re-throw so dialog stays open
+            }
+          }}
+        />
+      )}
     </>
   );
 }

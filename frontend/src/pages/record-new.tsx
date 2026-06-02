@@ -92,7 +92,7 @@ export default function NewRecordPage() {
             defaultType={defaultType}
             defaultProviderId={defaultProviderId}
             defaultChiefComplaint={defaultChiefComplaint}
-            onSaveComplete={() => navigate(`/people/${memberId}/records`)}
+            onSaveComplete={() => navigate(`/people/${memberId}`)}
           />
         </CardContent>
       </Card>

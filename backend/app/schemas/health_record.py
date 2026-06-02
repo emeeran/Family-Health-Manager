@@ -59,17 +59,29 @@ class HealthRecordResponse(BaseModel):
     @classmethod
     def _parse_tags(cls, data):
         """Parse tags JSON column once during construction."""
+        raw = None
         if isinstance(data, dict):
             raw = data.get("tags")
-            if isinstance(raw, str):
-                try:
-                    items = json.loads(raw)
-                    if isinstance(items, list) and len(items) > 0:
+        elif hasattr(data, "tags"):
+            raw = data.tags
+        if isinstance(raw, str):
+            try:
+                items = json.loads(raw)
+                if isinstance(items, list) and len(items) > 0:
+                    if isinstance(data, dict):
                         data["tags"] = items
                     else:
+                        object.__setattr__(data, "tags", items)
+                else:
+                    if isinstance(data, dict):
                         data["tags"] = None
-                except (json.JSONDecodeError, ValueError):
+                    else:
+                        object.__setattr__(data, "tags", None)
+            except (json.JSONDecodeError, ValueError):
+                if isinstance(data, dict):
                     data["tags"] = None
+                else:
+                    object.__setattr__(data, "tags", None)
         return data
 
 

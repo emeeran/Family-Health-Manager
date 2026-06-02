@@ -1,4 +1,5 @@
 """Household router."""
+from uuid import UUID
 from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy import select, or_
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -49,7 +50,8 @@ async def list_household_records(
     limit: int = Query(100, le=500),
 ):
     """List records for all members in the household in a single query."""
-    cache_key = f"household_records:{household.id}:{limit}"
+    household_id = UUID(str(household.id))
+    cache_key = f"household_records:{household_id}:{limit}"
     cached = await cache.get_async(cache_key)
     if cached is not None:
         return cached
@@ -59,7 +61,7 @@ async def list_household_records(
         .options(joinedload(HealthRecord.provider), joinedload(HealthRecord.attachments))
         .join(FamilyMember, HealthRecord.family_member_id == FamilyMember.id)
         .where(
-            FamilyMember.household_id == household.id,
+            FamilyMember.household_id == household_id,
             FamilyMember.is_active.is_(True),
             HealthRecord.is_deleted.is_(False),
         )
@@ -68,8 +70,9 @@ async def list_household_records(
     )
     rows = await db.execute(stmt)
     records = list(rows.scalars().unique().all())
-    await cache.set_async(cache_key, records, ttl=60)
-    return records
+    serialized = [HealthRecordResponse.model_validate(r).model_dump(mode="json") for r in records]
+    await cache.set_async(cache_key, serialized, ttl=60)
+    return serialized
 
 
 @router.get("/records/search", response_model=list[HealthRecordResponse])
@@ -80,6 +83,7 @@ async def search_household_records(
     db: AsyncSession = Depends(get_db),
 ):
     """Search records across all household members by diagnosis, clinical_data, or provider name."""
+    household_id = UUID(str(household.id))
     escaped = q.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
     pattern = f"%{escaped}%"
     stmt = (
@@ -87,7 +91,7 @@ async def search_household_records(
         .options(joinedload(HealthRecord.provider), joinedload(HealthRecord.attachments))
         .join(FamilyMember, HealthRecord.family_member_id == FamilyMember.id)
         .where(
-            FamilyMember.household_id == household.id,
+            FamilyMember.household_id == household_id,
             FamilyMember.is_active.is_(True),
             HealthRecord.is_deleted.is_(False),
             or_(

@@ -55,25 +55,25 @@ const quickActions = [
   {
     label: "Records",
     icon: FileText,
-    hrefSuffix: "/records",
+    search: "tab=records",
     color: "text-teal-600 hover:bg-teal-50",
   },
   {
     label: "Timeline",
     icon: Activity,
-    hrefSuffix: "/timeline",
+    search: "tab=records",
     color: "text-amber-600 hover:bg-amber-50",
   },
   {
     label: "Labs",
     icon: FlaskConical,
-    hrefSuffix: "/lab-records",
+    search: "tab=records",
     color: "text-emerald-600 hover:bg-emerald-50",
   },
   {
     label: "Providers",
     icon: Users,
-    href: "/providers",
+    search: undefined,
     color: "text-violet-600 hover:bg-violet-50",
   },
 ];
@@ -631,11 +631,25 @@ ${sectionHtml}
       <div className="flex items-center gap-1 print:hidden">
         {quickActions.map((action) => {
           const Icon = action.icon;
-          const linkTo = action.href ?? `/people/${member.id}${action.hrefSuffix}`;
+          if (action.hrefSuffix) {
+            const linkTo = `/people/${member.id}${action.hrefSuffix}`;
+            return (
+              <Link
+                key={linkTo}
+                to={linkTo}
+                className={`inline-flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-xs font-semibold transition-colors ${action.color}`}
+              >
+                <Icon className="h-3.5 w-3.5" />
+                {action.label}
+              </Link>
+            );
+          }
+          const linkTo = `/people/${member.id}`;
+          const search = action.search ? `?${action.search}` : "";
           return (
             <Link
-              key={linkTo}
-              to={linkTo}
+              key={`${linkTo}${search}`}
+              to={`${linkTo}${search}`}
               className={`inline-flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-xs font-semibold transition-colors ${action.color}`}
             >
               <Icon className="h-3.5 w-3.5" />

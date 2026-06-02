@@ -278,7 +278,7 @@ export const MemberCard = memo(function MemberCard({
             label="Add Record"
           />
           <TooltipActionLink
-            to={`/people/${member.id}/timeline`}
+            to={`/people/${member.id}?tab=records`}
             icon={<Calendar className="h-3.5 w-3.5" />}
             label="Timeline"
           />
