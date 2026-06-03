@@ -238,6 +238,7 @@ class MemberService:
             drug_interactions,
             latest_insight,
             preconsult_note,
+            smart_report,
             reminders_result,
             vaccinations_result,
             preventive_recs,
@@ -249,6 +250,7 @@ class MemberService:
             self._detail_drug_interactions(member_id),
             self._detail_latest_insight(member_id),
             self._detail_latest_preconsult(member_id),
+            self._detail_latest_smart_report(member_id),
             self._detail_upcoming_reminders(member_id),
             self._detail_vaccinations(member_id),
             PreventiveCareService(self.db).generate_recommendations(member),
@@ -276,6 +278,7 @@ class MemberService:
             "drug_interactions": drug_interactions,
             "latest_insight": latest_insight,
             "latest_preconsult_note": preconsult_note,
+            "latest_smart_report": smart_report,
             "recent_records": self._serialize_recent_records(recent_records),
             "upcoming_reminders": reminders_result,
             "vaccinations": vaccinations_result,
@@ -363,7 +366,11 @@ class MemberService:
     async def _detail_latest_insight(self, member_id: UUID) -> dict | None:
         result = await self.db.execute(
             select(AIInsight)
-            .where(AIInsight.prompt.notlike("__drug_interactions__%"), AIInsight.prompt.notlike("__preconsult__%"))
+            .where(
+                AIInsight.prompt.notlike("__drug_interactions__%"),
+                AIInsight.prompt.notlike("__preconsult__%"),
+                AIInsight.prompt.notlike("__smartreport__%"),
+            )
             .order_by(AIInsight.generated_at.desc()).limit(1)
         )
         insight = result.scalar_one_or_none()
@@ -388,6 +395,30 @@ class MemberService:
         result = await self.db.execute(
             select(AIInsight)
             .where(AIInsight.prompt.like(f"__preconsult__{member_id}__%"), AIInsight.health_record_id.is_(None))
+            .order_by(AIInsight.generated_at.desc()).limit(1)
+        )
+        insight = result.scalar_one_or_none()
+        if not insight:
+            return None
+        return {
+            "id": str(insight.id),
+            "response": insight.response,
+            "provider_used": insight.provider_used,
+            "generated_at": insight.generated_at.isoformat(),
+            "verification": {
+                "status": insight.verification_status,
+                "claims_checked": insight.verification_claims_checked,
+                "verifier_provider": insight.verification_verifier,
+                "summary": insight.verification_summary,
+                "warnings": json.loads(insight.verification_warnings_json) if insight.verification_warnings_json else None,
+                "verified_at": insight.verification_at.isoformat() if insight.verification_at else None,
+            } if insight.verification_status != "pending" or insight.verification_at else {"status": "pending" if (datetime.now(timezone.utc) - insight.generated_at.replace(tzinfo=timezone.utc)).total_seconds() < 300 else "unverifiable"},
+        }
+
+    async def _detail_latest_smart_report(self, member_id: UUID) -> dict | None:
+        result = await self.db.execute(
+            select(AIInsight)
+            .where(AIInsight.prompt.like(f"__smartreport__{member_id}__%"), AIInsight.health_record_id.is_(None))
             .order_by(AIInsight.generated_at.desc()).limit(1)
         )
         insight = result.scalar_one_or_none()

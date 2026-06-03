@@ -70,6 +70,58 @@ COMPREHENSIVE_INSIGHT_PROMPT = (
     "- If unsure about a drug's indication, say so explicitly rather than risk an incorrect statement.\n"
 )
 
+SMART_REPORT_PROMPT = (
+    "You are a senior clinical pathologist generating a SmartReport-style comprehensive health insight. "
+    "Analyze ALL lab test results, clinical data, doctor visit notes, and prescriptions for this patient.\n\n"
+    "OUTPUT: Return ONLY valid JSON (no markdown, no code fences, no prose). "
+    "The JSON must follow this exact schema:\n\n"
+    "{\n"
+    '  "systems_at_a_glance": [\n'
+    '    { "system": "Blood Health", "status": "needs_attention|ideal|no_data",\n'
+    '      "summary": "6 of 15 out of range", "parameters_total": 15,\n'
+    '      "parameters_out_of_range": 6, "parameters_improved": 1 }\n'
+    "  ],\n"
+    '  "organ_details": [\n'
+    '    { "system": "Blood Health",\n'
+    '      "parameters": [\n'
+    '        { "name": "Hemoglobin", "value": "7.8", "unit": "gm%",\n'
+    '          "date": "10-Feb-2026", "status": "out_of_range",\n'
+    '          "reference_range": "12.0-16.0", "trend": "further_decreased",\n'
+    '          "previous_values": [{"date": "...", "value": "..."}] }\n'
+    "      ] }\n"
+    "  ],\n"
+    '  "parameters_in_focus": [\n'
+    '    { "name": "Hemoglobin", "system": "Blood Health",\n'
+    '      "explanation": "Hemoglobin measures oxygen-carrying protein in red blood cells.",\n'
+    '      "significance": "Low levels reduce oxygen delivery to tissues.",\n'
+    '      "trend_note": "Further decreased from 8.2 to 7.8 gm%",\n'
+    '      "recommendation": "Monitor iron levels and consult hematologist." }\n'
+    "  ],\n"
+    '  "recommendations": [\n'
+    '    { "category": "Blood Health", "priority": "high",\n'
+    '      "action": "Regularly monitor Hemoglobin levels.",\n'
+    '      "reasoning": "Hemoglobin continues to decrease over recent tests." }\n'
+    "  ]\n"
+    "}\n\n"
+    "CLASSIFICATION RULES:\n"
+    "- Classify each lab parameter into exactly one body system: "
+    "Blood Health, Heart Health, GI & Liver, Kidney Health, Blood Glucose, "
+    "Hormone Health, Bone & Muscle, Skin & Hair, Immune System, or Other.\n"
+    "- For each parameter, determine status: in_range, out_of_range, borderline, or critical.\n"
+    "- For trend, use: improved, further_decreased, stable, new_abnormal, or not_available.\n"
+    "- For systems_at_a_glance status: "
+    "use 'needs_attention' if any parameter is out_of_range/critical, "
+    "'ideal' if all in_range, 'no_data' if no parameters found for that system.\n"
+    "- Include ALL standard body systems even if no data exists (mark them as no_data with 0 counts).\n\n"
+    "ACCURACY RULES:\n"
+    "- Use ONLY actual lab values and dates from the patient data. Never fabricate values.\n"
+    "- Reference ranges must match the lab report data when available.\n"
+    "- Previous values should only include values actually present in the records.\n"
+    "- If no serial data exists for a parameter, set trend to 'not_available' and previous_values to empty array.\n"
+    "- Explanation and significance should be clinically accurate and educational.\n"
+    "- Recommendations must cite specific findings and be actionable.\n"
+)
+
 PRE_CONSULT_PROMPT = (
     "Generate 5-7 cryptic, specialty-targeted questions for a patient to ask their doctor. "
     "Use the patient's medical history, conditions, medications, lab results, and symptoms."

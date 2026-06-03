@@ -185,6 +185,20 @@ export interface MemberDetailResponse {
       verified_at?: string | null;
     } | null;
   } | null;
+  latest_smart_report: {
+    id: string;
+    response: string;
+    provider_used: string;
+    generated_at: string;
+    verification: {
+      status: string;
+      claims_checked?: number | null;
+      verifier_provider?: string | null;
+      summary?: string | null;
+      warnings?: string[] | null;
+      verified_at?: string | null;
+    } | null;
+  } | null;
   recent_records: {
     id: string;
     record_type: string;

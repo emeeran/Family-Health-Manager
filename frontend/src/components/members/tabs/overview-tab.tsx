@@ -20,6 +20,8 @@ import { HealthScoreRing, scoreTextColor } from "@/components/ui/health-score-ri
 import { ActiveMedicationsTable } from "@/components/members/active-medications-table";
 import { InsightCard } from "@/components/members/insight-card";
 import { PreConsultationCard } from "@/components/members/pre-consultation-card";
+import { SmartReportCard } from "@/components/members/smart-report-card";
+import { SmartReportViewer } from "@/components/members/smart-report-viewer";
 import { DrugInteractionReport } from "@/components/members/drug-interaction-report";
 import { ProvidersUhidCard } from "@/components/members/providers-uhid-card";
 import { VaccinationsSection } from "@/components/members/vaccinations-section";
@@ -103,6 +105,7 @@ export const OverviewTab = memo(function OverviewTab({ data }: OverviewTabProps)
     upcoming_reminders,
     latest_insight,
     latest_preconsult_note,
+    latest_smart_report,
     preventive_recommendations,
   } = data;
 
@@ -133,8 +136,20 @@ export const OverviewTab = memo(function OverviewTab({ data }: OverviewTabProps)
         }
       : null
   );
+  const [smartReport, setSmartReport] = useState<GeneratedInsight | null>(
+    latest_smart_report
+      ? {
+          id: latest_smart_report.id,
+          response: latest_smart_report.response,
+          provider_used: latest_smart_report.provider_used,
+          generated_at: latest_smart_report.generated_at,
+          verification: latest_smart_report.verification as VerificationResult | null,
+        }
+      : null
+  );
   const [showPreConsult, setShowPreConsult] = useState(false);
   const [showReport, setShowReport] = useState(false);
+  const [showSmartReport, setShowSmartReport] = useState(false);
 
   const recordsThisMonth = useMemo(() => {
     const now = new Date();
@@ -337,6 +352,19 @@ ${sectionHtml}
         memberName={`${member.first_name} ${member.last_name}`}
         onBack={() => setShowPreConsult(false)}
         onExportPDF={handlePreConsultPDF}
+      />
+    );
+  }
+
+  if (showSmartReport && smartReport) {
+    return (
+      <SmartReportViewer
+        response={smartReport.response}
+        provider={smartReport.provider_used}
+        generatedAt={smartReport.generated_at}
+        verification={smartReport.verification}
+        memberName={`${member.first_name} ${member.last_name}`}
+        onBack={() => setShowSmartReport(false)}
       />
     );
   }
@@ -708,6 +736,13 @@ ${sectionHtml}
         <Sparkles className="h-4 w-4 text-(--brand-accent)" />
         <h2 className="text-sm font-semibold">AI Health Tools</h2>
       </div>
+      <SmartReportCard
+        memberId={member.id}
+        memberFirstName={member.first_name}
+        existingReport={smartReport}
+        onReportReady={setSmartReport}
+        onViewReport={() => setShowSmartReport(true)}
+      />
       <div className="grid gap-3 md:grid-cols-2">
         <PreConsultationCard
           memberId={member.id}

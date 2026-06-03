@@ -205,3 +205,15 @@ export function getLatestPreConsultationNote(memberId: string) {
     `/members/${memberId}/pre-consultation-note/latest`
   );
 }
+
+export function generateSmartReport(memberId: string) {
+  return apiRequest<GeneratedInsight>(`/members/${memberId}/smart-report`, {
+    method: "POST",
+  });
+}
+
+export function getLatestSmartReport(memberId: string) {
+  return apiRequest<{ report: GeneratedInsight | null }>(
+    `/members/${memberId}/smart-report/latest`
+  );
+}

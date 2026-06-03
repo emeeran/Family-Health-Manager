@@ -26,6 +26,7 @@ from app.routers import (
     member_history,
     member_insights,
     member_preconsultation,
+    member_smart_report,
     member_drug_interactions,
     member_preventive,
     providers,
@@ -286,6 +287,7 @@ app.include_router(members.router, prefix="/api/v1")
 app.include_router(member_history.router, prefix="/api/v1")
 app.include_router(member_insights.router, prefix="/api/v1")
 app.include_router(member_preconsultation.router, prefix="/api/v1")
+app.include_router(member_smart_report.router, prefix="/api/v1")
 app.include_router(member_drug_interactions.router, prefix="/api/v1")
 app.include_router(member_preventive.router, prefix="/api/v1")
 app.include_router(providers.router, prefix="/api/v1")
