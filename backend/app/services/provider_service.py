@@ -133,6 +133,7 @@ class ProviderService:
         )
         for assignment, member in result.all():
             members[member.id] = {
+                "assignment_id": assignment.id,
                 "family_member_id": member.id,
                 "family_member_name": f"{member.first_name} {member.last_name}",
                 "uhid": assignment.uhid,
@@ -159,6 +160,7 @@ class ProviderService:
                 members[mid]["visit_count"] = count
             else:
                 members[mid] = {
+                    "assignment_id": None,
                     "family_member_id": mid,
                     "family_member_name": f"{first} {last}",
                     "uhid": None,

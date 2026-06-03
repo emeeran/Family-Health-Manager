@@ -105,7 +105,7 @@ async def get_provider_members(
     member_list = await service.get_members_for_provider(provider_id)
     return [
         ProviderAssignmentResponse(
-            id=provider_id,  # placeholder — no assignment ID when derived from records
+            id=m["assignment_id"] or provider_id,
             provider_id=provider_id,
             provider_name="",
             family_member_id=m["family_member_id"],

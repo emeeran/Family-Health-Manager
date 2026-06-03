@@ -3,6 +3,7 @@ import { useLocation, Link } from "react-router-dom";
 import {
   Home,
   Users,
+  Stethoscope,
   ClipboardList,
   MessageSquare,
   PanelLeftClose,
@@ -23,6 +24,7 @@ const COLLAPSED_KEY = "sidebar-collapsed";
 const navItems: NavItem[] = [
   { label: "Home", href: "/", icon: Home },
   { label: "People", href: "/people", icon: Users },
+  { label: "Providers", href: "/providers", icon: Stethoscope },
   { label: "Records", href: "/records", icon: ClipboardList },
   { label: "Chat", href: "/chat", icon: MessageSquare },
 ];

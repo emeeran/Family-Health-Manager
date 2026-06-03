@@ -12,6 +12,7 @@ const RegisterPage = lazy(() => import("@/pages/register"));
 // Primary pages
 const HomePage = lazy(() => import("@/pages/home"));
 const PeoplePage = lazy(() => import("@/pages/people"));
+const ProvidersPage = lazy(() => import("@/pages/providers"));
 const ChatPage = lazy(() => import("@/pages/chat"));
 
 // Member pages (kept for deep linking)
@@ -83,6 +84,7 @@ export const router = createBrowserRouter([
       // ── Primary routes ──
       { index: true, element: withSuspense(HomePage) },
       { path: "people", element: withSuspense(PeoplePage) },
+      { path: "providers", element: withSuspense(ProvidersPage) },
       { path: "records", element: withSuspense(HouseholdRecordsPage) },
       { path: "chat", element: withSuspense(ChatPage) },
 

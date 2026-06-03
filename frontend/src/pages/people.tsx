@@ -2,19 +2,16 @@ import { useState } from "react";
 import { useSearchParams } from "react-router-dom";
 import useSWR from "swr";
 import { listMembers } from "@/lib/api/members";
-import { listProviders } from "@/lib/api/providers";
 import { listReminders } from "@/lib/api/reminders";
 import { ErrorState } from "@/components/shared/error-state";
 import { PageLoader } from "@/components/shared/page-loader";
 import { MembersContent } from "@/components/content/members-content";
-import { ProvidersContent } from "@/components/content/providers-content";
 import { RemindersContent } from "@/components/content/reminders-content";
 import { cn } from "@/lib/utils";
-import { Users, Stethoscope, CalendarClock } from "lucide-react";
+import { Users, CalendarClock } from "lucide-react";
 
 const TABS = [
   { key: "family", label: "Family", icon: Users },
-  { key: "providers", label: "Providers", icon: Stethoscope },
   { key: "reminders", label: "Reminders", icon: CalendarClock },
 ] as const;
 
@@ -32,12 +29,6 @@ export default function PeoplePage() {
     error: membersError,
     mutate: mutateMembers,
   } = useSWR("members", () => listMembers());
-
-  const {
-    data: providersData,
-    error: providersError,
-    mutate: mutateProviders,
-  } = useSWR("providers", () => listProviders());
 
   const {
     data: remindersData,
@@ -98,18 +89,6 @@ export default function PeoplePage() {
             <PageLoader title="Family Members" />
           ) : (
             <MembersContent members={membersData} />
-          )}
-        </>
-      )}
-
-      {activeTab === "providers" && (
-        <>
-          {providersError ? (
-            <ErrorState onRetry={() => mutateProviders()} />
-          ) : !providersData ? (
-            <PageLoader title="Providers" />
-          ) : (
-            <ProvidersContent providers={providersData} />
           )}
         </>
       )}
