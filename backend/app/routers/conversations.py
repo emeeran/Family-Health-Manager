@@ -213,18 +213,21 @@ async def send_message_stream(
 
     response = make_sse_stream(stream, db)
 
+    # Save the original stream BEFORE wrapping to avoid self-reference
+    original_stream = response.body_iterator
+
     # Wrap to add post-stream verification
     class VerificationSSEWrapper:
         """Wraps SSE stream to fire verification after completion."""
 
-        def __init__(self, inner):
-            self.inner = inner
+        def __init__(self, stream):
+            self._stream = stream
 
         async def __aiter__(self):
             provider = None
             health_context = None
             message_id = None
-            async for chunk in self.inner.body_iterator:
+            async for chunk in self._stream:
                 # Track the complete event for verification
                 if chunk.startswith("data: "):
                     try:
@@ -264,7 +267,7 @@ async def send_message_stream(
                 except Exception as exc:
                     logger.info("Post-stream verification spawn failed: %s", exc)
 
-    response.body_iterator = VerificationSSEWrapper(response)
+    response.body_iterator = VerificationSSEWrapper(original_stream)
     return response
 
 

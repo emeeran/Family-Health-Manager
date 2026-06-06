@@ -38,7 +38,7 @@ router = APIRouter(prefix="/auth", tags=["Authentication"])
 _COOKIE_SECURE = settings.APP_ENV == "production"
 _COOKIE_SAMESITE = "strict"
 _COOKIE_PATH = "/"
-_ACCESS_COOKIE_MAX_AGE = 15 * 60  # 15 minutes
+_ACCESS_COOKIE_MAX_AGE = 30 * 60  # 30 minutes
 _REFRESH_COOKIE_MAX_AGE = 7 * 24 * 60 * 60  # 7 days
 
 

@@ -15,18 +15,55 @@ interface ApiOptions {
   body?: unknown;
   params?: Record<string, string | undefined>;
   isFormData?: boolean;
+  /** Internal: true when this request is a retry after token refresh. */
+  _isRetry?: boolean;
 }
 
 const REQUEST_TIMEOUT = 30_000;
 
-function handleUnauthorized(): never {
+/* ------------------------------------------------------------------ */
+/*  Automatic token refresh                                            */
+/* ------------------------------------------------------------------ */
+
+/**
+ * Mutex-protected refresh. Only one refresh call runs at a time;
+ * concurrent 401s all await the same in-flight refresh.
+ */
+let refreshPromise: Promise<boolean> | null = null;
+
+async function tryRefreshToken(): Promise<boolean> {
+  // Reuse in-flight refresh if one is already running
+  if (refreshPromise) return refreshPromise;
+
+  refreshPromise = (async () => {
+    try {
+      const res = await fetch(`${API_BASE_URL}/auth/refresh`, {
+        method: "POST",
+        credentials: "include",
+      });
+      return res.ok;
+    } catch {
+      return false;
+    } finally {
+      refreshPromise = null;
+    }
+  })();
+
+  return refreshPromise;
+}
+
+function forceLogout(): never {
   fetch(`${API_BASE_URL}/auth/logout`, { method: "POST", credentials: "include" }).catch(() => {});
   window.location.href = "/login";
   throw new ApiError(401, { message: "Session expired" });
 }
 
+/* ------------------------------------------------------------------ */
+/*  apiRequest                                                         */
+/* ------------------------------------------------------------------ */
+
 export async function apiRequest<T>(path: string, options: ApiOptions = {}): Promise<T> {
-  const { method = "GET", body, params, isFormData = false } = options;
+  const { method = "GET", body, params, isFormData = false, _isRetry = false } = options;
 
   const sp = new URLSearchParams();
   if (params) {
@@ -56,7 +93,18 @@ export async function apiRequest<T>(path: string, options: ApiOptions = {}): Pro
       credentials: "include",
     });
 
-    if (response.status === 401 && !path.startsWith("/auth/login")) handleUnauthorized();
+    // ── 401: try refresh then retry once ──
+    if (response.status === 401 && !path.startsWith("/auth/")) {
+      if (_isRetry) {
+        // Already retried after refresh — session is definitely dead
+        forceLogout();
+      }
+      const refreshed = await tryRefreshToken();
+      if (refreshed) {
+        return apiRequest<T>(path, { ...options, _isRetry: true });
+      }
+      forceLogout();
+    }
 
     if (!response.ok) {
       const text = await response.text().catch(() => "");
@@ -95,6 +143,10 @@ export async function apiRequest<T>(path: string, options: ApiOptions = {}): Pro
   }
 }
 
+/* ------------------------------------------------------------------ */
+/*  streamRequest (SSE)                                                */
+/* ------------------------------------------------------------------ */
+
 /**
  * Stream SSE events from a POST endpoint.
  * Calls `onEvent` for each parsed JSON event from the server.
@@ -105,7 +157,8 @@ export async function streamRequest(
   options: {
     body?: unknown;
     onEvent: (event: Record<string, unknown>) => void;
-  }
+  },
+  _isRetry = false
 ): Promise<void> {
   const { body, onEvent } = options;
   const url = `${API_BASE_URL}${path}`;
@@ -127,7 +180,15 @@ export async function streamRequest(
       credentials: "include",
     });
 
-    if (response.status === 401 && !path.startsWith("/auth/login")) handleUnauthorized();
+    // ── 401: try refresh then retry once ──
+    if (response.status === 401 && !path.startsWith("/auth/")) {
+      if (_isRetry) forceLogout();
+      const refreshed = await tryRefreshToken();
+      if (refreshed) {
+        return streamRequest(path, options, true);
+      }
+      forceLogout();
+    }
 
     if (!response.ok) {
       const text = await response.text().catch(() => "");

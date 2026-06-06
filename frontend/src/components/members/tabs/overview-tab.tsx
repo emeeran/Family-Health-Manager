@@ -75,7 +75,7 @@ const quickActions = [
   {
     label: "Providers",
     icon: Users,
-    search: undefined,
+    to: "/providers",
     color: "text-violet-600 hover:bg-violet-50",
   },
 ];
@@ -659,6 +659,18 @@ ${sectionHtml}
       <div className="flex items-center gap-1 print:hidden">
         {quickActions.map((action) => {
           const Icon = action.icon;
+          if ("to" in action && action.to) {
+            return (
+              <Link
+                key={action.to}
+                to={action.to}
+                className={`inline-flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-xs font-semibold transition-colors ${action.color}`}
+              >
+                <Icon className="h-3.5 w-3.5" />
+                {action.label}
+              </Link>
+            );
+          }
           if (action.hrefSuffix) {
             const linkTo = `/people/${member.id}${action.hrefSuffix}`;
             return (

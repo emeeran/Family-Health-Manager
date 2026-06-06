@@ -14,7 +14,7 @@ settings = get_settings()
 pwd_context = CryptContext(schemes=["argon2"], deprecated="auto")
 
 # Token expiry durations
-ACCESS_TOKEN_EXPIRY = timedelta(minutes=15)
+ACCESS_TOKEN_EXPIRY = timedelta(minutes=30)
 REFRESH_TOKEN_EXPIRY = timedelta(days=7)
 
 

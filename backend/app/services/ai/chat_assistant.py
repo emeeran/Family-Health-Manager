@@ -220,6 +220,7 @@ async def chat_stream(
         "stage": "complete",
         "assistant_message": {
             "id": str(assistant_msg.id),
+            "conversation_id": str(conversation_id),
             "role": "assistant",
             "content": full_response,
             "created_at": assistant_msg.created_at.isoformat(),

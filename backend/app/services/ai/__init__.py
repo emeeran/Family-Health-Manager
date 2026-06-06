@@ -203,8 +203,8 @@ class AIService:
 
         # Primary: Ollama models (local streaming)
         ollama_models = [(settings.OLLAMA_MODEL, f"Ollama {settings.OLLAMA_MODEL}")]
-        ollama_models.append(("gemma4:31b-cloud", "Ollama gemma4:31b-cloud"))
-        ollama_models.append((settings.OLLAMA_TEXT_MODEL, f"Ollama {settings.OLLAMA_TEXT_MODEL}"))
+        if settings.OLLAMA_TEXT_MODEL != settings.OLLAMA_MODEL:
+            ollama_models.append((settings.OLLAMA_TEXT_MODEL, f"Ollama {settings.OLLAMA_TEXT_MODEL}"))
         for model, label in ollama_models:
             try:
                 yield sse({"stage": "provider", "provider": label})
@@ -572,8 +572,8 @@ class AIService:
 
         # Primary: Ollama models (local first for privacy and speed)
         ollama_models = [(settings.OLLAMA_MODEL, f"Ollama {settings.OLLAMA_MODEL}")]
-        ollama_models.append(("gemma4:31b-cloud", "Ollama gemma4:31b-cloud"))
-        ollama_models.append((settings.OLLAMA_TEXT_MODEL, f"Ollama {settings.OLLAMA_TEXT_MODEL}"))
+        if settings.OLLAMA_TEXT_MODEL != settings.OLLAMA_MODEL:
+            ollama_models.append((settings.OLLAMA_TEXT_MODEL, f"Ollama {settings.OLLAMA_TEXT_MODEL}"))
         for model, label in ollama_models:
             try:
                 result = await self._ollama_chat(model, full_prompt)

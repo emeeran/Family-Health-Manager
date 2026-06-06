@@ -50,7 +50,7 @@ class Settings(BaseSettings):
     OPENROUTER_API_KEY: str = ""
     OLLAMA_LOCAL_URL: str = "http://localhost:11434"
     OLLAMA_MODEL: str = "medgemma"
-    OLLAMA_TEXT_MODEL: str = "gemma3:4b"
+    OLLAMA_TEXT_MODEL: str = "medgemma"
     OLLAMA_TIMEOUT: int = 90  # seconds — per-call timeout for Ollama requests
 
     # Storage

@@ -52,6 +52,12 @@ export function ChatArea({
   const [sending, setSending] = useState(false);
   const [streamingContent, setStreamingContent] = useState("");
 
+  // Track which conversation's messages are loaded to avoid SWR race conditions.
+  // SWR revalidation during streaming would clobber the local messages state with
+  // stale server data (assistant message not yet committed). Only reset on
+  // actual conversation change, not on SWR prop updates.
+  const loadedConvIdRef = useRef<string | null>(conversationId);
+
   const { endRef, scrollRef: mainScrollRef, scrollToBottom } = useScrollToBottom();
   const { scrollRef: visScrollRef, showScrollBtn } = useScrollVisibility(80);
   const textareaRef = useAutoResize(input);
@@ -68,7 +74,12 @@ export function ChatArea({
   );
 
   useEffect(() => {
-    setMessages(initialMessages ?? []);
+    // Only reset messages when the conversation ID actually changes.
+    // This prevents SWR revalidation from wiping in-flight streamed messages.
+    if (loadedConvIdRef.current !== conversationId) {
+      loadedConvIdRef.current = conversationId;
+      setMessages(initialMessages ?? []);
+    }
   }, [conversationId, initialMessages]);
 
   useEffect(() => {

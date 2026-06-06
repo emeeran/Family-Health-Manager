@@ -10,6 +10,12 @@ from sqlalchemy.orm import joinedload
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.base import FamilyMember, HealthRecord
+from app.models.health_alert import HealthAlert
+from app.models.lab_result import LabResult
+from app.models.vaccination import Vaccination
+from app.models.reminder import Reminder
+from app.models.provider import Provider, ProviderAssignment
+from app.models.attachment import Attachment
 
 logger = logging.getLogger(__name__)
 
@@ -101,8 +107,26 @@ async def build_member_context(
     recent = await db.execute(query)
     records = list(recent.unique().scalars().all())
 
-    # Start medication summary query in parallel with record processing
+    # Start parallel queries for enrichment data
     med_summary_task = asyncio.create_task(build_medication_summary(db, member_id))
+    lab_results_task = asyncio.create_task(
+        _build_lab_results_summary(db, member_id, fmt_date)
+    )
+    vaccinations_task = asyncio.create_task(
+        _build_vaccination_summary(db, member_id, fmt_date)
+    )
+    reminders_task = asyncio.create_task(
+        _build_reminder_summary(db, member_id, fmt_date)
+    )
+    providers_task = asyncio.create_task(
+        _build_provider_summary(db, member_id)
+    )
+    alerts_task = asyncio.create_task(
+        _build_health_alerts_summary(db, member_id)
+    )
+    attachments_task = asyncio.create_task(
+        _build_attachment_summary(db, member_id)
+    )
 
     # Aggregate across records for summary sections
     all_diagnoses: list[str] = []
@@ -135,7 +159,7 @@ async def build_member_context(
                 rec_line += f" — {r.diagnosis}"
             summary = summarize_clinical_data(r.clinical_data)
             if summary:
-                rec_line += f"\n  {summary[:500]}"
+                rec_line += f"\n  {summary[:1200]}"
             if r.prescription_text:
                 rec_line += f"\n  Rx: {r.prescription_text[:300]}"
             if r.provider_name:
@@ -153,7 +177,7 @@ async def build_member_context(
         for d in unique_diagnoses:
             context += f"  - {d}\n"
 
-    # All providers
+    # All providers (from records — just names)
     if all_providers:
         context += f"\n=== PROVIDERS ({len(all_providers)}) ===\n"
         for p in all_providers:
@@ -170,11 +194,41 @@ async def build_member_context(
     if med_summary:
         context += f"\n{med_summary}\n"
 
-    # Key lab trends
+    # Structured lab results from dedicated lab_results table
+    lab_results_summary = await lab_results_task
+    if lab_results_summary:
+        context += f"\n{lab_results_summary}\n"
+
+    # Key lab trends (from clinical_data JSON in records — covers tests not in lab_results)
     if records:
         lab_trends = build_lab_trends_from_records(records)
         if lab_trends:
             context += lab_trends
+
+    # Vaccination history
+    vaccination_summary = await vaccinations_task
+    if vaccination_summary:
+        context += f"\n{vaccination_summary}\n"
+
+    # Active reminders / upcoming appointments
+    reminder_summary = await reminders_task
+    if reminder_summary:
+        context += f"\n{reminder_summary}\n"
+
+    # Full provider directory with specialties and UHIDs
+    provider_summary = await providers_task
+    if provider_summary:
+        context += f"\n{provider_summary}\n"
+
+    # Active health alerts (critical lab values, warnings)
+    alert_summary = await alerts_task
+    if alert_summary:
+        context += f"\n{alert_summary}\n"
+
+    # Attached documents / scan reports
+    attachment_summary = await attachments_task
+    if attachment_summary:
+        context += f"\n{attachment_summary}\n"
 
     return context
 
@@ -267,6 +321,211 @@ async def build_medication_summary(db: AsyncSession, member_id: UUID) -> str:
     return "\n".join(lines)
 
 
+# ---------------------------------------------------------------------------
+#  Enrichment data sources for AI context
+# ---------------------------------------------------------------------------
+
+
+async def _build_lab_results_summary(
+    db: AsyncSession, member_id: UUID, fmt_date
+) -> str:
+    """Build structured lab results from the dedicated lab_results table."""
+    result = await db.execute(
+        select(LabResult)
+        .where(LabResult.family_member_id == member_id)
+        .order_by(LabResult.record_date.desc())
+    )
+    labs = list(result.scalars().all())
+    if not labs:
+        return ""
+
+    lines = [f"=== STRUCTURED LAB RESULTS ({len(labs)} tests) ==="]
+    for lab in labs:
+        date_str = fmt_date(lab.record_date) if lab.record_date else "N/A"
+        entry = f"  - [{date_str}] {lab.test_name}: {lab.result}"
+        if lab.units:
+            entry += f" {lab.units}"
+        if lab.ref_value:
+            entry += f" (ref: {lab.ref_value})"
+        if lab.note:
+            entry += f" — {lab.note}"
+        lines.append(entry)
+    return "\n".join(lines)
+
+
+async def _build_vaccination_summary(
+    db: AsyncSession, member_id: UUID, fmt_date
+) -> str:
+    """Build vaccination / immunisation history."""
+    result = await db.execute(
+        select(Vaccination)
+        .where(Vaccination.family_member_id == member_id)
+        .order_by(Vaccination.date_administered.desc())
+    )
+    vaxs = list(result.scalars().all())
+    if not vaxs:
+        return ""
+
+    today = date.today()
+    lines = [f"=== VACCINATIONS ({len(vaxs)}) ==="]
+    for v in vaxs:
+        entry = f"  - {v.name} — administered {fmt_date(v.date_administered)}"
+        if v.booster_due_date:
+            entry += f", booster due {fmt_date(v.booster_due_date)}"
+            if v.booster_due_date < today:
+                entry += " (OVERDUE)"
+        if v.notes:
+            entry += f" [{v.notes}]"
+        lines.append(entry)
+    return "\n".join(lines)
+
+
+async def _build_reminder_summary(
+    db: AsyncSession, member_id: UUID, fmt_date
+) -> str:
+    """Build active reminders and upcoming appointments."""
+    result = await db.execute(
+        select(Reminder)
+        .where(
+            Reminder.family_member_id == member_id,
+            Reminder.is_active.is_(True),
+        )
+        .order_by(Reminder.start_datetime)
+    )
+    reminders = list(result.scalars().all())
+    if not reminders:
+        return ""
+
+    lines = [f"=== ACTIVE REMINDERS ({len(reminders)}) ==="]
+    for r in reminders:
+        entry = f"  - [{r.reminder_type.value}] {r.title}"
+        entry += f" — {r.schedule_type.value}"
+        entry += f", starts {fmt_date(r.start_datetime)}"
+        if r.end_datetime:
+            entry += f", ends {fmt_date(r.end_datetime)}"
+        if r.description:
+            entry += f"\n    {r.description[:200]}"
+        lines.append(entry)
+    return "\n".join(lines)
+
+
+async def _build_provider_summary(
+    db: AsyncSession, member_id: UUID
+) -> str:
+    """Build full provider directory with specialties and UHIDs."""
+    # Join providers → assignments for this member
+    result = await db.execute(
+        select(Provider, ProviderAssignment)
+        .join(ProviderAssignment, ProviderAssignment.provider_id == Provider.id)
+        .where(ProviderAssignment.family_member_id == member_id)
+        .order_by(Provider.name)
+    )
+    rows = list(result.all())
+    if not rows:
+        return ""
+
+    lines = ["=== HEALTHCARE PROVIDERS ==="]
+    for provider, assignment in rows:
+        entry = f"  - {provider.name}"
+        if provider.speciality:
+            entry += f" ({provider.speciality})"
+        if assignment.uhid:
+            entry += f" — UHID: {assignment.uhid}"
+        if provider.phone:
+            entry += f", Ph: {provider.phone}"
+        if provider.address:
+            entry += f", {provider.address[:100]}"
+        lines.append(entry)
+    return "\n".join(lines)
+
+
+async def _build_health_alerts_summary(
+    db: AsyncSession, member_id: UUID
+) -> str:
+    """Build active (non-dismissed) health alerts for the member."""
+    result = await db.execute(
+        select(HealthAlert)
+        .where(
+            HealthAlert.family_member_id == member_id,
+            HealthAlert.is_dismissed.is_(False),
+        )
+        .order_by(HealthAlert.created_at.desc())
+        .limit(50)
+    )
+    alerts = list(result.scalars().all())
+    if not alerts:
+        return ""
+
+    # Group by severity for a clear overview
+    critical = [a for a in alerts if a.severity.value == "critical"]
+    warning = [a for a in alerts if a.severity.value == "warning"]
+    info = [a for a in alerts if a.severity.value == "info"]
+
+    lines = [f"=== ACTIVE HEALTH ALERTS ({len(alerts)}) ==="]
+
+    if critical:
+        lines.append(f"\n  CRITICAL ({len(critical)}):")
+        for a in critical[:10]:  # Cap to avoid overwhelming context
+            entry = f"    ⚠ {a.title}"
+            if a.value:
+                entry += f" — Value: {a.value}"
+            if a.reference:
+                entry += f" (Ref: {a.reference})"
+            lines.append(entry)
+        if len(critical) > 10:
+            lines.append(f"    ... and {len(critical) - 10} more critical alerts")
+
+    if warning:
+        lines.append(f"\n  WARNINGS ({len(warning)}):")
+        for a in warning[:15]:
+            entry = f"    △ {a.title}"
+            if a.value:
+                entry += f" — Value: {a.value}"
+            if a.reference:
+                entry += f" (Ref: {a.reference})"
+            lines.append(entry)
+        if len(warning) > 15:
+            lines.append(f"    ... and {len(warning) - 15} more warnings")
+
+    if info:
+        lines.append(f"\n  INFO ({len(info)}):")
+        for a in info[:10]:
+            lines.append(f"    ℹ {a.title}")
+        if len(info) > 10:
+            lines.append(f"    ... and {len(info) - 10} more info alerts")
+
+    return "\n".join(lines)
+
+
+async def _build_attachment_summary(
+    db: AsyncSession, member_id: UUID
+) -> str:
+    """Build metadata summary of file attachments linked to member's records."""
+    from app.models.base import HealthRecord as HR
+
+    result = await db.execute(
+        select(Attachment)
+        .join(HR, Attachment.health_record_id == HR.id)
+        .where(
+            HR.family_member_id == member_id,
+            HR.is_deleted.is_(False),
+        )
+        .order_by(Attachment.uploaded_at.desc())
+    )
+    attachments = list(result.scalars().all())
+    if not attachments:
+        return ""
+
+    lines = [f"=== FILE ATTACHMENTS ({len(attachments)} files) ==="]
+    for att in attachments[:30]:  # Cap to keep context manageable
+        size_kb = att.file_size / 1024
+        entry = f"  - {att.file_name} ({size_kb:.0f} KB, {att.mime_type})"
+        lines.append(entry)
+    if len(attachments) > 30:
+        lines.append(f"  ... and {len(attachments) - 30} more files")
+    return "\n".join(lines)
+
+
 async def build_household_context(
     db: AsyncSession, household_id: UUID, fmt_date
 ) -> str:
@@ -335,6 +594,7 @@ async def build_household_context(
 def build_lab_trends_from_records(records: list) -> str:
     """Build a summary of key lab test trends from pre-fetched records (no DB queries)."""
     KEY_TESTS = {
+        "hemoglobin": "Hemoglobin",
         "hba1c": "HbA1c",
         "hb a1c": "HbA1c",
         "glycosylated": "HbA1c",
@@ -344,6 +604,13 @@ def build_lab_trends_from_records(records: list) -> str:
         "ldl cholesterol": "LDL Cholesterol",
         "hdl cholesterol": "HDL Cholesterol",
         "triglyceride": "Triglycerides",
+        "platelet": "Platelets",
+        "total leucocyte": "WBC",
+        "wbc": "WBC",
+        "mcv": "MCV",
+        "pcv": "PCV",
+        "creatinine": "Creatinine",
+        "tsh": "TSH",
     }
 
     trends: dict[str, list[tuple[str, str, str]]] = {}
