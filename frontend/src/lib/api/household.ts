@@ -21,3 +21,10 @@ export function searchHouseholdRecords(query: string, limit?: number) {
     params: { q: query, ...(limit ? { limit: String(limit) } : {}) },
   });
 }
+
+export function resetDatabase(password: string, confirmation: string) {
+  return apiRequest<{ message: string }>("/household/reset-database", {
+    method: "POST",
+    body: { password, confirmation },
+  });
+}
