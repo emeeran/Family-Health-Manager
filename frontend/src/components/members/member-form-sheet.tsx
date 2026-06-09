@@ -45,6 +45,7 @@ export function MemberFormSheet({ open, onOpenChange }: MemberFormSheetProps) {
         allergies,
         emergency_contact_name: (formData.get("emergency_contact_name") as string) || null,
         emergency_contact_phone: (formData.get("emergency_contact_phone") as string) || null,
+        notes: (formData.get("notes") as string) || null,
         medical_history: {
           conditions: (formData.get("conditions") as string) || null,
           allergies: (formData.get("allergies") as string) || null,

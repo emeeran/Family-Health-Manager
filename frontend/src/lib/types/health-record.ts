@@ -71,6 +71,7 @@ export interface ExtractionResponse {
   extracted: ExtractedFields;
   confidence: string;
   verification: VerificationResult | null;
+  transcription: string | null;
 }
 
 export interface TimelineResponse {
@@ -110,6 +111,7 @@ export interface BatchExtractionItem {
   filename: string;
   staging_file_id: string | null;
   extracted: ExtractedFields | null;
+  transcription: string | null;
   is_duplicate: boolean;
   duplicate_of_id: string | null;
   duplicate_of_diagnosis: string | null;

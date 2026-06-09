@@ -4,6 +4,7 @@ import base64
 import json
 import logging
 import re
+from dataclasses import dataclass
 from pathlib import Path
 
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -17,6 +18,14 @@ from app.services.ai.providers.ollama import call_ollama_text, call_ollama_visio
 
 settings = get_settings()
 logger = logging.getLogger(__name__)
+
+
+@dataclass
+class ExtractionResult:
+    """Holds both structured extraction and raw transcription."""
+
+    extracted: "ExtractedFields"  # noqa: F821
+    transcription: str | None = None
 
 EXTRACTION_PROMPT = """You are a medical document data extraction assistant. Analyze the provided medical document image/PDF and extract structured data.
 
@@ -118,8 +127,12 @@ async def classify_document(file_path: str, mime_type: str, call_ai_fn) -> "Reco
 
 async def extract_medical_data(
     db: AsyncSession, file_path: str, mime_type: str, last_provider_ref: list
-) -> "ExtractedFields":  # noqa: F821
-    """Extract structured medical data from a document file via vision AI."""
+) -> ExtractionResult:
+    """Extract structured medical data from a document file via vision AI.
+
+    Returns an ExtractionResult containing both structured fields and the
+    raw OCR/text transcription (when available).
+    """
     from app.schemas.health_record import ExtractedFields
 
     if mime_type == "application/pdf":
@@ -130,7 +143,7 @@ async def extract_medical_data(
             result = parse_extraction(raw_text, ExtractedFields)
             if not result.has_any_data():
                 logger.warning("PDF text extraction returned no usable fields — text may be non-medical or too short")
-            return result
+            return ExtractionResult(extracted=result, transcription=pdf_text)
 
         # Scanned/image PDF — OCR pages then use fast text extraction
         logger.info("PDF is scanned/image-based — attempting OCR + text extraction")
@@ -143,11 +156,11 @@ async def extract_medical_data(
             doc.close()
             if page_count == 0:
                 logger.error("PDF has 0 pages — file may be corrupted or empty")
-                return ExtractedFields()
+                return ExtractionResult(extracted=ExtractedFields())
             logger.info("PDF has %d pages", page_count)
         except Exception as exc:
             logger.error("Cannot open PDF: %s", exc)
-            return ExtractedFields()
+            return ExtractionResult(extracted=ExtractedFields())
 
         # Step 1: Render pages and OCR with tesseract (fast, local)
         ocr_text = ocr_pdf_pages(file_path, page_count)
@@ -166,7 +179,7 @@ async def extract_medical_data(
                 chunk_result = parse_extraction(raw_text, ExtractedFields)
                 all_extracted = merge_extractions(all_extracted, chunk_result)
             if all_extracted.has_any_data():
-                return all_extracted
+                return ExtractionResult(extracted=all_extracted, transcription=ocr_text)
             logger.warning("OCR text extraction returned no usable fields — falling back to vision AI")
         else:
             logger.warning("OCR produced no text — falling back to vision AI")
@@ -183,7 +196,7 @@ async def extract_medical_data(
 
         if not page_images:
             logger.error("PDF has %d pages but none could be rendered — file may be encrypted", page_count)
-            return ExtractedFields()
+            return ExtractionResult(extracted=ExtractedFields())
 
         logger.info("Vision fallback: %d pages — extracting in parallel batches", len(page_images))
 
@@ -202,7 +215,9 @@ async def extract_medical_data(
                 page_result = parse_extraction(raw_text, ExtractedFields)
                 all_extracted = merge_extractions(all_extracted, page_result)
 
-        return all_extracted
+        # Generate transcription for vision-only path
+        transcription = await _transcribe_via_vision(page_images, mime_type="image/jpeg")
+        return ExtractionResult(extracted=all_extracted, transcription=transcription)
 
     if mime_type.startswith("image/"):
         # Try local tesseract first (fast, free)
@@ -210,17 +225,35 @@ async def extract_medical_data(
         if ocr_text:
             logger.info("Image OCR (tesseract) extracted %d chars — using text extraction", len(ocr_text))
             raw_text = await call_text_extraction(ocr_text, last_provider_ref)
-            return parse_extraction(raw_text, ExtractedFields)
+            return ExtractionResult(
+                extracted=parse_extraction(raw_text, ExtractedFields),
+                transcription=ocr_text,
+            )
 
         # Fallback: cloud AI OCR
         ocr_text = await call_ocr(file_path, mime_type)
         if ocr_text:
             raw_text = await call_text_extraction(ocr_text, last_provider_ref)
-            return parse_extraction(raw_text, ExtractedFields)
+            return ExtractionResult(
+                extracted=parse_extraction(raw_text, ExtractedFields),
+                transcription=ocr_text,
+            )
         # OCR failed — fall through to vision providers
 
-    raw_text = await call_vision_provider(file_path, mime_type, last_provider_ref)
-    return parse_extraction(raw_text, ExtractedFields)
+    # Vision-only path: run extraction and transcription in parallel
+    file_bytes = Path(file_path).read_bytes()
+    b64_data = base64.b64encode(file_bytes).decode()
+    extraction_task = asyncio.create_task(
+        call_vision_provider(file_path, mime_type, last_provider_ref)
+    )
+    transcription_task = asyncio.create_task(
+        _transcribe_via_vision([b64_data], mime_type)
+    )
+    raw_text, transcription = await asyncio.gather(extraction_task, transcription_task)
+    return ExtractionResult(
+        extracted=parse_extraction(raw_text, ExtractedFields),
+        transcription=transcription,
+    )
 
 
 async def call_ocr(file_path: str, mime_type: str) -> str | None:
@@ -355,6 +388,56 @@ def pdf_page_to_image(file_path: str, page_num: int = 0) -> bytes | None:
     except Exception as exc:
         logger.warning("PDF page-to-image conversion failed: %s", exc)
         return None
+
+
+TRANSCRIPTION_PROMPT = (
+    "Transcribe all text from this document image. "
+    "Include ALL handwritten text, printed text, headers, labels, and values. "
+    "Preserve the original layout and line breaks as closely as possible. "
+    "If any text is partially legible, include your best reading marked with (?). "
+    "Return ONLY the raw transcription text, no JSON, no explanations."
+)
+
+
+async def _transcribe_via_vision(b64_images: list[str], mime_type: str) -> str | None:
+    """Generate a raw text transcription via vision AI when no OCR text is available.
+
+    Races Gemini/OpenRouter/Groq in parallel for each image.
+    Returns concatenated text from all images, or None if all providers fail.
+    """
+    parts: list[str] = []
+    for b64 in b64_images:
+        providers = [
+            (call_gemini_vision, "Gemini"),
+            (call_openrouter_vision, "OpenRouter"),
+            (call_groq_vision, "Groq"),
+        ]
+
+        async def _try(fn, name):
+            try:
+                result = await fn(b64, mime_type, TRANSCRIPTION_PROMPT)
+                if result:
+                    return result
+            except Exception as exc:
+                logger.debug("Transcription provider %s failed: %s", name, exc)
+            return None
+
+        tasks = [asyncio.create_task(_try(fn, name)) for fn, name in providers]
+        winner = None
+        for coro in asyncio.as_completed(tasks):
+            result = await coro
+            if result is not None:
+                winner = result
+                break
+        for t in tasks:
+            if not t.done():
+                t.cancel()
+        await asyncio.gather(*tasks, return_exceptions=True)
+
+        if winner:
+            parts.append(winner)
+
+    return "\n\n--- Page ---\n".join(parts) if parts else None
 
 
 async def call_text_extraction(pdf_text: str, last_provider_ref: list) -> str | None:

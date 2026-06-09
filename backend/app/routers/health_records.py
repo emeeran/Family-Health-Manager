@@ -45,10 +45,13 @@ async def extract_from_document(
     file_path, unique_filename = await save_file(file, prefix="staging")
 
     ai_service = AIService(db)
+    transcription = None
     try:
-        extracted = await ai_service.extract_medical_data(
+        result = await ai_service.extract_medical_data(
             str(file_path), file.content_type or "application/octet-stream"
         )
+        extracted = result.extracted
+        transcription = result.transcription
         provider_used = ai_service.last_provider
     except Exception as exc:
         logger.error("AI extraction failed: %s", exc)
@@ -73,6 +76,7 @@ async def extract_from_document(
         extracted=extracted,
         confidence="low" if not extracted.has_any_data() else "medium",
         verification=verification,
+        transcription=transcription,
     )
 
 
@@ -102,14 +106,15 @@ async def _extract_single_file(
         )
 
     try:
-        extracted = await ai_service.extract_medical_data(
+        result = await ai_service.extract_medical_data(
             str(file_path), file.content_type or "application/octet-stream"
         )
 
         return BatchExtractionItemSchema(
             filename=file.filename or "unknown",
             staging_file_id=unique_filename,
-            extracted=extracted,
+            extracted=result.extracted,
+            transcription=result.transcription,
         )
     except Exception as exc:
         logger.error("AI extraction failed for %s: %s", file.filename, exc)

@@ -37,6 +37,7 @@ class FamilyMemberCreate(BaseModel):
     allergies: list[AllergyEntry] | None = Field(None, description="Structured allergies")
     emergency_contact_name: str | None = Field(None, max_length=100, description="Emergency contact name")
     emergency_contact_phone: str | None = Field(None, max_length=30, description="Emergency contact phone")
+    notes: str | None = Field(None, description="General notes about the member")
     medical_history: MedicalHistoryQuestionnaire | None = Field(
         None, description="Initial medical history"
     )
@@ -58,6 +59,7 @@ class FamilyMemberUpdate(BaseModel):
     allergies: list[AllergyEntry] | None = Field(None, description="Structured allergies")
     emergency_contact_name: str | None = Field(None, max_length=100, description="Emergency contact name")
     emergency_contact_phone: str | None = Field(None, max_length=30, description="Emergency contact phone")
+    notes: str | None = Field(None, description="General notes about the member")
     is_active: bool | None = Field(None, description="Active status")
 
 
@@ -79,6 +81,7 @@ class FamilyMemberResponse(BaseModel):
     weight_kg: float | None = Field(None, description="Weight in kg")
     emergency_contact_name: str | None = Field(None, description="Emergency contact name")
     emergency_contact_phone: str | None = Field(None, description="Emergency contact phone")
+    notes: str | None = Field(None, description="General notes about the member")
     is_active: bool = Field(..., description="Active status")
     created_at: datetime = Field(..., description="Creation timestamp")
 

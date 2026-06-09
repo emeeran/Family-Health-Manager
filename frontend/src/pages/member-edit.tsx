@@ -77,6 +77,7 @@ export default function EditMemberPage() {
           allergies,
           emergency_contact_name: (formData.get("emergency_contact_name") as string) || null,
           emergency_contact_phone: (formData.get("emergency_contact_phone") as string) || null,
+          notes: (formData.get("notes") as string) || null,
         };
         await updateMember(memberId!, data);
         mutate(`member-${memberId}`);
@@ -132,6 +133,7 @@ export default function EditMemberPage() {
               weight_kg: member.weight_kg != null ? String(member.weight_kg) : "",
               emergency_contact_name: member.emergency_contact_name || "",
               emergency_contact_phone: member.emergency_contact_phone || "",
+              notes: member.notes || "",
               ...medicalFields,
             }}
           />

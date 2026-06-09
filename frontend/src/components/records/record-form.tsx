@@ -160,6 +160,7 @@ export function RecordForm({
     clearExtraction,
     removeBatch,
     refreshRecentBatches,
+    transcription,
   } = useFileExtraction({
     memberId,
     record: record ?? null,
@@ -540,6 +541,18 @@ export function RecordForm({
                 ))}
               </div>
             </div>
+          )}
+
+          {transcription && uploadedFiles.length > 0 && !extracting && (
+            <details className="rounded-lg border border-amber-200 bg-amber-50/50 p-3 dark:border-amber-800 dark:bg-amber-950/50">
+              <summary className="text-xs font-medium text-amber-800 dark:text-amber-400 cursor-pointer flex items-center gap-1.5">
+                <FileText className="h-3.5 w-3.5" />
+                AI Transcription — review what was read from the document
+              </summary>
+              <pre className="mt-2 whitespace-pre-wrap text-xs text-amber-900 dark:text-amber-300 font-mono leading-relaxed max-h-[200px] overflow-y-auto">
+                {transcription}
+              </pre>
+            </details>
           )}
 
           {recentBatches.length > 0 && uploadedFiles.length === 0 && !extracting && (

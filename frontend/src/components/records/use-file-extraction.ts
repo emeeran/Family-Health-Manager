@@ -86,6 +86,7 @@ export function useFileExtraction({
     done: [] as string[],
   });
   const [_extractedFields, setExtractedFieldsLocal] = useState<Set<string>>(new Set());
+  const [transcription, setTranscription] = useState<string | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const pendingExtractedFields = useRef<Record<string, string> | null>(null);
 
@@ -175,12 +176,19 @@ export function useFileExtraction({
     refreshRecentBatches();
   }
 
-  function mergeExtracted(
-    extracted: ExtractionResponse["extracted"],
-    stagingId: string,
-    fileName: string
-  ): boolean {
+  function mergeExtracted(response: ExtractionResponse): boolean {
+    const {
+      extracted,
+      staging_file_id: stagingId,
+      original_file_name: fileName,
+      transcription: rawText,
+    } = response;
     const populated = new Set<string>();
+
+    // Store transcription
+    if (rawText) {
+      setTranscription(rawText);
+    }
 
     if (extracted.record_type && VALID_RECORD_TYPES.has(extracted.record_type)) {
       setValue("record_type", extracted.record_type as RecordType);
@@ -304,7 +312,8 @@ export function useFileExtraction({
 
     if (memberId) {
       saveExtraction(memberId, {
-        fileName,
+        fileName: fileName || "unknown",
+        transcription: rawText || null,
         prescriptions: Array.isArray(extracted.prescriptions)
           ? (extracted.prescriptions.map(validatePrescriptionRow).filter(Boolean) as Record<
               string,
@@ -348,7 +357,7 @@ export function useFileExtraction({
       });
     }
     setStagingFileIds((prev) => [...prev, stagingId]);
-    setUploadedFiles((prev) => [...prev, { name: fileName, stagingId }]);
+    setUploadedFiles((prev) => [...prev, { name: fileName || "unknown", stagingId }]);
     return populated.size > 0;
   }
 
@@ -473,11 +482,7 @@ export function useFileExtraction({
             done: [...allDone, "Uploading file...", "AI analyzing document..."],
           }));
           await new Promise((r) => setTimeout(r, 50));
-          const hadData = mergeExtracted(
-            result.data.extracted,
-            result.data.staging_file_id,
-            file.name
-          );
+          const hadData = mergeExtracted(result.data);
           setProgress((prev) => ({
             ...prev,
             step: `Auto-filling ${i + 1}/${files.length}: ${file.name}`,
@@ -551,6 +556,7 @@ export function useFileExtraction({
     setExtractError(null);
     setProgress({ step: "", pct: 0, substeps: [], done: [] });
     setExtractedFieldsLocal(new Set());
+    setTranscription(null);
     pendingExtractedFields.current = null;
     if (memberId) {
       sessionStorage.removeItem(`extraction_${memberId}`);
@@ -577,5 +583,6 @@ export function useFileExtraction({
     removeBatch,
     refreshRecentBatches,
     pendingExtractedFields,
+    transcription,
   };
 }

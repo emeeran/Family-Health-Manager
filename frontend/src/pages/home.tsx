@@ -62,6 +62,7 @@ export default function HomePage() {
       allergies: m.allergies ?? null,
       emergency_contact_name: null,
       emergency_contact_phone: null,
+      notes: null,
       bmi: m.bmi,
       bmi_category: null,
       is_active: m.is_active,

@@ -40,6 +40,7 @@ describe("extraction-store", () => {
     it("saves and loads a batch", () => {
       saveExtraction(memberId, {
         fileName: "test.pdf",
+        transcription: null,
         prescriptions: [{ medicine: "Aspirin", dosage: "100mg" }],
         labTests: [],
         eyeglass: null,
@@ -61,6 +62,7 @@ describe("extraction-store", () => {
       for (let i = 0; i < 5; i++) {
         saveExtraction(memberId, {
           fileName: `file${i}.pdf`,
+          transcription: null,
           prescriptions: [],
           labTests: [],
           eyeglass: null,
@@ -77,6 +79,7 @@ describe("extraction-store", () => {
     it("filters by prescription type", () => {
       saveExtraction(memberId, {
         fileName: "rx.pdf",
+        transcription: null,
         prescriptions: [{ medicine: "Test" }],
         labTests: [],
         eyeglass: null,
@@ -84,6 +87,7 @@ describe("extraction-store", () => {
       });
       saveExtraction(memberId, {
         fileName: "lab.pdf",
+        transcription: null,
         prescriptions: [],
         labTests: [{ test_name: "CBC" }],
         eyeglass: null,
@@ -99,6 +103,7 @@ describe("extraction-store", () => {
     it("consumes and removes data from a batch", () => {
       saveExtraction(memberId, {
         fileName: "rx.pdf",
+        transcription: null,
         prescriptions: [{ medicine: "Aspirin" }],
         labTests: [{ test_name: "CBC" }],
         eyeglass: null,
@@ -119,6 +124,7 @@ describe("extraction-store", () => {
     it("removes batch when fully consumed", () => {
       saveExtraction(memberId, {
         fileName: "rx.pdf",
+        transcription: null,
         prescriptions: [{ medicine: "Test" }],
         labTests: [],
         eyeglass: null,
@@ -136,6 +142,7 @@ describe("extraction-store", () => {
     it("removes a specific batch by ID", () => {
       saveExtraction(memberId, {
         fileName: "a.pdf",
+        transcription: null,
         prescriptions: [{ medicine: "A" }],
         labTests: [],
         eyeglass: null,
@@ -153,6 +160,7 @@ describe("extraction-store", () => {
     it("clears all data for a member", () => {
       saveExtraction(memberId, {
         fileName: "test.pdf",
+        transcription: null,
         prescriptions: [],
         labTests: [],
         eyeglass: null,

@@ -10,6 +10,7 @@ export interface ExtractionBatch {
   id: string;
   fileName: string;
   timestamp: number;
+  transcription: string | null;
   prescriptions: Record<string, string>[];
   labTests: Record<string, string>[];
   eyeglass: Record<string, string> | null;
@@ -57,6 +58,7 @@ function loadAll(memberId: string): StoredExtractions {
             id: `legacy-${Date.now()}`,
             fileName: "Previous extraction",
             timestamp: Date.now(),
+            transcription: null,
             prescriptions: parsed.prescriptions || [],
             labTests: parsed.labTests || [],
             eyeglass: parsed.eyeglass || null,

@@ -63,6 +63,7 @@ async def create_member(
         emergency_contact_phone=request.emergency_contact_phone,
         height_cm=request.height_cm,
         weight_kg=request.weight_kg,
+        notes=request.notes,
     )
     await cache.invalidate_async(f"members:{household.id}")
     await cache.invalidate_async(f"dashboard_summary:{household.id}")

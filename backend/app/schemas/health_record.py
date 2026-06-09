@@ -130,6 +130,7 @@ class ExtractionResponse(BaseModel):
     extracted: ExtractedFields = Field(..., description="AI-extracted fields")
     confidence: str = Field("medium", description="Extraction confidence: high/medium/low")
     verification: dict | None = Field(None, description="Cross-verification result (if available)")
+    transcription: str | None = Field(None, description="Raw OCR/text transcription of the document")
 
 
 class TimelineResponse(BaseModel):
@@ -146,6 +147,7 @@ class BatchExtractionItemSchema(BaseModel):
     filename: str = Field(..., description="Original file name")
     staging_file_id: str | None = Field(None, description="Staging file reference")
     extracted: ExtractedFields | None = Field(None, description="AI-extracted fields")
+    transcription: str | None = Field(None, description="Raw OCR/text transcription")
     is_duplicate: bool = Field(False, description="Whether this is a duplicate of an existing record")
     duplicate_of_id: str | None = Field(None, description="ID of the record this duplicates")
     duplicate_of_diagnosis: str | None = Field(None, description="Diagnosis of the duplicate record")

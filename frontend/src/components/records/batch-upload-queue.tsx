@@ -289,6 +289,7 @@ export function BatchUploadQueue({ memberId, onComplete, initialFiles }: BatchUp
             filename: f.name,
             staging_file_id: null,
             extracted: null,
+            transcription: null,
             is_duplicate: false,
             duplicate_of_id: null,
             duplicate_of_diagnosis: null,

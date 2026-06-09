@@ -27,6 +27,7 @@ export interface FamilyMemberCreate {
   emergency_contact_name?: string | null;
   emergency_contact_phone?: string | null;
   medical_history?: MedicalHistoryQuestionnaire | null;
+  notes?: string | null;
 }
 
 export interface FamilyMemberUpdate {
@@ -43,6 +44,7 @@ export interface FamilyMemberUpdate {
   allergies?: AllergyEntry[] | null;
   emergency_contact_name?: string | null;
   emergency_contact_phone?: string | null;
+  notes?: string | null;
   is_active?: boolean | null;
 }
 
@@ -62,6 +64,7 @@ export interface FamilyMemberResponse {
   allergies: AllergyEntry[] | null;
   emergency_contact_name: string | null;
   emergency_contact_phone: string | null;
+  notes: string | null;
   bmi: number | null;
   bmi_category: string | null;
   is_active: boolean;

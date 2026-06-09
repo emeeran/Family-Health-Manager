@@ -48,6 +48,7 @@ class MemberService:
         emergency_contact_phone: str | None = None,
         height_cm: float | None = None,
         weight_kg: float | None = None,
+        notes: str | None = None,
     ) -> FamilyMember:
         """Create family member with optional medical history."""
         member = FamilyMember(
@@ -61,6 +62,7 @@ class MemberService:
             weight_kg=weight_kg,
             emergency_contact_name=emergency_contact_name,
             emergency_contact_phone=emergency_contact_phone,
+            notes=notes,
         )
 
         if allergies:
@@ -113,7 +115,7 @@ class MemberService:
             "relationship_type", "height_cm", "weight_kg",
             "emergency_contact_name", "emergency_contact_phone",
             "blood_group", "family_history", "medical_history_summary",
-            "allergies_json",
+            "allergies_json", "notes",
         }
         result = await self.db.execute(
             select(FamilyMember).where(FamilyMember.id == member_id)

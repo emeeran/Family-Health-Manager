@@ -141,6 +141,7 @@ const memberSchema = z.object({
   allergies: z.string().optional(),
   current_medications: z.string().optional(),
   past_surgeries: z.string().optional(),
+  notes: z.string().optional(),
   family_history: z.string().optional(),
   emergency_contact_name: z.string().optional(),
   emergency_contact_phone: z.string().optional(),
@@ -446,6 +447,18 @@ export function MemberForm({ action, defaultValues, member }: MemberFormProps) {
                 {...register("past_surgeries")}
                 rows={2}
                 placeholder="List past surgeries"
+                className="text-sm min-h-[60px]"
+              />
+            </div>
+            <div className="space-y-1">
+              <Label htmlFor="notes" className="text-xs">
+                Notes
+              </Label>
+              <Textarea
+                id="notes"
+                {...register("notes")}
+                rows={2}
+                placeholder="Any additional notes"
                 className="text-sm min-h-[60px]"
               />
             </div>
