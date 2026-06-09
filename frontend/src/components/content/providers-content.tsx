@@ -3,13 +3,16 @@ import { Link } from "react-router-dom";
 import { Plus, Stethoscope, Phone, MapPin, Clock, Trash2, User } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
+import { Badge } from "@/components/ui/badge";
 import { EmptyState } from "@/components/shared/empty-state";
 import { ConfirmDialog } from "@/components/shared/confirm-dialog";
 import { deleteProvider } from "@/lib/api/providers";
 import { useSWRConfig } from "swr";
 import { toast } from "sonner";
 import { formatDate } from "@/lib/utils";
+import { PROVIDER_TYPE_LABELS, PROVIDER_TYPE_COLORS } from "@/lib/constants";
 import type { ProviderResponse } from "@/lib/types/provider";
+import type { ProviderType } from "@/lib/types/enums";
 
 const SPECIALTY_COLORS: Record<string, string> = {
   cardiology: "from-red-500 to-rose-500",
@@ -23,14 +26,25 @@ const SPECIALTY_COLORS: Record<string, string> = {
   default: "from-violet-500 to-blue-500",
 };
 
-function ProviderAvatar({ name, speciality }: { name: string; speciality?: string | null }) {
+function ProviderAvatar({
+  name,
+  speciality,
+  providerType,
+}: {
+  name: string;
+  speciality?: string | null;
+  providerType?: string;
+}) {
   const initials = name
     .split(" ")
     .map((n) => n[0])
     .join("")
     .slice(0, 2)
     .toUpperCase();
-  const gradient = SPECIALTY_COLORS[(speciality || "").toLowerCase()] || SPECIALTY_COLORS.default;
+  const gradient =
+    SPECIALTY_COLORS[(speciality || "").toLowerCase()] ||
+    PROVIDER_TYPE_COLORS[(providerType as ProviderType) || "doctor"] ||
+    SPECIALTY_COLORS.default;
 
   return (
     <div
@@ -102,16 +116,25 @@ export function ProvidersContent({ providers }: ProvidersContentProps) {
             >
               <CardHeader className="pb-2">
                 <div className="flex items-center gap-3">
-                  <ProviderAvatar name={provider.name} speciality={provider.speciality} />
+                  <ProviderAvatar
+                    name={provider.name}
+                    speciality={provider.speciality}
+                    providerType={provider.provider_type}
+                  />
                   <div className="flex-1 min-w-0">
-                    <CardTitle className="text-base">
-                      <Link
-                        to={`/providers/${provider.id}`}
-                        className="hover:text-primary transition-colors"
-                      >
-                        {provider.name}
-                      </Link>
-                    </CardTitle>
+                    <div className="flex items-center gap-2">
+                      <CardTitle className="text-base">
+                        <Link
+                          to={`/providers/${provider.id}`}
+                          className="hover:text-primary transition-colors"
+                        >
+                          {provider.name}
+                        </Link>
+                      </CardTitle>
+                      <Badge variant="secondary" className="text-[10px] px-1.5 py-0">
+                        {PROVIDER_TYPE_LABELS[provider.provider_type as ProviderType] || "Other"}
+                      </Badge>
+                    </div>
                     {provider.speciality && (
                       <p className="text-xs text-muted-foreground mt-0.5">{provider.speciality}</p>
                     )}

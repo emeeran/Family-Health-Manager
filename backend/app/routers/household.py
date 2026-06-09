@@ -1,4 +1,5 @@
 """Household router."""
+import json
 import logging
 from uuid import UUID
 from pydantic import BaseModel
@@ -10,7 +11,13 @@ from app.core.database import get_db
 from app.core.deps import get_household_from_token, get_current_user
 from app.core.security import verify_password
 from app.services.household_service import HouseholdService
-from app.schemas.household import HouseholdResponse, HouseholdUpdate
+from app.schemas.household import (
+    HouseholdResponse,
+    HouseholdUpdate,
+    HouseholdSettingsResponse,
+    HouseholdSettingsUpdate,
+    FeatureSettings,
+)
 from app.schemas.health_record import HealthRecordResponse
 from app.models.base import Household, FamilyMember, User
 from app.models.record import HealthRecord
@@ -29,7 +36,14 @@ async def get_household(
     """Get current household details."""
     service = HouseholdService(db)
     household = await service.get_household(household.id)
-    return household
+    settings = _parse_settings(household)
+    return HouseholdResponse(
+        id=household.id,
+        name=household.name,
+        primary_user_id=household.primary_user_id,
+        created_at=household.created_at,
+        settings=settings,
+    )
 
 
 @router.put("", response_model=HouseholdResponse)
@@ -46,6 +60,42 @@ async def update_household(
 
     household = await service.update_household(household.id, request.name)
     return household
+
+
+def _parse_settings(household: Household) -> FeatureSettings:
+    """Parse settings_json from household into FeatureSettings with defaults."""
+    if household.settings_json:
+        try:
+            data = json.loads(household.settings_json)
+            return FeatureSettings(**data)
+        except (json.JSONDecodeError, ValueError):
+            pass
+    return FeatureSettings()
+
+
+@router.get("/settings", response_model=HouseholdSettingsResponse)
+async def get_settings(
+    household: Household = Depends(get_household_from_token),
+):
+    """Get feature toggle settings for the household."""
+    return HouseholdSettingsResponse(settings=_parse_settings(household))
+
+
+@router.put("/settings", response_model=HouseholdSettingsResponse)
+async def update_settings(
+    request: HouseholdSettingsUpdate,
+    household: Household = Depends(get_household_from_token),
+    db: AsyncSession = Depends(get_db),
+):
+    """Update feature toggle settings for the household."""
+    settings_json = request.settings.model_dump_json()
+    result = await db.execute(
+        select(Household).where(Household.id == household.id)
+    )
+    db_household = result.scalar_one()
+    db_household.settings_json = settings_json
+    await db.flush()
+    return HouseholdSettingsResponse(settings=request.settings)
 
 
 @router.get("/records", response_model=list[HealthRecordResponse])

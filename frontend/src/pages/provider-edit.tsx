@@ -6,6 +6,7 @@ import { ProviderForm } from "@/components/providers/provider-form";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Link } from "react-router-dom";
 import type { ProviderUpdate } from "@/lib/types/provider";
+import type { ProviderType } from "@/lib/types/enums";
 
 export default function EditProviderPage() {
   const { providerId } = useParams<{ providerId: string }>();
@@ -19,6 +20,7 @@ export default function EditProviderPage() {
     return async function (prevState: unknown, formData: FormData) {
       const data: ProviderUpdate = {
         name: (formData.get("name") as string) || null,
+        provider_type: (formData.get("provider_type") as ProviderType) || null,
         speciality: (formData.get("speciality") as string) || null,
         phone: (formData.get("phone") as string) || null,
         address: (formData.get("address") as string) || null,

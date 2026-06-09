@@ -1,5 +1,10 @@
 import { apiRequest } from "../api-client";
-import type { HouseholdUpdate, HouseholdResponse } from "../types/household";
+import type {
+  HouseholdUpdate,
+  HouseholdResponse,
+  HouseholdSettingsResponse,
+  HouseholdSettingsUpdate,
+} from "../types/household";
 import type { HealthRecordResponse } from "../types/health-record";
 
 export function getHousehold() {
@@ -26,5 +31,16 @@ export function resetDatabase(password: string, confirmation: string) {
   return apiRequest<{ message: string }>("/household/reset-database", {
     method: "POST",
     body: { password, confirmation },
+  });
+}
+
+export function getSettings() {
+  return apiRequest<HouseholdSettingsResponse>("/household/settings");
+}
+
+export function updateSettings(data: HouseholdSettingsUpdate) {
+  return apiRequest<HouseholdSettingsResponse>("/household/settings", {
+    method: "PUT",
+    body: data,
   });
 }

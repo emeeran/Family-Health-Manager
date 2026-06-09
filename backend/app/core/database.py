@@ -129,6 +129,31 @@ async def create_tables():
                     conn.commit()
                     logger.info("Added storage columns to attachments table")
 
+            # Provider type column
+            if "providers" in inspector.get_table_names():
+                prov_cols = {c["name"] for c in inspector.get_columns("providers")}
+                if "provider_type" not in prov_cols:
+                    conn.execute(
+                        __import__("sqlalchemy").text(
+                            "ALTER TABLE providers ADD COLUMN provider_type VARCHAR(20) "
+                            "NOT NULL DEFAULT 'doctor'"
+                        )
+                    )
+                    conn.commit()
+                    logger.info("Added 'provider_type' column to providers table")
+
+            # Household settings column
+            if "households" in inspector.get_table_names():
+                hh_cols = {c["name"] for c in inspector.get_columns("households")}
+                if "settings_json" not in hh_cols:
+                    conn.execute(
+                        __import__("sqlalchemy").text(
+                            "ALTER TABLE households ADD COLUMN settings_json TEXT"
+                        )
+                    )
+                    conn.commit()
+                    logger.info("Added 'settings_json' column to households table")
+
         sync_engine.dispose()
     else:
         # Production: migrations should be run separately

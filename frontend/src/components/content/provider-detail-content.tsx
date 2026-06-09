@@ -21,7 +21,9 @@ import { listMembers } from "@/lib/api/members";
 import { createAssignment, updateUhid } from "@/lib/api/provider-assignments";
 import { ApiError } from "@/lib/api-client";
 import { formatDate } from "@/lib/utils";
+import { PROVIDER_TYPE_LABELS } from "@/lib/constants";
 import { toast } from "sonner";
+import type { ProviderType } from "@/lib/types/enums";
 import type { ProviderResponse } from "@/lib/types/provider";
 import type { ProviderAssignmentResponse } from "@/lib/types/provider-assignment";
 import type { FamilyMemberResponse } from "@/lib/types/member";
@@ -133,6 +135,11 @@ export function ProviderDetailContent({ provider, assignedMembers }: ProviderDet
           <CardTitle className="text-sm font-medium">Provider Details</CardTitle>
         </CardHeader>
         <CardContent className="space-y-3 text-sm">
+          <div>
+            <span className="text-muted-foreground">Type:</span>{" "}
+            {PROVIDER_TYPE_LABELS[provider.provider_type as ProviderType] || "Other"}
+          </div>
+          <Separator />
           {provider.speciality && (
             <>
               <div>

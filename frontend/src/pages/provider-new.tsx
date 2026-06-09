@@ -4,6 +4,7 @@ import { ProviderForm } from "@/components/providers/provider-form";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Link } from "react-router-dom";
 import type { ProviderCreate } from "@/lib/types/provider";
+import type { ProviderType } from "@/lib/types/enums";
 
 export default function NewProviderPage() {
   const navigate = useNavigate();
@@ -11,6 +12,7 @@ export default function NewProviderPage() {
   async function action(prevState: unknown, formData: FormData) {
     const data: ProviderCreate = {
       name: formData.get("name") as string,
+      provider_type: (formData.get("provider_type") as ProviderType) || "doctor",
       speciality: (formData.get("speciality") as string) || null,
       phone: (formData.get("phone") as string) || null,
       address: (formData.get("address") as string) || null,

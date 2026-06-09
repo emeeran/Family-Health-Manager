@@ -1,4 +1,11 @@
-import type { RecordType, ReminderType, ScheduleType, Gender, Relationship } from "./types/enums";
+import type {
+  RecordType,
+  ReminderType,
+  ScheduleType,
+  Gender,
+  Relationship,
+  ProviderType,
+} from "./types/enums";
 
 export const API_BASE_URL = import.meta.env.VITE_API_URL || "/api/v1";
 
@@ -63,4 +70,18 @@ export const HBA1C_CATEGORY_COLORS: Record<string, string> = {
   Normal: "bg-green-100 text-green-700",
   Prediabetes: "bg-yellow-100 text-yellow-700",
   Diabetes: "bg-red-100 text-red-700",
+};
+
+export const PROVIDER_TYPE_LABELS: Record<ProviderType, string> = {
+  doctor: "Doctor",
+  lab_service: "Lab Service",
+  hospital: "Hospital",
+  other: "Other",
+};
+
+export const PROVIDER_TYPE_COLORS: Record<ProviderType, string> = {
+  doctor: "from-violet-500 to-blue-500",
+  lab_service: "from-emerald-500 to-teal-500",
+  hospital: "from-red-500 to-rose-500",
+  other: "from-amber-500 to-orange-500",
 };

@@ -33,6 +33,7 @@ async def _enrich_with_members(
                 id=p.id,
                 household_id=p.household_id,
                 name=p.name,
+                provider_type=p.provider_type,
                 speciality=p.speciality,
                 phone=p.phone,
                 address=p.address,
@@ -48,10 +49,11 @@ async def list_providers(
     household: Household = Depends(get_household_from_token),
     db: AsyncSession = Depends(get_db),
     speciality: str | None = Query(None),
+    provider_type: str | None = Query(None),
 ):
     """List all providers in household with their assigned members."""
     service = ProviderService(db)
-    providers = await service.list_providers(household.id, speciality)
+    providers = await service.list_providers(household.id, speciality, provider_type)
     return await _enrich_with_members(service, providers)
 
 
@@ -66,6 +68,7 @@ async def create_provider(
     provider = await service.create_provider(
         household_id=household.id,
         name=request.name,
+        provider_type=request.provider_type,
         speciality=request.speciality,
         phone=request.phone,
         address=request.address,

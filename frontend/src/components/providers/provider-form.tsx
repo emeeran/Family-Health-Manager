@@ -7,10 +7,20 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
+import { PROVIDER_TYPE_LABELS } from "@/lib/constants";
 import type { ProviderResponse } from "@/lib/types/provider";
+import type { ProviderType } from "@/lib/types/enums";
 
 const providerSchema = z.object({
   name: z.string().min(1, "Provider name is required").max(100),
+  provider_type: z.string(),
   speciality: z.string().max(100).optional(),
   phone: z.string().max(50).optional(),
   address: z.string().max(500).optional(),
@@ -29,17 +39,22 @@ export function ProviderForm({ action, provider }: ProviderFormProps) {
   const {
     register,
     reset,
+    setValue,
+    watch,
     formState: { errors },
   } = useForm<ProviderFormValues>({
     resolver: zodResolver(providerSchema),
-    defaultValues: { name: "", speciality: "", phone: "", address: "" },
+    defaultValues: { name: "", provider_type: "doctor", speciality: "", phone: "", address: "" },
   });
+
+  const selectedType = watch("provider_type") || "doctor";
 
   // Populate form when provider data arrives
   useEffect(() => {
     if (provider) {
       reset({
         name: provider.name,
+        provider_type: provider.provider_type || "doctor",
         speciality: provider.speciality ?? "",
         phone: provider.phone ?? "",
         address: provider.address ?? "",
@@ -75,6 +90,27 @@ export function ProviderForm({ action, provider }: ProviderFormProps) {
             {errors.name && <p className="text-[11px] text-destructive">{errors.name.message}</p>}
           </div>
           <div className="space-y-1">
+            <Label className="text-xs">Type</Label>
+            <input type="hidden" name="provider_type" value={selectedType} />
+            <Select
+              value={selectedType}
+              onValueChange={(val) => val && setValue("provider_type", val)}
+            >
+              <SelectTrigger className="h-9">
+                <SelectValue placeholder="Select type" />
+              </SelectTrigger>
+              <SelectContent>
+                {(Object.entries(PROVIDER_TYPE_LABELS) as [ProviderType, string][]).map(
+                  ([value, label]) => (
+                    <SelectItem key={value} value={value}>
+                      {label}
+                    </SelectItem>
+                  )
+                )}
+              </SelectContent>
+            </Select>
+          </div>
+          <div className="space-y-1">
             <Label htmlFor="speciality" className="text-xs">
               Speciality
             </Label>
@@ -97,7 +133,7 @@ export function ProviderForm({ action, provider }: ProviderFormProps) {
               className="h-9"
             />
           </div>
-          <div className="space-y-1">
+          <div className="space-y-1 md:col-span-2">
             <Label htmlFor="address" className="text-xs">
               Address
             </Label>

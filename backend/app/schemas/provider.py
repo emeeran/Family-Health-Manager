@@ -8,6 +8,7 @@ class ProviderCreate(BaseModel):
     """Provider creation request."""
 
     name: str = Field(..., min_length=1, max_length=100, description="Provider name")
+    provider_type: str = Field("doctor", max_length=20, description="Provider type")
     speciality: str | None = Field(None, min_length=1, max_length=100, description="Speciality")
     phone: str | None = Field(None, min_length=1, max_length=20, description="Phone number")
     address: str | None = Field(None, description="Clinic/hospital address")
@@ -17,6 +18,7 @@ class ProviderUpdate(BaseModel):
     """Provider update request."""
 
     name: str | None = Field(None, min_length=1, max_length=100, description="Provider name")
+    provider_type: str | None = Field(None, max_length=20, description="Provider type")
     speciality: str | None = Field(None, min_length=1, max_length=100, description="Speciality")
     phone: str | None = Field(None, min_length=1, max_length=20, description="Phone number")
     address: str | None = Field(None, description="Clinic/hospital address")
@@ -38,6 +40,7 @@ class ProviderResponse(BaseModel):
     id: UUID = Field(..., description="Provider ID")
     household_id: UUID = Field(..., description="Household ID")
     name: str = Field(..., description="Provider name")
+    provider_type: str = Field("doctor", description="Provider type")
     speciality: str | None = Field(None, description="Speciality")
     phone: str | None = Field(None, description="Phone number")
     address: str | None = Field(None, description="Clinic/hospital address")

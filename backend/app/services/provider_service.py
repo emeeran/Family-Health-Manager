@@ -17,6 +17,7 @@ class ProviderService:
         self,
         household_id: UUID,
         name: str,
+        provider_type: str = "doctor",
         speciality: str | None = None,
         phone: str | None = None,
         address: str | None = None,
@@ -25,6 +26,7 @@ class ProviderService:
         provider = Provider(
             household_id=household_id,
             name=name,
+            provider_type=provider_type,
             speciality=speciality,
             phone=phone,
             address=address,
@@ -47,18 +49,20 @@ class ProviderService:
         return provider
 
     async def list_providers(
-        self, household_id: UUID, speciality: str | None = None
+        self, household_id: UUID, speciality: str | None = None, provider_type: str | None = None
     ) -> list[Provider]:
         """List all providers in household."""
         query = select(Provider).where(Provider.household_id == household_id)
         if speciality:
             query = query.where(Provider.speciality == speciality)
+        if provider_type:
+            query = query.where(Provider.provider_type == provider_type)
         result = await self.db.execute(query)
         return list(result.scalars().all())
 
     async def update_provider(self, provider_id: UUID, **kwargs) -> Provider:
         """Update provider details."""
-        allowed = {"name", "speciality", "phone", "address"}
+        allowed = {"name", "provider_type", "speciality", "phone", "address"}
         result = await self.db.execute(
             select(Provider).where(Provider.id == provider_id)
         )

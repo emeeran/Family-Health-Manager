@@ -28,3 +28,4 @@ export type ReminderType =
 export type ScheduleType = "once" | "daily" | "weekly" | "custom";
 export type MessageRole = "user" | "assistant" | "system";
 export type ConversationScope = "member" | "general";
+export type ProviderType = "doctor" | "lab_service" | "hospital" | "other";

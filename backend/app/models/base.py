@@ -87,6 +87,15 @@ class ConversationScope(str, enum.Enum):
     GENERAL = "general"
 
 
+class ProviderType(str, enum.Enum):
+    """Healthcare provider type classification."""
+
+    DOCTOR = "doctor"
+    LAB_SERVICE = "lab_service"
+    HOSPITAL = "hospital"
+    OTHER = "other"
+
+
 # ── Re-export models for backward compatibility ────────────────────
 # Models import Base + enums from this file, so we import them
 # at the bottom to avoid circular dependencies.
@@ -116,6 +125,7 @@ __all__ = [
     "ScheduleType",
     "MessageRole",
     "ConversationScope",
+    "ProviderType",
     "User",
     "Household",
     "RefreshToken",
