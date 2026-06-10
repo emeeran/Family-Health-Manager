@@ -21,7 +21,7 @@ from app.schemas.health_record import (
     ExtractionResponse, ExtractedFields, TimelineResponse,
     BatchExtractionItemSchema, BatchExtractionResponse,
     CheckFilenamesRequest, CheckFilenamesResponse,
-    BatchDeleteRequest,
+    BatchDeleteRequest, DedupResponse, MergeRequest,
 )
 from app.models.base import Household, FamilyMember, RecordType
 from app.models.attachment import Attachment
@@ -426,6 +426,42 @@ async def batch_delete_records(
         await cache.invalidate_async(f"dashboard_summary:{household.id}")
         AIService.invalidate_member_cache(member_id)
     return {"deleted": count}
+
+
+# ---- Dedup endpoints (must be before /{record_id} to avoid path conflicts) ----
+
+
+@router.get("/dedup", response_model=DedupResponse)
+async def find_duplicates(
+    member_id: UUID,
+    _member: FamilyMember = Depends(require_member_in_household),
+    db: AsyncSession = Depends(get_db),
+):
+    """Scan member's records for potential duplicates."""
+    from app.services.dedup_service import DedupService
+
+    svc = DedupService(db)
+    return await svc.find_duplicates(member_id)
+
+
+@router.post("/merge", response_model=HealthRecordResponse)
+async def merge_records(
+    member_id: UUID,
+    request: MergeRequest,
+    _member: FamilyMember = Depends(require_member_in_household),
+    db: AsyncSession = Depends(get_db),
+):
+    """Merge duplicate records into one, soft-deleting the losers."""
+    from app.services.dedup_service import DedupService
+
+    svc = DedupService(db)
+    try:
+        keeper = await svc.merge_records(member_id, request.keeper_id, request.loser_ids)
+        await cache.invalidate_async(f"members:{_member.household_id}")
+        await cache.invalidate_async(f"dashboard_summary:{_member.household_id}")
+        return keeper
+    except ValueError as exc:
+        raise HTTPException(status_code=404, detail=str(exc))
 
 
 @router.get("/{record_id}", response_model=HealthRecordResponse)

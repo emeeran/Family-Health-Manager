@@ -143,7 +143,8 @@ async def extract_medical_data(
             result = parse_extraction(raw_text, ExtractedFields)
             if not result.has_any_data():
                 logger.warning("PDF text extraction returned no usable fields — text may be non-medical or too short")
-            return ExtractionResult(extracted=result, transcription=pdf_text)
+            formatted = await _format_ocr_transcription(pdf_text, last_provider_ref)
+            return ExtractionResult(extracted=result, transcription=formatted)
 
         # Scanned/image PDF — OCR pages then use fast text extraction
         logger.info("PDF is scanned/image-based — attempting OCR + text extraction")
@@ -179,7 +180,8 @@ async def extract_medical_data(
                 chunk_result = parse_extraction(raw_text, ExtractedFields)
                 all_extracted = merge_extractions(all_extracted, chunk_result)
             if all_extracted.has_any_data():
-                return ExtractionResult(extracted=all_extracted, transcription=ocr_text)
+                formatted = await _format_ocr_transcription(ocr_text, last_provider_ref)
+                return ExtractionResult(extracted=all_extracted, transcription=formatted)
             logger.warning("OCR text extraction returned no usable fields — falling back to vision AI")
         else:
             logger.warning("OCR produced no text — falling back to vision AI")
@@ -225,18 +227,20 @@ async def extract_medical_data(
         if ocr_text:
             logger.info("Image OCR (tesseract) extracted %d chars — using text extraction", len(ocr_text))
             raw_text = await call_text_extraction(ocr_text, last_provider_ref)
+            formatted = await _format_ocr_transcription(ocr_text, last_provider_ref)
             return ExtractionResult(
                 extracted=parse_extraction(raw_text, ExtractedFields),
-                transcription=ocr_text,
+                transcription=formatted,
             )
 
         # Fallback: cloud AI OCR
         ocr_text = await call_ocr(file_path, mime_type)
         if ocr_text:
             raw_text = await call_text_extraction(ocr_text, last_provider_ref)
+            formatted = await _format_ocr_transcription(ocr_text, last_provider_ref)
             return ExtractionResult(
                 extracted=parse_extraction(raw_text, ExtractedFields),
-                transcription=ocr_text,
+                transcription=formatted,
             )
         # OCR failed — fall through to vision providers
 
@@ -329,13 +333,32 @@ def ocr_pdf_pages(file_path: str, page_count: int) -> str | None:
                 tmp.write(img_bytes)
                 tmp_path = tmp.name
 
+            # Preprocess for better handwriting OCR
+            enhanced_path = _preprocess_image_for_ocr(tmp_path)
+            ocr_input = enhanced_path or tmp_path
+
+            # PSM 6 = uniform block of text, better for medical documents
             result = subprocess.run(
-                ["tesseract", tmp_path, "stdout"],
+                ["tesseract", ocr_input, "stdout", "--psm", "6"],
                 capture_output=True, text=True, timeout=30,
             )
-            os.unlink(tmp_path)
-
             page_text = result.stdout.strip()
+
+            # If PSM 6 returns nothing, try PSM 4 (variable text sizes)
+            if not page_text:
+                result = subprocess.run(
+                    ["tesseract", ocr_input, "stdout", "--psm", "4"],
+                    capture_output=True, text=True, timeout=30,
+                )
+                page_text = result.stdout.strip()
+
+            os.unlink(tmp_path)
+            if enhanced_path:
+                try:
+                    os.unlink(enhanced_path)
+                except OSError:
+                    pass
+
             if page_text:
                 all_text.append(f"--- Page {page_num + 1} ---\n{page_text}")
         except Exception as exc:
@@ -348,22 +371,92 @@ def ocr_pdf_pages(file_path: str, page_count: int) -> str | None:
 
 
 def tesseract_image(file_path: str) -> str | None:
-    """OCR a single image file using tesseract (fast, local)."""
+    """OCR a single image file using tesseract (fast, local).
+
+    Preprocesses the image (grayscale + contrast boost) for better
+    handwriting recognition before running tesseract with --psm 6
+    (uniform block of text) which works well for medical documents.
+    """
     import shutil
     import subprocess
 
     if not shutil.which("tesseract"):
         return None
 
+    enhanced_path: str | None = None
     try:
+        enhanced_path = _preprocess_image_for_ocr(file_path)
+        ocr_input = enhanced_path or file_path
+
+        # PSM 6 = uniform block of text, good for medical docs/prescriptions
         result = subprocess.run(
-            ["tesseract", file_path, "stdout"],
+            ["tesseract", ocr_input, "stdout", "--psm", "6"],
             capture_output=True, text=True, timeout=15,
         )
         text = result.stdout.strip()
+        if not text:
+            # Fallback: try PSM 4 (single column of text of variable sizes)
+            result = subprocess.run(
+                ["tesseract", ocr_input, "stdout", "--psm", "4"],
+                capture_output=True, text=True, timeout=15,
+            )
+            text = result.stdout.strip()
         return text or None
     except Exception as exc:
         logger.debug("Image tesseract OCR failed: %s", exc)
+        return None
+    finally:
+        if enhanced_path:
+            import os
+            try:
+                os.unlink(enhanced_path)
+            except OSError:
+                pass
+
+
+def _preprocess_image_for_ocr(file_path: str) -> str | None:
+    """Enhance image for better OCR accuracy on handwritten medical documents.
+
+    Applies grayscale conversion, contrast enhancement, and adaptive
+    thresholding — particularly helpful for handwritten text on
+    prescription pads and clinical notes.
+
+    Returns path to a temporary enhanced image, or None if PIL unavailable.
+    """
+    try:
+        from PIL import Image, ImageEnhance, ImageFilter
+    except ImportError:
+        return None
+
+    try:
+        img = Image.open(file_path)
+
+        # Convert to grayscale
+        if img.mode != "L":
+            img = img.convert("L")
+
+        # Boost contrast — helps distinguish faded handwriting
+        img = ImageEnhance.Contrast(img).enhance(1.8)
+
+        # Slight sharpening — helps with blurry handwritten characters
+        img = img.filter(ImageFilter.SHARPEN)
+
+        # Boost brightness slightly for dark backgrounds
+        img = ImageEnhance.Brightness(img).enhance(1.1)
+
+        # Adaptive threshold via point operation: convert to pure B/W
+        # This binarization helps tesseract separate text from background
+        img = img.point(lambda x: 0 if x < 140 else 255, "1")
+        # Convert back to grayscale for tesseract compatibility
+        img = img.convert("L")
+
+        import tempfile
+        tmp = tempfile.NamedTemporaryFile(suffix=".png", delete=False)
+        img.save(tmp, format="PNG")
+        tmp.close()
+        return tmp.name
+    except Exception as exc:
+        logger.debug("Image preprocessing failed: %s", exc)
         return None
 
 
@@ -390,13 +483,52 @@ def pdf_page_to_image(file_path: str, page_num: int = 0) -> bytes | None:
         return None
 
 
-TRANSCRIPTION_PROMPT = (
-    "Transcribe all text from this document image. "
-    "Include ALL handwritten text, printed text, headers, labels, and values. "
-    "Preserve the original layout and line breaks as closely as possible. "
-    "If any text is partially legible, include your best reading marked with (?). "
-    "Return ONLY the raw transcription text, no JSON, no explanations."
-)
+TRANSCRIPTION_PROMPT = """You are an expert medical document transcription specialist. Transcribe the medically relevant content from this document image.
+
+GOAL: Produce a clean, formatted transcription containing ONLY medically important information. Omit non-essential content like logos, decorative borders, page numbers, watermarks, footers, hospital slogans, and repeated headers.
+
+HANDWRITING RULES:
+- Read character by character if needed. Handwriting is often the most important part.
+- If partially legible, give your best reading followed by (?). Example: "Metformin (?) 500mg"
+- Use [illegible] for completely unreadable words, [...] for cut-off sections.
+- NEVER skip handwritten prescriptions or notes — they contain the actual treatment plan.
+
+ABBREVIATIONS — keep as written, do not expand:
+BD/TDS/OD/HS/PRN/SOS/STAT, Tab/Cap/Inj/Syp/Drops, AC/PC/PO/IM/IV
+
+FORMAT the transcription using this structure (include only sections present in the document):
+
+--- Provider ---
+Doctor/clinic/hospital name and date
+
+--- Patient Complaint ---
+Reason for visit or chief complaint
+
+--- Vitals ---
+BP, temperature, weight, height, pulse, SpO2, etc.
+
+--- Diagnosis ---
+Diagnosed condition(s)
+
+--- Investigations ---
+Tests ordered or recommended
+
+--- Prescriptions ---
+Each medicine on its own line: Type Name Dosage Duration Timing
+Example: Tab Metformin 500mg 1-0-1 After food 30 days
+
+--- Lab Results ---
+Each test on its own line: Test Name: Value Unit (Reference Range)
+Example: HbA1c: 8.9% (< 6.0%)
+
+--- Advice / Notes ---
+Diet instructions, follow-up date, lifestyle advice, any handwritten notes
+
+--- Existing Conditions ---
+Chronic conditions mentioned (e.g., T2DM, Hypertension)
+
+If a section is not present in the document, omit it entirely. Do NOT include empty sections.
+Return ONLY the formatted transcription text. No JSON, no explanations."""
 
 
 async def _transcribe_via_vision(b64_images: list[str], mime_type: str) -> str | None:
@@ -438,6 +570,92 @@ async def _transcribe_via_vision(b64_images: list[str], mime_type: str) -> str |
             parts.append(winner)
 
     return "\n\n--- Page ---\n".join(parts) if parts else None
+
+
+FORMAT_TRANSCRIPTION_PROMPT = """You are a medical document formatter. Clean up and format the following raw OCR text from a medical document.
+
+RULES:
+1. Remove non-essential content: logos, page numbers, watermarks, decorative borders, footers, hospital slogans, repeated headers, blank lines.
+2. Keep ONLY medically relevant information: provider name, patient details, vitals, diagnosis, prescriptions, lab results, advice, follow-up dates.
+3. FORMAT using this structure (include ONLY sections present in the text):
+
+--- Provider ---
+Doctor/clinic/hospital name and date
+
+--- Patient Complaint ---
+Reason for visit
+
+--- Vitals ---
+BP, temperature, weight, height, pulse, SpO2
+
+--- Diagnosis ---
+Diagnosed condition(s)
+
+--- Investigations ---
+Tests ordered or recommended
+
+--- Prescriptions ---
+Each medicine on its own line: Type Name Dosage Duration Timing
+
+--- Lab Results ---
+Each test: Test Name: Value Unit (Reference Range)
+
+--- Advice / Notes ---
+Diet, follow-up date, lifestyle advice
+
+--- Existing Conditions ---
+Chronic conditions mentioned
+
+4. Preserve medical abbreviations as-is (BD, TDS, OD, HS, PRN, SOS, STAT, Tab, Cap, etc.).
+5. Mark uncertain text with (?). Mark unreadable text as [illegible].
+6. If a section is not present, omit it. Do NOT include empty sections.
+
+Return ONLY the formatted text. No JSON, no explanations.
+
+Raw OCR text:
+"""
+
+
+async def _format_ocr_transcription(raw_text: str, last_provider_ref: list) -> str | None:
+    """Format raw OCR text into a clean, structured medical transcription.
+
+    Uses a lightweight text-only AI call to clean up tesseract/cloud OCR output.
+    Falls back to returning the raw text if formatting fails.
+    """
+    if not raw_text or len(raw_text.strip()) < 20:
+        return raw_text
+
+    prompt = f"{FORMAT_TRANSCRIPTION_PROMPT}{raw_text[:15000]}"
+
+    providers = [
+        (call_openrouter_text, "OpenRouter"),
+        (call_gemini_text, "Gemini"),
+        (call_groq_text, "Groq"),
+        (call_ollama_text, "Ollama"),
+    ]
+
+    async def _try(fn, name):
+        try:
+            result = await fn(prompt)
+            if result:
+                return result
+        except Exception as exc:
+            logger.debug("Format transcription provider %s failed: %s", name, exc)
+        return None
+
+    tasks = [asyncio.create_task(_try(fn, name)) for fn, name in providers]
+    winner = None
+    for coro in asyncio.as_completed(tasks):
+        result = await coro
+        if result is not None:
+            winner = result
+            break
+    for t in tasks:
+        if not t.done():
+            t.cancel()
+    await asyncio.gather(*tasks, return_exceptions=True)
+
+    return winner or raw_text
 
 
 async def call_text_extraction(pdf_text: str, last_provider_ref: list) -> str | None:

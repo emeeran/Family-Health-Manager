@@ -1,9 +1,11 @@
-import { memo, useCallback } from "react";
+import { memo, useCallback, useState } from "react";
 import { useSearchParams } from "react-router-dom";
-import { User, FileText } from "lucide-react";
+import { User, FileText, Copy } from "lucide-react";
+import { Button } from "@/components/ui/button";
 import type { MemberDetailResponse } from "@/lib/types/member";
 import { OverviewTab } from "./tabs/overview-tab";
 import { RecordsTab } from "./tabs/records-tab";
+import { DedupDialog } from "@/components/records/dedup-dialog";
 
 type TabId = "overview" | "records";
 
@@ -29,6 +31,7 @@ export const MemberTabs = memo(function MemberTabs({ data }: MemberTabsProps) {
   const [searchParams, setSearchParams] = useSearchParams();
   const rawTab = searchParams.get("tab") || "overview";
   const activeTab: TabId = VALID_TABS.has(rawTab) ? (rawTab as TabId) : "overview";
+  const [dedupOpen, setDedupOpen] = useState(false);
 
   const handleTabChange = useCallback(
     (tab: TabId) => {
@@ -63,7 +66,20 @@ export const MemberTabs = memo(function MemberTabs({ data }: MemberTabsProps) {
             </button>
           );
         })}
+        <div className="ml-auto">
+          <Button
+            variant="outline"
+            size="sm"
+            className="h-8 text-xs gap-1.5 border-amber-300 text-amber-700 hover:bg-amber-50"
+            onClick={() => setDedupOpen(true)}
+          >
+            <Copy className="h-3.5 w-3.5" />
+            Find Duplicates
+          </Button>
+        </div>
       </div>
+
+      <DedupDialog open={dedupOpen} onOpenChange={setDedupOpen} memberId={data.member.id} />
 
       {/* Tab content */}
       <div className="mt-2">

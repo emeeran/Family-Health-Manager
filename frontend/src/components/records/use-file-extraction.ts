@@ -584,5 +584,6 @@ export function useFileExtraction({
     refreshRecentBatches,
     pendingExtractedFields,
     transcription,
+    setTranscription,
   };
 }

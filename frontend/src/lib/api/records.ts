@@ -9,6 +9,7 @@ import type {
   TimelineResponse,
   LabRecordsResponse,
   RecordInsightResponse,
+  DedupResponse,
 } from "../types/health-record";
 import type { RecordType } from "../types/enums";
 
@@ -158,4 +159,15 @@ export function smartSearchRecords(query: string) {
 
 export function getRecordInsight(memberId: string, recordId: string) {
   return apiRequest<RecordInsightResponse>(`/members/${memberId}/records/${recordId}/insight`);
+}
+
+export function findDuplicates(memberId: string) {
+  return apiRequest<DedupResponse>(`/members/${memberId}/records/dedup`);
+}
+
+export function mergeRecords(memberId: string, keeperId: string, loserIds: string[]) {
+  return apiRequest<HealthRecordResponse>(`/members/${memberId}/records/merge`, {
+    method: "POST",
+    body: { keeper_id: keeperId, loser_ids: loserIds },
+  });
 }

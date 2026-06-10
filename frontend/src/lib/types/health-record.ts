@@ -127,6 +127,31 @@ export interface CheckFilenamesResponse {
   existing: string[];
 }
 
+export interface DuplicateRecordItem {
+  id: string;
+  record_type: RecordType;
+  record_date: string;
+  diagnosis: string | null;
+  provider_name: string | null;
+  provider_id: string | null;
+  prescription_text: string | null;
+  has_attachments: boolean;
+  attachment_count: number;
+  created_at: string;
+}
+
+export interface DuplicateGroup {
+  records: DuplicateRecordItem[];
+  recommended_keeper_id: string;
+  match_reasons: string[];
+  score: number;
+}
+
+export interface DedupResponse {
+  groups: DuplicateGroup[];
+  total_records_scanned: number;
+}
+
 export interface MedicationDiffRequest {
   prescriptions: Record<string, string>[];
   record_id?: string;

@@ -177,3 +177,41 @@ class CheckFilenamesResponse(BaseModel):
     """Response from check-filenames endpoint."""
 
     existing: list[str] = Field(default_factory=list, description="Filenames that already have records")
+
+
+class DuplicateRecordItem(BaseModel):
+    """A record within a duplicate group."""
+
+    id: UUID = Field(..., description="Record ID")
+    record_type: RecordType = Field(..., description="Record type")
+    record_date: date = Field(..., description="Record date")
+    diagnosis: str | None = Field(None, description="Diagnosis")
+    provider_name: str | None = Field(None, description="Provider name")
+    provider_id: UUID | None = Field(None, description="Provider ID")
+    prescription_text: str | None = Field(None, description="Prescription text")
+    has_attachments: bool = Field(False, description="Has file attachments")
+    attachment_count: int = Field(0, description="Number of attachments")
+    created_at: datetime = Field(..., description="Creation timestamp")
+
+
+class DuplicateGroup(BaseModel):
+    """A group of potentially duplicate records."""
+
+    records: list[DuplicateRecordItem] = Field(..., description="Records in this group")
+    recommended_keeper_id: UUID = Field(..., description="Recommended record to keep")
+    match_reasons: list[str] = Field(default_factory=list, description="Why these records match")
+    score: int = Field(0, description="Match strength (1-4)")
+
+
+class DedupResponse(BaseModel):
+    """Response from dedup scan endpoint."""
+
+    groups: list[DuplicateGroup] = Field(default_factory=list, description="Duplicate groups found")
+    total_records_scanned: int = Field(0, description="Total records scanned")
+
+
+class MergeRequest(BaseModel):
+    """Request to merge duplicate records."""
+
+    keeper_id: UUID = Field(..., description="Record to keep")
+    loser_ids: list[UUID] = Field(..., min_length=1, description="Records to merge into keeper and delete")
