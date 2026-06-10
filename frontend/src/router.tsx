@@ -92,6 +92,12 @@ export const router = createBrowserRouter([
       { path: "people/new", element: withSuspense(NewMemberPage) },
       { path: "people/:memberId", element: withSuspense(MemberDetailPage) },
       { path: "people/:memberId/edit", element: withSuspense(EditMemberPage) },
+      {
+        path: "people/:memberId/records",
+        loader: ({ params }: { params: { memberId?: string } }) => {
+          throw redirect(`/people/${params.memberId}?tab=records`);
+        },
+      },
       { path: "people/:memberId/records/new", element: withSuspense(NewRecordPage) },
       { path: "people/:memberId/records/batch", element: withSuspense(RecordBatchPage) },
       { path: "people/:memberId/records/:recordId", element: withSuspense(RecordDetailPage) },

@@ -1,4 +1,5 @@
 import { memo, useMemo } from "react";
+import { Link } from "react-router-dom";
 import { FileText, BarChart3, CalendarDays } from "lucide-react";
 import { Card, CardContent } from "@/components/ui/card";
 import { RECORD_TYPE_LABELS } from "@/lib/constants";
@@ -173,13 +174,13 @@ export const RecordsTab = memo(function RecordsTab({ data }: RecordsTabProps) {
         </CardContent>
       </Card>
 
-      <a
-        href={`/people/${member.id}/records`}
+      <Link
+        to={`/people/${member.id}?tab=records`}
         className="inline-flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-xs font-semibold text-teal-600 hover:bg-teal-50 transition-colors"
       >
         <FileText className="h-3.5 w-3.5" />
         View All Records
-      </a>
+      </Link>
     </div>
   );
 });

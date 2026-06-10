@@ -147,7 +147,7 @@ export function RecordDetailContent({ record: initialRecord, member }: RecordDet
     try {
       await deleteRecord(member.id, record.id);
       toast.success("Record deleted");
-      navigate(`/people/${member.id}/records`);
+      navigate(`/people/${member.id}?tab=records`);
     } catch {
       toast.error("Failed to delete record");
     }
@@ -192,7 +192,7 @@ export function RecordDetailContent({ record: initialRecord, member }: RecordDet
           {memberName}
         </Link>
         <span>/</span>
-        <Link to={`/people/${member.id}/records`} className="hover:underline">
+        <Link to={`/people/${member.id}?tab=records`} className="hover:underline">
           Records
         </Link>
         <span>/</span>
