@@ -324,10 +324,11 @@ async def verify_file_integrity():
 
                     actual_hash = hasher.hexdigest()
                     if actual_hash != att.content_hash:
+                        expected_prefix = (att.content_hash or "")[:12]
                         logger.error(
                             "Integrity check FAILED for attachment %s: "
                             "expected %s, got %s",
-                            att.id, att.content_hash[:12], actual_hash[:12],
+                            att.id, expected_prefix, actual_hash[:12],
                         )
                         failed += 1
                     else:

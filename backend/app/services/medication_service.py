@@ -230,16 +230,16 @@ class MedicationService:
         if not meds:
             # Fallback to old method for pre-migration data
             active_meds = await self.get_active_medications(member_id)
-            reminders: list[dict] = []
+            fallback_reminders: list[dict] = []
             for med in active_meds:
                 if med["status"] != "active":
                     continue
                 end = date.fromisoformat(med["end_date"])
                 if today <= end <= cutoff:
                     med["days_until_end"] = (end - today).days
-                    reminders.append(med)
-            reminders.sort(key=lambda m: m["days_until_end"])
-            return reminders
+                    fallback_reminders.append(med)
+            fallback_reminders.sort(key=lambda m: m["days_until_end"])
+            return fallback_reminders
 
         reminders: list[dict] = []
         for m in meds:

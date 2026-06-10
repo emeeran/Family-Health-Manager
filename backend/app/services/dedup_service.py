@@ -206,7 +206,7 @@ class DedupService:
                     reasons.append("same_attachment")
 
                 if score >= 1:
-                    pair_key = tuple(sorted([a_id, b_id]))
+                    pair_key = (a_id, b_id) if a_id < b_id else (b_id, a_id)
                     pair_scores[pair_key] = (score, reasons)
                     uf.union(a_id, b_id)
 
