@@ -11,6 +11,7 @@ import {
   Bell,
   ShieldCheck,
   Sparkles,
+  Copy,
 } from "lucide-react";
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -24,6 +25,7 @@ import { SmartReportCard } from "@/components/members/smart-report-card";
 import { SmartReportViewer } from "@/components/members/smart-report-viewer";
 import { DrugInteractionReport } from "@/components/members/drug-interaction-report";
 import { ProvidersUhidCard } from "@/components/members/providers-uhid-card";
+import { DedupDialog } from "@/components/records/dedup-dialog";
 import { VaccinationsSection } from "@/components/members/vaccinations-section";
 import {
   InsightReport,
@@ -78,6 +80,12 @@ const quickActions = [
     to: "/providers",
     color: "text-violet-600 hover:bg-violet-50",
   },
+  {
+    label: "De-Dupe",
+    icon: Copy,
+    action: "dedup",
+    color: "text-amber-600 hover:bg-amber-50",
+  },
 ];
 
 interface OverviewTabProps {
@@ -87,6 +95,7 @@ interface OverviewTabProps {
 export const OverviewTab = memo(function OverviewTab({ data }: OverviewTabProps) {
   const navigate = useNavigate();
   const [deleteOpen, setDeleteOpen] = useState(false);
+  const [dedupOpen, setDedupOpen] = useState(false);
 
   const {
     member,
@@ -659,6 +668,18 @@ ${sectionHtml}
       <div className="flex items-center gap-1 print:hidden">
         {quickActions.map((action) => {
           const Icon = action.icon;
+          if ("action" in action && action.action === "dedup") {
+            return (
+              <button
+                key="dedup"
+                onClick={() => setDedupOpen(true)}
+                className={`inline-flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-xs font-semibold transition-colors cursor-pointer ${action.color}`}
+              >
+                <Icon className="h-3.5 w-3.5" />
+                {action.label}
+              </button>
+            );
+          }
           if ("to" in action && action.to) {
             return (
               <Link
@@ -809,6 +830,7 @@ ${sectionHtml}
         </Card>
       )}
       <ProvidersUhidCard memberId={member.id} assignments={provider_assignments} />
+      <DedupDialog open={dedupOpen} onOpenChange={setDedupOpen} memberId={member.id} />
     </>
   );
 });
