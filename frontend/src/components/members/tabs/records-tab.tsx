@@ -32,7 +32,7 @@ interface RecordsTabProps {
 }
 
 export const RecordsTab = memo(function RecordsTab({ data }: RecordsTabProps) {
-  const { recent_records, member } = data;
+  const { recent_records } = data;
 
   const recordTypeDist = useMemo(() => {
     const counts: Record<string, number> = {};
@@ -175,7 +175,7 @@ export const RecordsTab = memo(function RecordsTab({ data }: RecordsTabProps) {
       </Card>
 
       <Link
-        to={`/people/${member.id}?tab=records`}
+        to="/records"
         className="inline-flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-xs font-semibold text-teal-600 hover:bg-teal-50 transition-colors"
       >
         <FileText className="h-3.5 w-3.5" />
