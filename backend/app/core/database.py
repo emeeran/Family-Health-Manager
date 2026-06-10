@@ -65,7 +65,7 @@ async def create_tables():
     if settings.DATABASE_URL.startswith("sqlite"):
         # Fast path for SQLite dev: create_all handles missing tables
         sync_db_url = settings.DATABASE_URL.replace("sqlite+aiosqlite:///", "sqlite:///")
-        sync_engine = create_engine(sync_db_url, echo=settings.DEBUG)
+        sync_engine = create_engine(sync_db_url, echo=False)
         Base.metadata.create_all(sync_engine)
 
         # Patch: add columns that may be missing from prior schema versions

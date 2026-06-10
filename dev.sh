@@ -27,7 +27,7 @@ echo ""
 set -a; source backend/.env; set +a
 
 # Backend
-(cd backend && .venv/bin/python -m uvicorn app.main:app --reload --port "$BACK_PORT") &
+(cd backend && .venv/bin/python -m uvicorn app.main:app --reload --port "$BACK_PORT" --log-level warning) &
 BACK_PID=$!
 
 # Frontend — API_URL env var is read by vite.config.ts to set the proxy target

@@ -65,7 +65,12 @@ _config: dict = {
             "stream": "ext://sys.stdout",
         },
     },
-    "root": {"level": "INFO", "handlers": ["stdout"]},
+    "root": {"level": "WARNING", "handlers": ["stdout"]},
+    "loggers": {
+        "sqlalchemy.engine": {"level": "WARNING"},
+        "app.core.scheduler": {"level": "ERROR"},
+        "app.core.jobs": {"level": "ERROR"},
+    },
 }
 
 settings = get_settings()
