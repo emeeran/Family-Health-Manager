@@ -284,6 +284,7 @@ class MedicationService:
                 HealthRecord.family_member_id == member_id,
                 HealthRecord.record_type == RecordType.DOCTOR_VISIT,
                 HealthRecord.is_deleted.is_(False),
+                HealthRecord.record_date >= date.today() - timedelta(days=365),
             )
             .order_by(HealthRecord.record_date.desc(), HealthRecord.created_at.desc())
         )

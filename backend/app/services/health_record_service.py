@@ -2,7 +2,7 @@
 from pathlib import Path
 from datetime import date, datetime, timedelta, time, timezone
 from uuid import UUID
-from sqlalchemy import select, tuple_
+from sqlalchemy import select, tuple_, update
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import joinedload
 import base64
@@ -231,16 +231,15 @@ class HealthRecordService:
         if not record_ids:
             return 0
         result = await self.db.execute(
-            select(HealthRecord).where(
+            update(HealthRecord)
+            .where(
                 HealthRecord.id.in_(record_ids),
                 HealthRecord.is_deleted.is_(False),
             )
+            .values(is_deleted=True)
         )
-        records = result.scalars().all()
-        for record in records:
-            record.is_deleted = True
         await self.db.flush()
-        return len(records)
+        return result.rowcount
 
     async def get_timeline(
         self,

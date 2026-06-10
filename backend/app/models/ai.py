@@ -4,7 +4,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from uuid import UUID, uuid4
-from sqlalchemy import ForeignKey
+from sqlalchemy import ForeignKey, Index
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 from sqlalchemy.types import String, Text, DateTime, Integer
 from app.models.base import Base
@@ -15,6 +15,11 @@ class AIInsight(Base):
     """AI-generated insight or conversation response."""
 
     __tablename__ = "ai_insights"
+    __table_args__ = (
+        Index("ix_ai_insights_verification_status", "verification_status"),
+        Index("ix_ai_insights_generated_at", "generated_at"),
+        Index("ix_ai_insights_conversation_generated", "conversation_id", "generated_at"),
+    )
 
     id: Mapped[UUID] = mapped_column(primary_key=True, default=uuid4)
     health_record_id: Mapped[UUID | None] = mapped_column(

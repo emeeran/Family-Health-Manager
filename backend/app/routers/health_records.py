@@ -5,7 +5,7 @@ from datetime import date, datetime, time
 from uuid import UUID
 from fastapi import APIRouter, Depends, HTTPException, Query, UploadFile, File, Response
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select
+from sqlalchemy import select, update
 import json
 from app.core.database import get_db
 from app.core.deps import get_household_from_token, require_member_in_household, decode_cursor
@@ -410,17 +410,16 @@ async def batch_delete_records(
     """Soft-delete multiple health records by IDs."""
     record_ids = [UUID(rid) for rid in body.record_ids]
     result = await db.execute(
-        select(HealthRecord).where(
+        update(HealthRecord)
+        .where(
             HealthRecord.id.in_(record_ids),
             HealthRecord.family_member_id == member_id,
             HealthRecord.is_deleted.is_(False),
         )
+        .values(is_deleted=True)
     )
-    records = result.scalars().all()
-    for record in records:
-        record.is_deleted = True
     await db.flush()
-    count = len(records)
+    count = result.rowcount
     if count:
         await cache.invalidate_async(f"household_records:{household.id}")
         await cache.invalidate_async(f"dashboard_summary:{household.id}")

@@ -1,4 +1,5 @@
 """Attachment router."""
+import aiofiles
 from pathlib import Path
 from uuid import UUID
 
@@ -79,8 +80,13 @@ async def get_thumbnail(
     if not thumb_path.exists():
         raise HTTPException(status_code=404, detail="Thumbnail file not found")
 
+    async def _stream_thumbnail():
+        async with aiofiles.open(thumb_path, "rb") as f:
+            while chunk := await f.read(1024 * 1024):
+                yield chunk
+
     return StreamingResponse(
-        open(thumb_path, "rb"),
+        _stream_thumbnail(),
         media_type="image/webp",
         headers={"Cache-Control": "public, max-age=86400"},
     )

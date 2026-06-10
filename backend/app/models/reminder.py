@@ -4,7 +4,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from uuid import UUID, uuid4
-from sqlalchemy import ForeignKey
+from sqlalchemy import ForeignKey, Index
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 from sqlalchemy.types import String, Text, Integer, DateTime, Boolean, Enum
 from app.models.base import Base, ReminderType, ScheduleType
@@ -15,6 +15,9 @@ class Reminder(Base):
     """Health reminder for family member."""
 
     __tablename__ = "reminders"
+    __table_args__ = (
+        Index("ix_reminders_active_start", "is_active", "start_datetime"),
+    )
 
     id: Mapped[UUID] = mapped_column(primary_key=True, default=uuid4)
     household_id: Mapped[UUID] = mapped_column(ForeignKey("households.id"), nullable=False, index=True)
