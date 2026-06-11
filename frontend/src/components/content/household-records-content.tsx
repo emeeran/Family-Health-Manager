@@ -12,6 +12,8 @@ import {
 import { Skeleton } from "@/components/ui/skeleton";
 import { EmptyState } from "@/components/shared/empty-state";
 import { RecordsTable } from "@/components/records/records-table";
+import { RecordsCards } from "@/components/records/records-cards";
+import { ViewToggle, useViewPreference } from "@/components/shared/view-toggle";
 import { useRecordQuickView } from "@/components/records/record-quick-view-provider";
 import { RECORD_TYPE_LABELS } from "@/lib/constants";
 import type { HealthRecordResponse } from "@/lib/types/health-record";
@@ -31,6 +33,7 @@ export function HouseholdRecordsContent({
   const [searchText, setSearchText] = useState("");
   const [typeFilter, setTypeFilter] = useState<string>("all");
   const [memberFilter, setMemberFilter] = useState<string>("all");
+  const [view, setView] = useViewPreference("records-view", "list");
   const { openQuickView } = useRecordQuickView();
 
   const filtered = useMemo(() => {
@@ -96,6 +99,7 @@ export function HouseholdRecordsContent({
             ))}
           </SelectContent>
         </Select>
+        <ViewToggle value={view} onChange={setView} />
       </div>
 
       {/* Results */}
@@ -109,11 +113,17 @@ export function HouseholdRecordsContent({
               : "Try adjusting your filters."
           }
         />
-      ) : (
+      ) : view === "list" ? (
         <RecordsTable
           records={filtered}
           memberNames={memberNames}
           onRowClick={(r) => openQuickView(r.id, r.family_member_id)}
+        />
+      ) : (
+        <RecordsCards
+          records={filtered}
+          memberNames={memberNames}
+          onCardClick={(r) => openQuickView(r.id, r.family_member_id)}
         />
       )}
     </div>

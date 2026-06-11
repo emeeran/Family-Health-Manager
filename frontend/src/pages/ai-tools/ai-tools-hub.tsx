@@ -11,6 +11,7 @@ import {
 } from "@/components/ui/select";
 import { Label } from "@/components/ui/label";
 import { listMembers } from "@/lib/api/members";
+import { ViewToggle, useViewPreference } from "@/components/shared/view-toggle";
 import type { FamilyMemberResponse } from "@/lib/types/member";
 import {
   MessageSquare,
@@ -21,6 +22,7 @@ import {
   PenLine,
   Users,
   Loader2,
+  ChevronRight,
 } from "lucide-react";
 
 interface ToolCard {
@@ -81,6 +83,7 @@ export default function AiToolsHubPage() {
   const [searchParams, setSearchParams] = useSearchParams();
   const [members, setMembers] = useState<FamilyMemberResponse[]>([]);
   const [loading, setLoading] = useState(true);
+  const [view, setView] = useViewPreference("ai-tools-view", "grid");
 
   const selectedMemberId = searchParams.get("memberId") || "";
 
@@ -114,6 +117,7 @@ export default function AiToolsHubPage() {
             AI-powered health tools for your family members
           </p>
         </div>
+        <ViewToggle value={view} onChange={setView} />
       </div>
 
       {/* Member Selector */}
@@ -157,40 +161,70 @@ export default function AiToolsHubPage() {
         </div>
       </Card>
 
-      {/* Tool Cards Grid */}
-      <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-        {tools.map((tool) => {
-          const Icon = tool.icon;
-          const disabled = !selectedMemberId;
-          return (
-            <Card
-              key={tool.path}
-              className={`transition-all duration-200 ${
-                disabled
-                  ? "opacity-50 cursor-not-allowed"
-                  : "cursor-pointer hover:shadow-md hover:border-primary/30 hover:bg-accent/30"
-              }`}
-              onClick={() => !disabled && handleToolClick(tool.path)}
-            >
-              <CardHeader className="pb-2">
-                <div className="flex items-center gap-3">
-                  <div
-                    className={`h-9 w-9 rounded-lg flex items-center justify-center bg-muted/50 ${tool.color}`}
-                  >
-                    <Icon className="h-4.5 w-4.5" />
+      {/* Tools */}
+      {view === "grid" ? (
+        <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+          {tools.map((tool) => {
+            const Icon = tool.icon;
+            const disabled = !selectedMemberId;
+            return (
+              <Card
+                key={tool.path}
+                className={`transition-all duration-200 ${
+                  disabled
+                    ? "opacity-50 cursor-not-allowed"
+                    : "cursor-pointer hover:shadow-md hover:border-primary/30 hover:bg-accent/30"
+                }`}
+                onClick={() => !disabled && handleToolClick(tool.path)}
+              >
+                <CardHeader className="pb-2">
+                  <div className="flex items-center gap-3">
+                    <div
+                      className={`h-9 w-9 rounded-lg flex items-center justify-center bg-muted/50 ${tool.color}`}
+                    >
+                      <Icon className="h-4.5 w-4.5" />
+                    </div>
+                    <div className="flex-1 min-w-0">
+                      <CardTitle className="text-sm">{tool.title}</CardTitle>
+                    </div>
                   </div>
-                  <div className="flex-1 min-w-0">
-                    <CardTitle className="text-sm">{tool.title}</CardTitle>
-                  </div>
+                  <CardDescription className="text-xs mt-1.5 ml-12">
+                    {tool.description}
+                  </CardDescription>
+                </CardHeader>
+              </Card>
+            );
+          })}
+        </div>
+      ) : (
+        /* List view */
+        <div className="rounded-lg border bg-card divide-y">
+          {tools.map((tool) => {
+            const Icon = tool.icon;
+            const disabled = !selectedMemberId;
+            return (
+              <div
+                key={tool.path}
+                className={`flex items-center gap-4 px-4 py-3 transition-colors ${
+                  disabled ? "opacity-50 cursor-not-allowed" : "cursor-pointer hover:bg-muted/30"
+                }`}
+                onClick={() => !disabled && handleToolClick(tool.path)}
+              >
+                <div
+                  className={`h-9 w-9 rounded-lg flex items-center justify-center bg-muted/50 shrink-0 ${tool.color}`}
+                >
+                  <Icon className="h-4.5 w-4.5" />
                 </div>
-                <CardDescription className="text-xs mt-1.5 ml-12">
-                  {tool.description}
-                </CardDescription>
-              </CardHeader>
-            </Card>
-          );
-        })}
-      </div>
+                <div className="flex-1 min-w-0">
+                  <p className="text-sm font-medium">{tool.title}</p>
+                  <p className="text-xs text-muted-foreground mt-0.5">{tool.description}</p>
+                </div>
+                <ChevronRight className="h-4 w-4 text-muted-foreground/40 shrink-0" />
+              </div>
+            );
+          })}
+        </div>
+      )}
 
       {/* Help text when no member selected */}
       {!selectedMemberId && !loading && members.length > 0 && (

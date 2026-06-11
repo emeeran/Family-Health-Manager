@@ -6,6 +6,7 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { EmptyState } from "@/components/shared/empty-state";
 import { ConfirmDialog } from "@/components/shared/confirm-dialog";
+import { ViewToggle, useViewPreference } from "@/components/shared/view-toggle";
 import { deleteProvider } from "@/lib/api/providers";
 import { useSWRConfig } from "swr";
 import { toast } from "sonner";
@@ -63,6 +64,7 @@ export function ProvidersContent({ providers }: ProvidersContentProps) {
   const { mutate } = useSWRConfig();
   const [deleteOpen, setDeleteOpen] = useState(false);
   const [deleteId, setDeleteId] = useState("");
+  const [view, setView] = useViewPreference("providers-view", "grid");
 
   async function handleDelete() {
     try {
@@ -84,12 +86,15 @@ export function ProvidersContent({ providers }: ProvidersContentProps) {
             {providers.length} provider{providers.length !== 1 ? "s" : ""}
           </p>
         </div>
-        <Link to="/providers/new">
-          <Button className="shadow-sm">
-            <Plus className="h-4 w-4 mr-1.5" />
-            Add Provider
-          </Button>
-        </Link>
+        <div className="flex items-center gap-2">
+          <ViewToggle value={view} onChange={setView} />
+          <Link to="/providers/new">
+            <Button className="shadow-sm">
+              <Plus className="h-4 w-4 mr-1.5" />
+              Add Provider
+            </Button>
+          </Link>
+        </div>
       </div>
 
       {providers.length === 0 ? (
@@ -107,7 +112,7 @@ export function ProvidersContent({ providers }: ProvidersContentProps) {
             </Link>
           }
         />
-      ) : (
+      ) : view === "grid" ? (
         <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
           {providers.map((provider) => (
             <Card
@@ -198,6 +203,75 @@ export function ProvidersContent({ providers }: ProvidersContentProps) {
                 </div>
               </CardContent>
             </Card>
+          ))}
+        </div>
+      ) : (
+        /* List view */
+        <div className="rounded-lg border bg-card divide-y">
+          {providers.map((provider) => (
+            <div
+              key={provider.id}
+              className="group flex items-center gap-4 px-4 py-3 hover:bg-muted/30 transition-colors"
+            >
+              <ProviderAvatar
+                name={provider.name}
+                speciality={provider.speciality}
+                providerType={provider.provider_type}
+              />
+              <div className="flex-1 min-w-0">
+                <div className="flex items-center gap-2">
+                  <Link
+                    to={`/providers/${provider.id}`}
+                    className="text-sm font-medium hover:text-primary transition-colors"
+                  >
+                    {provider.name}
+                  </Link>
+                  <Badge variant="secondary" className="text-[10px] px-1.5 py-0">
+                    {PROVIDER_TYPE_LABELS[provider.provider_type as ProviderType] || "Other"}
+                  </Badge>
+                  {provider.speciality && (
+                    <span className="text-xs text-muted-foreground hidden sm:inline">
+                      · {provider.speciality}
+                    </span>
+                  )}
+                </div>
+                <div className="flex items-center gap-3 mt-0.5 text-xs text-muted-foreground">
+                  {(provider.assigned_members?.length ?? 0) > 0 && (
+                    <span className="flex items-center gap-1">
+                      <User className="h-3 w-3" />
+                      {provider.assigned_members!.length} member
+                      {provider.assigned_members!.length !== 1 ? "s" : ""}
+                    </span>
+                  )}
+                  {provider.phone && (
+                    <span className="flex items-center gap-1">
+                      <Phone className="h-3 w-3" />
+                      {provider.phone}
+                    </span>
+                  )}
+                  {provider.address && (
+                    <span className="items-center gap-1 hidden md:flex">
+                      <MapPin className="h-3 w-3" />
+                      <span className="truncate max-w-[200px]">{provider.address}</span>
+                    </span>
+                  )}
+                  <span className="flex items-center gap-1">
+                    <Clock className="h-3 w-3" />
+                    {formatDate(provider.created_at)}
+                  </span>
+                </div>
+              </div>
+              <button
+                onClick={() => {
+                  setDeleteId(provider.id);
+                  setDeleteOpen(true);
+                }}
+                className="text-muted-foreground hover:text-destructive transition-colors opacity-0 group-hover:opacity-100 p-1 shrink-0"
+                aria-label={`Delete ${provider.name}`}
+              >
+                <Trash2 className="h-3.5 w-3.5" />
+              </button>
+            </div>
           ))}
         </div>
       )}

@@ -1,6 +1,6 @@
 import { useState, useMemo, useEffect } from "react";
 import { useNavigate, Link } from "react-router-dom";
-import { Users, Plus, Search, LayoutGrid, List, ArrowUpDown } from "lucide-react";
+import { Users, Plus, Search, ArrowUpDown } from "lucide-react";
 import {
   Select,
   SelectContent,
@@ -11,6 +11,7 @@ import {
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { EmptyState } from "@/components/shared/empty-state";
 import { ConfirmDialog } from "@/components/shared/confirm-dialog";
+import { ViewToggle, useViewPreference } from "@/components/shared/view-toggle";
 import { deleteMember, getBatchScores } from "@/lib/api/members";
 import { useSWRConfig } from "swr";
 import { toast } from "sonner";
@@ -81,10 +82,7 @@ export function MembersContent({ members }: MembersContentProps) {
   const [deleteId, setDeleteId] = useState("");
   const [search, setSearch] = useState("");
   const [filterKey, setFilterKey] = useState("all");
-  const [view, setView] = useState<"grid" | "list">(() => {
-    if (typeof window === "undefined") return "grid";
-    return (localStorage.getItem(VIEW_KEY) as "grid" | "list") || "grid";
-  });
+  const [view, setView] = useViewPreference(VIEW_KEY, "grid");
   const [sortKey, setSortKey] = useState<string>(() => {
     if (typeof window === "undefined") return "name-asc";
     return localStorage.getItem(SORT_KEY) || "name-asc";
@@ -120,11 +118,6 @@ export function MembersContent({ members }: MembersContentProps) {
         setScoresLoading(false);
       });
   }, [activeMembers]);
-
-  function toggleView(v: "grid" | "list") {
-    setView(v);
-    localStorage.setItem(VIEW_KEY, v);
-  }
 
   function handleSortChange(value: string | null) {
     if (value) {
@@ -279,22 +272,7 @@ export function MembersContent({ members }: MembersContentProps) {
               </SelectContent>
             </Select>
 
-            <div className="flex items-center rounded-lg border border-border/60 overflow-hidden">
-              <button
-                onClick={() => toggleView("grid")}
-                className={`p-2 transition-colors ${view === "grid" ? "bg-muted text-foreground" : "text-muted-foreground hover:text-foreground"}`}
-                aria-label="Grid view"
-              >
-                <LayoutGrid className="h-4 w-4" />
-              </button>
-              <button
-                onClick={() => toggleView("list")}
-                className={`p-2 transition-colors ${view === "list" ? "bg-muted text-foreground" : "text-muted-foreground hover:text-foreground"}`}
-                aria-label="List view"
-              >
-                <List className="h-4 w-4" />
-              </button>
-            </div>
+            <ViewToggle value={view} onChange={setView} />
             <button
               onClick={() => navigate("/people/new")}
               className="inline-flex items-center gap-1.5 rounded-lg bg-primary px-3.5 h-9 text-sm font-semibold text-primary-foreground hover:bg-primary/90 transition-colors"
