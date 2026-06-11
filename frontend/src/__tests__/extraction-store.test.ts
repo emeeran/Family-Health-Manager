@@ -10,27 +10,27 @@ import {
 // Mock sessionStorage
 const store: Record<string, string> = {};
 const mockSessionStorage = {
-  getItem: jest.fn((key: string) => store[key] ?? null),
-  setItem: jest.fn((key: string, value: string) => {
-    store[key] = value;
+  getItem: vi.fn((key: string) => store[key] ?? null),
+  setItem: vi.fn((_key: string, value: string) => {
+    store[_key] = value;
   }),
-  removeItem: jest.fn((key: string) => {
+  removeItem: vi.fn((key: string) => {
     delete store[key];
   }),
-  clear: jest.fn(() => {
+  clear: vi.fn(() => {
     for (const key of Object.keys(store)) delete store[key];
   }),
   get length() {
     return Object.keys(store).length;
   },
-  key: jest.fn((_: number) => null),
+  key: vi.fn((_: number) => null),
 };
 
 Object.defineProperty(globalThis, "sessionStorage", { value: mockSessionStorage });
 
 beforeEach(() => {
   for (const key of Object.keys(store)) delete store[key];
-  jest.clearAllMocks();
+  vi.clearAllMocks();
 });
 
 describe("extraction-store", () => {

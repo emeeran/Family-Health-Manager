@@ -15,7 +15,6 @@ import { ViewToggle, useViewPreference } from "@/components/shared/view-toggle";
 import { deleteMember, getBatchScores } from "@/lib/api/members";
 import { useSWRConfig } from "swr";
 import { toast } from "sonner";
-import { ErrorState } from "@/components/shared/error-state";
 import { computeAge } from "@/lib/utils";
 import { FamilySummaryBar } from "@/components/members/family-summary";
 import { MemberCard, MemberRow } from "@/components/members/member-card";

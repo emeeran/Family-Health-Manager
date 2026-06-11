@@ -9,8 +9,8 @@
     "lint": "eslint",
     "format": "prettier --write \"src/**/*.{ts,tsx,js,jsx,json,css,md}\"",
     "format:check": "prettier --check \"src/**/*.{ts,tsx,js,jsx,json,css,md}\"",
-    "test": "jest",
-    "test:watch": "jest --watch",
+    "test": "vitest run",
+    "test:watch": "vitest",
     "test:e2e": "playwright test",
     "test:e2e:ui": "playwright test --ui",
     "test:e2e:headed": "playwright test --headed"
@@ -40,23 +40,18 @@
     "@evilmartians/lefthook-installer": "^2.1.5",
     "@playwright/test": "^1.59.1",
     "@tailwindcss/postcss": "^4",
-    "@testing-library/jest-dom": "^6.9.1",
-    "@testing-library/react": "^16.3.2",
-    "@types/jest": "^30.0.0",
     "@types/node": "^20",
     "@types/react": "^19",
     "@types/react-dom": "^19",
     "@vitejs/plugin-react": "^6.0.1",
     "eslint": "^9",
     "eslint-plugin-react-hooks": "^7.1.1",
-    "jest": "^30.3.0",
-    "jest-environment-jsdom": "^30.3.0",
     "lefthook": "^2.1.5",
     "prettier": "^3.8.2",
     "tailwindcss": "^4",
-    "ts-jest": "^29.4.9",
     "typescript": "^5",
     "typescript-eslint": "^8.59.1",
-    "vite": "^8.0.8"
+    "vite": "^8.0.8",
+    "vitest": "^4.1.8"
   }
 }
