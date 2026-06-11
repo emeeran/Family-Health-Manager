@@ -270,7 +270,7 @@ export function RecordForm({
     if (reviewVal) setValue("next_review_date", toISODate(reviewVal));
   }
 
-  function resetForm() {
+  const resetForm = useCallback(() => {
     reset({
       record_type: defaultType || undefined,
       record_date: todayStr(),
@@ -287,7 +287,7 @@ export function RecordForm({
     setNotes("");
     setTags([]);
     setTagInput("");
-  }
+  }, [reset, defaultType, defaultProviderId, clearExtractionState]);
 
   function handleSubmit(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault();
@@ -368,17 +368,22 @@ export function RecordForm({
                 setMedSyncDiff(diff);
                 setShowMedSyncDialog(true);
               } else {
+                resetForm();
                 onSaveComplete?.();
               }
             })
-            .catch(() => onSaveComplete?.());
+            .catch(() => {
+              resetForm();
+              onSaveComplete?.();
+            });
         });
       } else if (result.success) {
+        resetForm();
         onSaveComplete?.();
       }
     }
     prevPendingRef.current = isPending;
-  }, [isPending, state, memberId, onSaveComplete]);
+  }, [isPending, state, memberId, onSaveComplete, resetForm]);
 
   return (
     <form ref={formRef} action={formAction} onSubmit={handleSubmit} className="space-y-2 max-w-3xl">

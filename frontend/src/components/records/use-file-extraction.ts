@@ -367,12 +367,27 @@ export function useFileExtraction({
     const controller = new AbortController();
     const timer = setTimeout(() => controller.abort(), EXTRACT_TIMEOUT);
     try {
-      const response = await fetch(`${API_BASE}/members/${memberId}/records/extract`, {
+      let response = await fetch(`${API_BASE}/members/${memberId}/records/extract`, {
         method: "POST",
         body: formData,
         credentials: "include",
         signal: controller.signal,
       });
+
+      // Attempt token refresh on 401, then retry once
+      if (response.status === 401) {
+        const tryRefreshToken = (await import("@/lib/api-client")).tryRefreshToken;
+        const refreshed = await tryRefreshToken();
+        if (refreshed) {
+          response = await fetch(`${API_BASE}/members/${memberId}/records/extract`, {
+            method: "POST",
+            body: formData,
+            credentials: "include",
+            signal: controller.signal,
+          });
+        }
+      }
+
       if (!response.ok) {
         const body = await response.json().catch(() => null);
         const msg =

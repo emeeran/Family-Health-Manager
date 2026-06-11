@@ -31,7 +31,7 @@ const REQUEST_TIMEOUT = 30_000;
  */
 let refreshPromise: Promise<boolean> | null = null;
 
-async function tryRefreshToken(): Promise<boolean> {
+export async function tryRefreshToken(): Promise<boolean> {
   // Reuse in-flight refresh if one is already running
   if (refreshPromise) return refreshPromise;
 

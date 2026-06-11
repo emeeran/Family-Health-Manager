@@ -232,8 +232,8 @@ export const PreConsultationCard = memo(function PreConsultationCard({
       </CardHeader>
       <CardContent className="space-y-3">
         <p className="text-sm text-foreground/70">
-          Select which doctor you're visiting and describe your symptoms. The AI will generate
-          cryptic, specialty-focused questions you can ask during the visit.
+          Select which doctor you're visiting and describe your symptoms. The AI will generate a
+          structured note with your history, symptoms, lab anomalies, and targeted questions.
         </p>
 
         {/* Provider selector */}
@@ -244,11 +244,18 @@ export const PreConsultationCard = memo(function PreConsultationCard({
               Consulting Doctor
             </Label>
             <Select
-              value={selectedProviderId}
+              value={selectedProviderId || "__none__"}
               onValueChange={(v) => setSelectedProviderId(v === "__none__" ? "" : (v ?? ""))}
             >
               <SelectTrigger className="w-full">
-                <SelectValue placeholder="Select a doctor (optional)" />
+                {selectedProvider ? (
+                  <span className="truncate">
+                    {selectedProvider.name}
+                    {selectedProvider.speciality ? ` — ${selectedProvider.speciality}` : ""}
+                  </span>
+                ) : (
+                  <SelectValue placeholder="Select a doctor (optional)" />
+                )}
               </SelectTrigger>
               <SelectContent>
                 <SelectItem value="__none__">General visit (no specific doctor)</SelectItem>
@@ -260,42 +267,43 @@ export const PreConsultationCard = memo(function PreConsultationCard({
                 ))}
               </SelectContent>
             </Select>
-            {selectedProvider?.speciality && (
-              <p className="text-xs text-teal-600 font-medium">
-                Questions will be {selectedProvider.speciality}-specific and cryptic
-              </p>
-            )}
           </div>
         )}
 
-        <Textarea
-          placeholder={`E.g.:\n- Frequent headaches for the past 2 weeks\n- Feeling tired and dizzy\n- Blood sugar readings have been high`}
-          rows={4}
-          value={symptoms}
-          onChange={(e) => setSymptoms(e.target.value)}
-          className="text-sm"
-          disabled={loading}
-        />
+        <div className="space-y-1.5">
+          <Label className="text-xs font-medium flex items-center gap-1.5">
+            <ClipboardList className="h-3.5 w-3.5" />
+            Chief Complaints / Symptoms
+          </Label>
+          <Textarea
+            placeholder={`E.g.:\n- Frequent headaches for the past 2 weeks\n- Feeling tired and dizzy\n- Blood sugar readings have been high`}
+            rows={4}
+            value={symptoms}
+            onChange={(e) => setSymptoms(e.target.value)}
+            className="text-sm"
+            disabled={loading}
+          />
 
-        <div className="flex items-center gap-2">
-          <Button
-            size="sm"
-            onClick={handleGenerate}
-            disabled={loading}
-            className="bg-gradient-to-r from-teal-500 to-cyan-500 text-white hover:from-teal-600 hover:to-cyan-600"
-          >
-            <Sparkles className="h-4 w-4 mr-1.5" />
-            Generate Visit Note
-          </Button>
-          <Button
-            size="sm"
-            variant="ghost"
-            onClick={handleGenerate}
-            disabled={loading}
-            className="text-xs text-muted-foreground"
-          >
-            Generate without symptoms
-          </Button>
+          <div className="flex items-center gap-2">
+            <Button
+              size="sm"
+              onClick={handleGenerate}
+              disabled={loading}
+              className="bg-gradient-to-r from-teal-500 to-cyan-500 text-white hover:from-teal-600 hover:to-cyan-600"
+            >
+              <Sparkles className="h-4 w-4 mr-1.5" />
+              Generate Visit Note
+            </Button>
+            <Button
+              size="sm"
+              variant="ghost"
+              onClick={handleGenerate}
+              disabled={loading}
+              className="text-xs text-muted-foreground"
+            >
+              Generate without symptoms
+            </Button>
+          </div>
         </div>
       </CardContent>
     </Card>

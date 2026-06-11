@@ -1,4 +1,4 @@
-import { useParams, useNavigate, useSearchParams } from "react-router-dom";
+import { useParams, useSearchParams } from "react-router-dom";
 import { listProviders } from "@/lib/api/providers";
 import { createRecord } from "@/lib/api/records";
 import { RecordForm } from "@/components/records/record-form";
@@ -17,7 +17,6 @@ interface ActionResult {
 
 export default function NewRecordPage() {
   const { memberId } = useParams<{ memberId: string }>();
-  const navigate = useNavigate();
   const [searchParams] = useSearchParams();
   const defaultType = (searchParams.get("type") as RecordType) || undefined;
   const defaultProviderId = searchParams.get("provider_id") || undefined;
@@ -28,7 +27,7 @@ export default function NewRecordPage() {
   });
 
   function createAction(mid: string) {
-    return async function (prevState: unknown, formData: FormData): Promise<ActionResult> {
+    return async function (_prevState: unknown, formData: FormData): Promise<ActionResult> {
       const data: HealthRecordCreate = {
         record_type: formData.get("record_type") as RecordType,
         record_date: formData.get("record_date") as string,
@@ -92,7 +91,9 @@ export default function NewRecordPage() {
             defaultType={defaultType}
             defaultProviderId={defaultProviderId}
             defaultChiefComplaint={defaultChiefComplaint}
-            onSaveComplete={() => navigate(`/people/${memberId}`)}
+            onSaveComplete={() => {
+              /* stay on page — form resets itself */
+            }}
           />
         </CardContent>
       </Card>

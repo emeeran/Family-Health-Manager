@@ -1,4 +1,4 @@
-import { useEffect } from "react";
+import { useEffect, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { VerificationBadge } from "@/components/shared/verification-badge";
 import type { VerificationResult } from "@/lib/types/message";
@@ -12,7 +12,7 @@ interface InsightSection {
 }
 
 export function parseSections(markdown: string): InsightSection[] {
-  const parts = markdown.split(/(?=^(?:\d+\.\s*\*{1,2}|##?\s))/m);
+  const parts = markdown.split(/(?=^(?:\d+\.\s*\*{1,2}|#{1,3}\s))/m);
   const sections: InsightSection[] = [];
   for (const part of parts) {
     const trimmed = part.trim();
@@ -20,7 +20,7 @@ export function parseSections(markdown: string): InsightSection[] {
     let title = "";
     let body = trimmed;
     const headingMatch = trimmed.match(
-      /^(?:##?\s*|\d+\.\s*\*{0,2})(.+?)(?:\*{0,2}(?:\s+[-:—]\s*|[-:—]\s+)|\n)/
+      /^(?:#{1,3}\s*|\d+\.\s*\*{0,2})(.+?)(?:\*{0,2}(?:\s+[-:—]\s*|[-:—]\s+)|\n)/
     );
     if (headingMatch) {
       title = headingMatch[1]
@@ -52,6 +52,11 @@ const SECTION_COLORS: Record<string, string> = {
   "risk assessment": "#F59E0B",
   recommendations: "#06B6D4",
   "follow-up": "#EC4899",
+  hx: "#3B82F6",
+  "c/o": "#EF4444",
+  ix: "#10B981",
+  rx: "#F59E0B",
+  q: "#8B5CF6",
 };
 
 function renderInline(text: string) {
@@ -102,7 +107,7 @@ function renderBody(text: string) {
   );
 }
 
-function renderNoteBody(text: string) {
+function renderNoteBody(text: string, { checkable = false }: { checkable?: boolean } = {}) {
   return text.split("\n").map((line, i) => {
     const trimmed = line.trim();
     if (!trimmed) return null;
@@ -118,22 +123,18 @@ function renderNoteBody(text: string) {
     }
     if (/^[-*•]\s/.test(trimmed)) {
       return (
-        <div key={i} className="flex items-start gap-1.5">
-          <span className="text-teal-400 text-xs mt-px shrink-0">•</span>
-          <span className="text-xs leading-snug text-gray-700">
-            {renderInline(trimmed.replace(/^[-*•]\s+/, ""))}
-          </span>
-        </div>
+        <CheckableLine key={i} checkable={checkable} defaultChecked={false}>
+          {renderInline(trimmed.replace(/^[-*•]\s+/, ""))}
+        </CheckableLine>
       );
     }
     if (/^\d+\.\s/.test(trimmed)) {
       const match = trimmed.match(/^(\d+\.)\s*(.*)/);
       if (match) {
         return (
-          <div key={i} className="flex items-start gap-1.5">
-            <span className="text-xs font-medium text-gray-400 shrink-0">{match[1]}</span>
-            <span className="text-xs leading-snug text-gray-700">{renderInline(match[2])}</span>
-          </div>
+          <CheckableLine key={i} checkable={checkable} defaultChecked={false} number={match[1]}>
+            {renderInline(match[2])}
+          </CheckableLine>
         );
       }
     }
@@ -143,6 +144,47 @@ function renderNoteBody(text: string) {
       </p>
     );
   });
+}
+
+function CheckableLine({
+  checkable,
+  defaultChecked,
+  number,
+  children,
+}: {
+  checkable: boolean;
+  defaultChecked: boolean;
+  number?: string;
+  children: React.ReactNode;
+}) {
+  if (!checkable) {
+    return (
+      <div className="flex items-start gap-1.5">
+        {number ? (
+          <span className="text-xs font-medium text-gray-400 shrink-0">{number}</span>
+        ) : (
+          <span className="text-teal-400 text-xs mt-px shrink-0">•</span>
+        )}
+        <span className="text-xs leading-snug text-gray-700">{children}</span>
+      </div>
+    );
+  }
+  const [checked, setChecked] = useState(defaultChecked);
+  return (
+    <label className="flex items-start gap-2 cursor-pointer group">
+      <input
+        type="checkbox"
+        checked={checked}
+        onChange={() => setChecked(!checked)}
+        className="mt-0.5 h-3.5 w-3.5 shrink-0 rounded border-gray-300 text-teal-600 focus:ring-teal-500"
+      />
+      <span
+        className={`text-xs leading-snug ${checked ? "line-through text-gray-400" : "text-gray-700"}`}
+      >
+        {children}
+      </span>
+    </label>
+  );
 }
 
 /* ── InsightReport ── */
@@ -432,12 +474,15 @@ export function PreConsultationNoteViewer({
           </div>
         </header>
         <div className="space-y-2.5">
-          {sections.map((section, i) => (
-            <div key={i} className="pl-3 border-l-2 border-teal-300">
-              <h2 className="text-xs font-bold text-teal-800 mb-0.5">{section.title}</h2>
-              {renderNoteBody(section.body)}
-            </div>
-          ))}
+          {sections.map((section, i) => {
+            const isQSection = /q\s*\(|q\s*$|question/i.test(section.title.toLowerCase());
+            return (
+              <div key={i} className="pl-3 border-l-2 border-teal-300">
+                <h2 className="text-xs font-bold text-teal-800 mb-0.5">{section.title}</h2>
+                {renderNoteBody(section.body, { checkable: isQSection })}
+              </div>
+            );
+          })}
         </div>
         <div className="mt-4 pt-2 border-t border-gray-100 text-[10px] text-gray-300">
           AI-generated · Review with your doctor

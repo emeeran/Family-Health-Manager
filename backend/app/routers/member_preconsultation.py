@@ -53,7 +53,7 @@ async def _get_provider_specialty_context(
         specialty_focus = (
             f"\nSPECIALTY FOCUS — CRITICAL:\n"
             f"This consultation is with a {provider.speciality} specialist. "
-            f"ALL questions MUST be strictly within the {provider.speciality} scope of practice. "
+            f"ALL questions in section Q MUST be strictly within the {provider.speciality} scope of practice. "
             f"Generate questions that only a {provider.speciality} specialist would answer — "
             f"about disease progression, treatment response, medication optimization within their domain, "
             f"specialist-level investigations, and procedure-related concerns. "
