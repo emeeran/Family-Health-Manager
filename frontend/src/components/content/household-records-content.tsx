@@ -1,4 +1,4 @@
-import { useState, useMemo } from "react";
+import { useState, useMemo, useCallback } from "react";
 import { FileText, Search } from "lucide-react";
 import { Card, CardContent } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
@@ -35,6 +35,11 @@ export function HouseholdRecordsContent({
   const [memberFilter, setMemberFilter] = useState<string>("all");
   const [view, setView] = useViewPreference("records-view", "list");
   const { openQuickView } = useRecordQuickView();
+
+  const handleRecordClick = useCallback(
+    (r: HealthRecordResponse) => openQuickView(r.id, r.family_member_id),
+    [openQuickView]
+  );
 
   const filtered = useMemo(() => {
     return records.filter((r) => {
@@ -114,16 +119,12 @@ export function HouseholdRecordsContent({
           }
         />
       ) : view === "list" ? (
-        <RecordsTable
-          records={filtered}
-          memberNames={memberNames}
-          onRowClick={(r) => openQuickView(r.id, r.family_member_id)}
-        />
+        <RecordsTable records={filtered} memberNames={memberNames} onRowClick={handleRecordClick} />
       ) : (
         <RecordsCards
           records={filtered}
           memberNames={memberNames}
-          onCardClick={(r) => openQuickView(r.id, r.family_member_id)}
+          onCardClick={handleRecordClick}
         />
       )}
     </div>

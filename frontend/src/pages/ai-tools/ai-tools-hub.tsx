@@ -1,4 +1,3 @@
-import { useState, useEffect } from "react";
 import { useNavigate, useSearchParams } from "react-router-dom";
 import { Card, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -12,6 +11,7 @@ import {
 import { Label } from "@/components/ui/label";
 import { listMembers } from "@/lib/api/members";
 import { ViewToggle, useViewPreference } from "@/components/shared/view-toggle";
+import useSWR from "swr";
 import type { FamilyMemberResponse } from "@/lib/types/member";
 import {
   MessageSquare,
@@ -81,18 +81,14 @@ const tools: ToolCard[] = [
 export default function AiToolsHubPage() {
   const navigate = useNavigate();
   const [searchParams, setSearchParams] = useSearchParams();
-  const [members, setMembers] = useState<FamilyMemberResponse[]>([]);
-  const [loading, setLoading] = useState(true);
+  const { data: members = [], isLoading: loading } = useSWR<FamilyMemberResponse[]>(
+    "members",
+    listMembers,
+    { revalidateOnFocus: false, dedupingInterval: 30_000 }
+  );
   const [view, setView] = useViewPreference("ai-tools-view", "grid");
 
   const selectedMemberId = searchParams.get("memberId") || "";
-
-  useEffect(() => {
-    listMembers()
-      .then(setMembers)
-      .catch(() => setMembers([]))
-      .finally(() => setLoading(false));
-  }, []);
 
   function handleMemberChange(value: string | null) {
     const memberId = value || "__none__";
@@ -123,41 +119,37 @@ export default function AiToolsHubPage() {
       {/* Member Selector */}
       <Card>
         <div className="p-4">
-          <div className="flex items-center gap-4">
-            <div className="flex-1">
-              <Label className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
-                Select Family Member
-              </Label>
-              {loading ? (
-                <div className="flex items-center gap-2 mt-1.5">
-                  <Loader2 className="h-4 w-4 animate-spin text-muted-foreground" />
-                  <span className="text-sm text-muted-foreground">Loading members...</span>
-                </div>
-              ) : (
-                <Select value={selectedMemberId || "__none__"} onValueChange={handleMemberChange}>
-                  <SelectTrigger className="mt-1.5">
-                    <SelectValue placeholder="Choose a family member to get started" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="__none__">Choose a family member...</SelectItem>
-                    {members.map((m) => (
-                      <SelectItem key={m.id} value={m.id}>
-                        {m.first_name} {m.last_name}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              )}
+          <Label className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
+            Select Family Member
+          </Label>
+          {loading ? (
+            <div className="flex items-center gap-2 mt-1.5">
+              <Loader2 className="h-4 w-4 animate-spin text-muted-foreground" />
+              <span className="text-sm text-muted-foreground">Loading members...</span>
             </div>
-            {selectedMemberId && (
-              <div className="flex items-center gap-1.5 text-sm text-muted-foreground bg-muted/50 rounded-lg px-3 py-2">
-                <Users className="h-3.5 w-3.5" />
-                {members.find((m) => m.id === selectedMemberId)
-                  ? `${members.find((m) => m.id === selectedMemberId)!.first_name} ${members.find((m) => m.id === selectedMemberId)!.last_name}`
-                  : "Selected"}
-              </div>
-            )}
-          </div>
+          ) : (
+            <Select value={selectedMemberId || "__none__"} onValueChange={handleMemberChange}>
+              <SelectTrigger className="mt-1.5">
+                <SelectValue placeholder="Choose a family member to get started" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="__none__">Choose a family member...</SelectItem>
+                {members.map((m) => (
+                  <SelectItem key={m.id} value={m.id}>
+                    {m.first_name} {m.last_name}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          )}
+          {selectedMemberId && (
+            <div className="flex items-center gap-1.5 text-sm text-muted-foreground bg-muted/50 rounded-lg px-3 py-2 mt-2">
+              <Users className="h-3.5 w-3.5" />
+              {members.find((m) => m.id === selectedMemberId)
+                ? `${members.find((m) => m.id === selectedMemberId)!.first_name} ${members.find((m) => m.id === selectedMemberId)!.last_name}`
+                : "Selected"}
+            </div>
+          )}
         </div>
       </Card>
 
@@ -197,7 +189,6 @@ export default function AiToolsHubPage() {
           })}
         </div>
       ) : (
-        /* List view */
         <div className="rounded-lg border bg-card divide-y">
           {tools.map((tool) => {
             const Icon = tool.icon;

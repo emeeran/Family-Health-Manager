@@ -1,4 +1,4 @@
-import { useState, useMemo, useEffect } from "react";
+import { useState, useMemo, useEffect, useCallback } from "react";
 import { useNavigate, Link } from "react-router-dom";
 import { Users, Plus, Search, ArrowUpDown } from "lucide-react";
 import {
@@ -118,6 +118,11 @@ export function MembersContent({ members }: MembersContentProps) {
         setScoresLoading(false);
       });
   }, [activeMembers]);
+
+  const handleRequestDelete = useCallback((id: string) => {
+    setDeleteId(id);
+    setDeleteOpen(true);
+  }, []);
 
   function handleSortChange(value: string | null) {
     if (value) {
@@ -294,10 +299,7 @@ export function MembersContent({ members }: MembersContentProps) {
                 key={member.id}
                 member={member}
                 scoreData={healthScores[member.id]}
-                onDelete={(id) => {
-                  setDeleteId(id);
-                  setDeleteOpen(true);
-                }}
+                onDelete={handleRequestDelete}
               />
             ))}
           </div>
@@ -308,10 +310,7 @@ export function MembersContent({ members }: MembersContentProps) {
                 key={member.id}
                 member={member}
                 scoreData={healthScores[member.id]}
-                onDelete={(id) => {
-                  setDeleteId(id);
-                  setDeleteOpen(true);
-                }}
+                onDelete={handleRequestDelete}
               />
             ))}
           </div>

@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useCallback } from "react";
 import { Link } from "react-router-dom";
 import { Plus, Stethoscope, Phone, MapPin, Clock, Trash2, User } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -65,6 +65,11 @@ export function ProvidersContent({ providers }: ProvidersContentProps) {
   const [deleteOpen, setDeleteOpen] = useState(false);
   const [deleteId, setDeleteId] = useState("");
   const [view, setView] = useViewPreference("providers-view", "grid");
+
+  const handleRequestDelete = useCallback((id: string) => {
+    setDeleteId(id);
+    setDeleteOpen(true);
+  }, []);
 
   async function handleDelete() {
     try {
@@ -191,10 +196,7 @@ export function ProvidersContent({ providers }: ProvidersContentProps) {
                     Added {formatDate(provider.created_at)}
                   </p>
                   <button
-                    onClick={() => {
-                      setDeleteId(provider.id);
-                      setDeleteOpen(true);
-                    }}
+                    onClick={() => handleRequestDelete(provider.id)}
                     className="text-muted-foreground hover:text-destructive transition-colors opacity-0 group-hover:opacity-100 p-1"
                     aria-label={`Delete ${provider.name}`}
                   >
