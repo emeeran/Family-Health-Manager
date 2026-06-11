@@ -20,7 +20,8 @@ import {
 } from "@/components/ui/dialog";
 import { RECORD_TYPE_LABELS } from "@/lib/constants";
 import { serializeClinicalData } from "@/lib/clinical-data";
-import { createRecord } from "@/lib/api/records";
+import { createRecord, regenerateSummary } from "@/lib/api/records";
+import { simpleMarkdown } from "@/lib/markdown";
 import { computeMedicationDiff, applyMedicationSync } from "@/lib/api/members";
 import { MedicationSyncDialog } from "./medication-sync-dialog";
 import { VerificationBadge } from "@/components/shared/verification-badge";
@@ -153,6 +154,9 @@ export function BatchRecordCard({
   const [formData, setFormData] = useState(buildInitialData(item));
   const [error, setError] = useState<string | null>(item.error || null);
   const [expanded, setExpanded] = useState(defaultExpanded ?? false);
+  const [summary, setSummary] = useState<string | null>(null);
+  const [savedRecordId, setSavedRecordId] = useState<string | null>(null);
+  const [summaryRegenerating, setSummaryRegenerating] = useState(false);
   const cardRef = useRef<HTMLDivElement>(null);
 
   // React to parent changing defaultExpanded (e.g. "Review Next" advancing)
@@ -195,7 +199,7 @@ export function BatchRecordCard({
         ? toISODate(formData.next_review_date) || formData.next_review_date
         : null;
 
-      await createRecord(
+      const savedRecord = await createRecord(
         memberId,
         {
           record_type: formData.record_type,
@@ -211,6 +215,11 @@ export function BatchRecordCard({
         item.staging_file_id || undefined,
         item.filename
       );
+
+      if (savedRecord.summary) {
+        setSummary(savedRecord.summary);
+      }
+      setSavedRecordId(savedRecord.id);
 
       setStatus("saved");
       onStatusChange(index, "saved");
@@ -247,7 +256,6 @@ export function BatchRecordCard({
   const isSaved = status === "saved";
   const isSkipped = status === "skipped";
   const isSaving = status === "saving";
-  const _isPending = status === "pending" || status === "editing" || status === "error";
 
   const ext = item.extracted;
   const rxCount = ext?.prescriptions?.length || 0;
@@ -367,7 +375,52 @@ export function BatchRecordCard({
           {isSkipped && <span className="text-xs text-gray-400">Skipped</span>}
         </div>
 
-        {/* Error */}
+        {/* Summary section — shown after save */}
+        {isSaved && summary && (
+          <details
+            className="mx-4 mb-3 rounded-lg border border-emerald-200 bg-white overflow-hidden"
+            open
+          >
+            <summary className="px-3 py-2 text-xs font-semibold text-emerald-800 bg-emerald-50 cursor-pointer select-none flex items-center gap-1.5">
+              <FileText className="h-3.5 w-3.5" />
+              Consultation Summary
+            </summary>
+            <div className="px-3 py-2">
+              <div
+                className="text-xs text-gray-700 prose prose-sm max-w-none prose-table:text-xs prose-th:px-2 prose-th:py-1 prose-td:px-2 prose-td:py-1 prose-th:bg-gray-50"
+                dangerouslySetInnerHTML={{ __html: simpleMarkdown(summary) }}
+              />
+              <div className="mt-2 pt-2 border-t border-gray-100 flex items-center gap-2">
+                {savedRecordId && (
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    className="h-6 text-[10px]"
+                    onClick={async () => {
+                      if (!savedRecordId) return;
+                      setSummaryRegenerating(true);
+                      try {
+                        const result = await regenerateSummary(memberId, savedRecordId);
+                        if (result.summary) {
+                          setSummary(result.summary);
+                          toast.success("Summary regenerated");
+                        }
+                      } catch {
+                        toast.error("Failed to regenerate summary");
+                      } finally {
+                        setSummaryRegenerating(false);
+                      }
+                    }}
+                    disabled={summaryRegenerating}
+                  >
+                    {summaryRegenerating ? <Loader2 className="h-3 w-3 mr-1 animate-spin" /> : null}
+                    Regenerate
+                  </Button>
+                )}
+              </div>
+            </div>
+          </details>
+        )}
         {error && !isSaved && !isSkipped && (
           <div className="px-4 pb-2 flex items-start gap-2">
             <AlertTriangle className="h-4 w-4 text-red-500 shrink-0 mt-0.5" />

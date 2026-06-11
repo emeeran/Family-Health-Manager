@@ -11,6 +11,7 @@ export interface HealthRecordCreate {
   prescription_text?: string | null;
   next_review_date?: string | null;
   tags?: string[] | null;
+  summary?: string | null;
 }
 
 export interface HealthRecordUpdate {
@@ -20,6 +21,7 @@ export interface HealthRecordUpdate {
   prescription_text?: string | null;
   next_review_date?: string | null;
   tags?: string[] | null;
+  summary?: string | null;
 }
 
 export interface AttachmentBrief {
@@ -41,6 +43,7 @@ export interface HealthRecordResponse {
   diagnosis: string | null;
   prescription_text: string | null;
   next_review_date: string | null;
+  summary: string | null;
   tags: string[] | null;
   is_deleted: boolean;
   created_at: string;

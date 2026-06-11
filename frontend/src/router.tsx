@@ -15,6 +15,15 @@ const PeoplePage = lazy(() => import("@/pages/people"));
 const ProvidersPage = lazy(() => import("@/pages/providers"));
 const ChatPage = lazy(() => import("@/pages/chat"));
 
+// AI Tools pages
+const AiToolsHubPage = lazy(() => import("@/pages/ai-tools/ai-tools-hub"));
+const AiToolsChatPage = lazy(() => import("@/pages/ai-tools/chat"));
+const AiToolsInsightsPage = lazy(() => import("@/pages/ai-tools/insights"));
+const AiToolsPreConsultPage = lazy(() => import("@/pages/ai-tools/pre-consultation"));
+const AiToolsDrugInteractionsPage = lazy(() => import("@/pages/ai-tools/drug-interactions"));
+const AiToolsSummariesPage = lazy(() => import("@/pages/ai-tools/summaries"));
+const AiToolsSmartEntryPage = lazy(() => import("@/pages/ai-tools/smart-entry"));
+
 // Member pages (kept for deep linking)
 const NewMemberPage = lazy(() => import("@/pages/member-new"));
 const MemberDetailPage = lazy(() => import("@/pages/member-detail"));
@@ -88,6 +97,15 @@ export const router = createBrowserRouter([
       { path: "records", element: withSuspense(HouseholdRecordsPage) },
       { path: "chat", element: withSuspense(ChatPage) },
 
+      // ── AI Tools ──
+      { path: "ai-tools", element: withSuspense(AiToolsHubPage) },
+      { path: "ai-tools/chat", element: withSuspense(AiToolsChatPage) },
+      { path: "ai-tools/insights", element: withSuspense(AiToolsInsightsPage) },
+      { path: "ai-tools/pre-consultation", element: withSuspense(AiToolsPreConsultPage) },
+      { path: "ai-tools/drug-interactions", element: withSuspense(AiToolsDrugInteractionsPage) },
+      { path: "ai-tools/summaries", element: withSuspense(AiToolsSummariesPage) },
+      { path: "ai-tools/smart-entry", element: withSuspense(AiToolsSmartEntryPage) },
+
       // ── People / Member sub-routes ──
       { path: "people/new", element: withSuspense(NewMemberPage) },
       { path: "people/:memberId", element: withSuspense(MemberDetailPage) },
@@ -153,7 +171,7 @@ export const router = createBrowserRouter([
       {
         path: "members/:memberId/assistant",
         loader: ({ params }: { params: { memberId?: string } }) => {
-          throw redirect(`/chat?scope=member&memberId=${params.memberId}`);
+          throw redirect(`/ai-tools?memberId=${params.memberId}`);
         },
       },
       {

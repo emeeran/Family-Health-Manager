@@ -171,3 +171,24 @@ export function mergeRecords(memberId: string, keeperId: string, loserIds: strin
     body: { keeper_id: keeperId, loser_ids: loserIds },
   });
 }
+
+export function regenerateSummary(memberId: string, recordId: string) {
+  return apiRequest<HealthRecordResponse>(
+    `/members/${memberId}/records/${recordId}/regenerate-summary`,
+    { method: "POST" }
+  );
+}
+
+export interface BackfillSummariesResponse {
+  updated_count: number;
+  error_count?: number;
+  total_remaining: number;
+  message: string;
+}
+
+export function backfillSummaries(memberId: string, limit = 10) {
+  return apiRequest<BackfillSummariesResponse>(`/members/${memberId}/records/backfill-summaries`, {
+    method: "POST",
+    params: { limit: String(limit) },
+  });
+}

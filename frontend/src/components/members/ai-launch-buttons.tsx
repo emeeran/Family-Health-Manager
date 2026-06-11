@@ -15,11 +15,11 @@ export const AiLaunchButtons = memo(function AiLaunchButtons({ data }: AiLaunchB
   const navigate = useNavigate();
 
   const openChat = useCallback(() => {
-    navigate(`/chat?scope=member&memberId=${member.id}`);
+    navigate(`/ai-tools/chat?memberId=${member.id}`);
   }, [navigate, member.id]);
 
   const openAssistant = useCallback(() => {
-    navigate(`/chat?scope=member&memberId=${member.id}`);
+    navigate(`/ai-tools?memberId=${member.id}`);
   }, [navigate, member.id]);
 
   return (

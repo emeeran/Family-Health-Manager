@@ -486,6 +486,159 @@ class AIService:
             self.db, file_path, mime_type, self._last_provider_ref
         )
 
+    async def generate_consultation_summary(self, extracted_data: dict) -> str:
+        """Generate a human-readable consultation summary from extracted fields.
+
+        Uses the AI provider failover chain. Falls back to a basic template
+        if all providers fail.
+        """
+        from pathlib import Path
+
+        # Build context from extracted data
+        parts: list[str] = []
+        field_labels = {
+            "record_type": "Record Type",
+            "record_date": "Visit Date",
+            "record_time": "Visit Time",
+            "provider_name": "Provider",
+            "chief_complaint": "Chief Complaint",
+            "diagnosis": "Diagnosis",
+            "existing_conditions": "Existing Conditions",
+            "investigations": "Investigations Ordered",
+            "prescription_text": "Prescription Text",
+            "next_review_date": "Next Review Date",
+            "clinical_data": "Clinical Notes",
+        }
+        for key, label in field_labels.items():
+            val = extracted_data.get(key)
+            if val:
+                parts.append(f"**{label}:** {val}")
+
+        # Always include record type and date even without other data
+        if not parts:
+            rt = extracted_data.get("record_type", "")
+            rd = extracted_data.get("record_date", "")
+            if rt or rd:
+                parts.append(f"**Record:** {rt} on {rd}")
+
+        # Structured tables
+        prescriptions = extracted_data.get("prescriptions")
+        if prescriptions and isinstance(prescriptions, list):
+            parts.append("\n**Prescriptions:**")
+            for rx in prescriptions:
+                parts.append(
+                    f"- {rx.get('type', '')} {rx.get('medicine', '')} "
+                    f"{rx.get('dosage', '')} {rx.get('timing', '')} "
+                    f"× {rx.get('duration', '')} {rx.get('note', '')}".strip()
+                )
+
+        lab_tests = extracted_data.get("lab_tests")
+        if lab_tests and isinstance(lab_tests, list):
+            parts.append("\n**Lab Tests:**")
+            for lt in lab_tests:
+                parts.append(
+                    f"- {lt.get('test_name', '')}: {lt.get('result', '')} "
+                    f"{lt.get('units', '')} (ref: {lt.get('ref_value', '')}) "
+                    f"— {lt.get('note', '')}".strip()
+                )
+
+        if not parts:
+            return ""
+
+        context_str = "\n".join(parts)
+
+        # Load prompt template
+        prompt_path = Path(__file__).resolve().parent.parent.parent.parent / "prompts" / "consultation_summary.md"
+        try:
+            prompt_template = prompt_path.read_text()
+        except FileNotFoundError:
+            prompt_template = (
+                "Generate a clear consultation summary from this medical data.\n\n"
+                "{extracted_data}"
+            )
+
+        prompt = prompt_template.replace("{extracted_data}", context_str)
+
+        # Try AI providers
+        try:
+            result, provider = await self._call_ai(prompt, "")
+            if result:
+                logger.info("Consultation summary generated via %s", provider)
+                return self._strip_markdown_fences(result)
+        except Exception as exc:
+            logger.warning("AI summary generation failed, using template: %s", exc)
+
+        # Fallback: basic template from structured fields
+        return self._build_template_summary(extracted_data)
+
+    @staticmethod
+    def _build_template_summary(data: dict) -> str:
+        """Build a basic summary template without AI — used as fallback."""
+        lines: list[str] = ["## Consultation Summary\n"]
+
+        # Visit overview
+        parts = []
+        if data.get("record_date"):
+            parts.append(f"**Date:** {data['record_date']}")
+        if data.get("record_time"):
+            parts.append(f"**Time:** {data['record_time']}")
+        if data.get("provider_name"):
+            parts.append(f"**Provider:** {data['provider_name']}")
+        if data.get("chief_complaint"):
+            parts.append(f"**Chief Complaint:** {data['chief_complaint']}")
+        if parts:
+            lines.append("\n".join(parts))
+
+        # Diagnosis
+        if data.get("diagnosis"):
+            lines.append(f"\n### Diagnosis\n{data['diagnosis']}")
+        if data.get("existing_conditions"):
+            lines.append(f"\n### Existing Conditions\n{data['existing_conditions']}")
+
+        # Lab results table
+        lab_tests = data.get("lab_tests")
+        if lab_tests and isinstance(lab_tests, list):
+            lines.append("\n### Lab Results\n")
+            lines.append("| Test | Result | Reference | Status |")
+            lines.append("|------|--------|-----------|--------|")
+            for lt in lab_tests:
+                lines.append(
+                    f"| {lt.get('test_name', '')} "
+                    f"| {lt.get('result', '')} {lt.get('units', '')} "
+                    f"| {lt.get('ref_value', '')} "
+                    f"| {lt.get('note', '')} |"
+                )
+
+        # Prescriptions table
+        prescriptions = data.get("prescriptions")
+        if prescriptions and isinstance(prescriptions, list):
+            lines.append("\n### Prescribed Medications\n")
+            lines.append("| Medicine | Dosage | Timing | Duration | Notes |")
+            lines.append("|----------|--------|--------|----------|-------|")
+            for rx in prescriptions:
+                lines.append(
+                    f"| {rx.get('type', '')} {rx.get('medicine', '')} "
+                    f"| {rx.get('dosage', '')} "
+                    f"| {rx.get('timing', '')} "
+                    f"| {rx.get('duration', '')} "
+                    f"| {rx.get('note', '')} |"
+                )
+
+        # Clinical notes
+        if data.get("clinical_data"):
+            lines.append(f"\n### Notes\n{data['clinical_data']}")
+
+        # Follow-up
+        followup_parts = []
+        if data.get("next_review_date"):
+            followup_parts.append(f"**Next Review:** {data['next_review_date']}")
+        if data.get("investigations"):
+            followup_parts.append(f"**Investigations:** {data['investigations']}")
+        if followup_parts:
+            lines.append("\n### Follow-up\n" + "\n".join(followup_parts))
+
+        return "\n".join(lines)
+
     # ---- Provider methods (delegate to providers/) ----
 
     async def _call_ollama_text(self, prompt: str) -> str | None:

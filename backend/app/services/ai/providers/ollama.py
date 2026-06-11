@@ -15,7 +15,7 @@ logger = logging.getLogger(__name__)
 
 def _ollama_timeout(prompt_len: int) -> httpx.Timeout:
     """Adaptive timeout: shorter for small prompts, longer for complex ones."""
-    read = min(30 + prompt_len // 500, 120)
+    read = min(30 + prompt_len // 500, 240)
     return httpx.Timeout(connect=10, read=read, write=10, pool=10)
 
 

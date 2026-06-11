@@ -1,6 +1,6 @@
 import { useState, useMemo, useEffect } from "react";
 import { Link, useNavigate } from "react-router-dom";
-import { Plus, FileText, Search, Upload, Trash2, X } from "lucide-react";
+import { Plus, FileText, Search, Upload, Trash2, X, Sparkles, Loader2 } from "lucide-react";
 import { Card, CardContent } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
@@ -16,7 +16,7 @@ import { EmptyState } from "@/components/shared/empty-state";
 import { ConfirmDialog } from "@/components/shared/confirm-dialog";
 import { RecordsTable } from "@/components/records/records-table";
 import { RECORD_TYPE_LABELS } from "@/lib/constants";
-import { cleanupEmptyRecords, batchDeleteRecords } from "@/lib/api/records";
+import { cleanupEmptyRecords, batchDeleteRecords, backfillSummaries } from "@/lib/api/records";
 import type { HealthRecordResponse } from "@/lib/types/health-record";
 import type { FamilyMemberResponse } from "@/lib/types/member";
 import type { RecordType } from "@/lib/types/enums";
@@ -38,6 +38,8 @@ export function RecordsListContent({ records, member, onRefresh }: RecordsListCo
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [isDeleting, setIsDeleting] = useState(false);
   const [showBatchDelete, setShowBatchDelete] = useState(false);
+  const [backfilling, setBackfilling] = useState(false);
+  const [backfillMessage, setBackfillMessage] = useState<string | null>(null);
 
   const allTags = useMemo(() => {
     const set = new Set<string>();
@@ -87,6 +89,42 @@ export function RecordsListContent({ records, member, onRefresh }: RecordsListCo
       <div className="flex items-center justify-between">
         <h1 className="text-2xl font-bold">Health Records</h1>
         <div className="flex items-center gap-2">
+          {records.length > 0 && records.some((r) => !r.summary) && (
+            <Button
+              variant="outline"
+              onClick={async () => {
+                setBackfilling(true);
+                setBackfillMessage(null);
+                try {
+                  const result = await backfillSummaries(member.id, 10);
+                  setBackfillMessage(result.message);
+                  if (result.updated_count > 0) onRefresh?.();
+                  // If more remaining, keep going
+                  if (result.total_remaining > 0) {
+                    let remaining = result.total_remaining;
+                    while (remaining > 0) {
+                      const next = await backfillSummaries(member.id, 10);
+                      remaining = next.total_remaining;
+                      if (next.updated_count > 0) onRefresh?.();
+                      if (next.updated_count === 0 && next.total_remaining > 0) break; // errors
+                    }
+                  }
+                } catch {
+                  setBackfillMessage("Failed to generate summaries. Try again.");
+                } finally {
+                  setBackfilling(false);
+                }
+              }}
+              disabled={backfilling}
+            >
+              {backfilling ? (
+                <Loader2 className="h-4 w-4 mr-1 animate-spin" />
+              ) : (
+                <Sparkles className="h-4 w-4 mr-1" />
+              )}
+              {backfilling ? "Generating..." : "Generate Summaries"}
+            </Button>
+          )}
           {records.length > 0 && (
             <Button variant="outline" onClick={() => setShowCleanup(true)}>
               <Trash2 className="h-4 w-4 mr-1" />
@@ -219,6 +257,21 @@ export function RecordsListContent({ records, member, onRefresh }: RecordsListCo
           }
         }}
       />
+
+      {/* Backfill status toast */}
+      {backfillMessage && !backfilling && (
+        <div className="fixed bottom-4 right-4 z-50 max-w-sm rounded-lg border bg-background p-3 shadow-lg text-sm">
+          <p>{backfillMessage}</p>
+          <Button
+            size="sm"
+            variant="ghost"
+            className="mt-1 h-6 text-xs"
+            onClick={() => setBackfillMessage(null)}
+          >
+            Dismiss
+          </Button>
+        </div>
+      )}
 
       <ConfirmDialog
         open={showBatchDelete}

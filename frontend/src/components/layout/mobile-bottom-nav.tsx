@@ -1,5 +1,5 @@
 import { Link, useLocation } from "react-router-dom";
-import { Home, Users, Stethoscope, ClipboardList, MessageSquare } from "lucide-react";
+import { Home, Users, Stethoscope, ClipboardList, Sparkles } from "lucide-react";
 import { cn } from "@/lib/utils";
 
 const navItems = [
@@ -7,7 +7,7 @@ const navItems = [
   { label: "People", href: "/people", icon: Users },
   { label: "Providers", href: "/providers", icon: Stethoscope },
   { label: "Records", href: "/records", icon: ClipboardList },
-  { label: "Chat", href: "/chat", icon: MessageSquare },
+  { label: "AI Tools", href: "/ai-tools", icon: Sparkles },
 ];
 
 export function MobileBottomNav() {

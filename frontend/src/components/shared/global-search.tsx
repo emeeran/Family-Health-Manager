@@ -195,6 +195,7 @@ export function GlobalSearch({ open, onOpenChange }: GlobalSearchProps) {
             diagnosis: r.diagnosis,
             prescription_text: null,
             next_review_date: null,
+            summary: null,
             provider_id: null,
             provider_name: null,
             is_deleted: false,

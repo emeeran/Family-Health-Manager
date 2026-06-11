@@ -154,6 +154,18 @@ async def create_tables():
                     conn.commit()
                     logger.info("Added 'settings_json' column to households table")
 
+            # Health record summary column
+            if "health_records" in inspector.get_table_names():
+                hr_cols = {c["name"] for c in inspector.get_columns("health_records")}
+                if "summary" not in hr_cols:
+                    conn.execute(
+                        __import__("sqlalchemy").text(
+                            "ALTER TABLE health_records ADD COLUMN summary TEXT"
+                        )
+                    )
+                    conn.commit()
+                    logger.info("Added 'summary' column to health_records table")
+
         sync_engine.dispose()
     else:
         # Production: migrations should be run separately

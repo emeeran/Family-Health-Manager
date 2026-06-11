@@ -10,10 +10,11 @@ import { ConfirmDialog } from "@/components/shared/confirm-dialog";
 import { VerificationBadge } from "@/components/shared/verification-badge";
 import { RECORD_TYPE_LABELS, GENDER_LABELS } from "@/lib/constants";
 import { computeAge, formatDate } from "@/lib/utils";
-import { deleteRecord, getRecord, getRecordInsight } from "@/lib/api/records";
+import { deleteRecord, getRecord, getRecordInsight, regenerateSummary } from "@/lib/api/records";
+import { simpleMarkdown } from "@/lib/markdown";
 import { streamRequest } from "@/lib/api-client";
 import { toast } from "sonner";
-import { Printer, Sparkles, RefreshCw, AlertTriangle } from "lucide-react";
+import { Printer, Sparkles, RefreshCw, AlertTriangle, FileText } from "lucide-react";
 import type { HealthRecordResponse, RecordInsight } from "@/lib/types/health-record";
 import type { FamilyMemberResponse } from "@/lib/types/member";
 
@@ -29,6 +30,7 @@ export function RecordDetailContent({ record: initialRecord, member }: RecordDet
   const [insight, setInsight] = useState<RecordInsight | null>(null);
   const [insightLoading, setInsightLoading] = useState(true);
   const [regenerating, setRegenerating] = useState(false);
+  const [summaryRegenerating, setSummaryRegenerating] = useState(false);
   const [streamText, setStreamText] = useState("");
   const [streamStage, setStreamStage] = useState("");
   const isLabReport = record.record_type === "lab_report";
@@ -140,6 +142,19 @@ export function RecordDetailContent({ record: initialRecord, member }: RecordDet
       setRecord(updated);
     } catch {
       /* keep current state */
+    }
+  }
+
+  async function handleRegenerateSummary() {
+    setSummaryRegenerating(true);
+    try {
+      const updated = await regenerateSummary(member.id, record.id);
+      setRecord(updated);
+      toast.success("Consultation summary regenerated");
+    } catch {
+      toast.error("Failed to regenerate summary");
+    } finally {
+      setSummaryRegenerating(false);
     }
   }
 
@@ -268,6 +283,46 @@ export function RecordDetailContent({ record: initialRecord, member }: RecordDet
             </div>
           )}
         </div>
+      )}
+
+      {/* Consultation Summary */}
+      {record.summary && (
+        <Card className="border-emerald-200 dark:border-emerald-900 bg-emerald-50/50 dark:bg-emerald-950/20 print:hidden">
+          <CardHeader className="pb-3">
+            <div className="flex items-center justify-between">
+              <CardTitle className="text-sm font-semibold flex items-center gap-2">
+                <FileText className="h-4 w-4 text-emerald-600" />
+                Consultation Summary
+              </CardTitle>
+              <Button
+                variant="ghost"
+                size="sm"
+                className="h-7 gap-1.5 text-xs"
+                onClick={handleRegenerateSummary}
+                disabled={summaryRegenerating}
+              >
+                <RefreshCw className={`h-3 w-3 ${summaryRegenerating ? "animate-spin" : ""}`} />
+                {summaryRegenerating ? "Generating..." : "Regenerate"}
+              </Button>
+            </div>
+          </CardHeader>
+          <CardContent>
+            {summaryRegenerating ? (
+              <div className="space-y-2">
+                <div className="h-4 bg-muted animate-pulse rounded w-3/4" />
+                <div className="h-4 bg-muted animate-pulse rounded w-1/2" />
+                <div className="h-4 bg-muted animate-pulse rounded w-2/3" />
+              </div>
+            ) : (
+              <div className="prose prose-sm dark:prose-invert max-w-none text-sm">
+                <div
+                  className="whitespace-pre-wrap leading-relaxed"
+                  dangerouslySetInnerHTML={{ __html: simpleMarkdown(record.summary) }}
+                />
+              </div>
+            )}
+          </CardContent>
+        </Card>
       )}
 
       {/* AI Insight Card */}

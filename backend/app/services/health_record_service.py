@@ -30,6 +30,7 @@ class HealthRecordService:
         prescription_text: str | None = None,
         next_review_date: date | None = None,
         tags: str | None = None,
+        summary: str | None = None,
     ) -> HealthRecord:
         """Create a new health record. Rejects exact duplicates within 2 minutes."""
 
@@ -59,6 +60,7 @@ class HealthRecordService:
             prescription_text=prescription_text,
             next_review_date=next_review_date,
             tags=tags,
+            summary=summary,
         )
         self.db.add(record)
         await self.db.flush()
@@ -141,7 +143,7 @@ class HealthRecordService:
         allowed = {
             "clinical_data", "diagnosis", "prescription_text",
             "next_review_date", "tags", "record_date", "record_time",
-            "record_type", "provider_id",
+            "record_type", "provider_id", "summary",
         }
         result = await self.db.execute(
             select(HealthRecord)

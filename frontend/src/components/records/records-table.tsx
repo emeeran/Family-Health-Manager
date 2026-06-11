@@ -1,5 +1,5 @@
 import { useState, useMemo, useRef } from "react";
-import { ArrowUpDown, ArrowUp, ArrowDown } from "lucide-react";
+import { ArrowUpDown, ArrowUp, ArrowDown, Eye } from "lucide-react";
 import {
   Table,
   TableBody,
@@ -9,9 +9,18 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { Checkbox } from "@/components/ui/checkbox";
+import {
+  Popover,
+  PopoverContent,
+  PopoverHeader,
+  PopoverTitle,
+  PopoverDescription,
+  PopoverTrigger,
+} from "@/components/ui/popover";
 import { RecordTypeBadge } from "@/components/records/record-type-badge";
 import { extractReason, extractSummary } from "@/lib/record-utils";
 import { formatDate } from "@/lib/utils";
+import { simpleMarkdown } from "@/lib/markdown";
 import type { HealthRecordResponse } from "@/lib/types/health-record";
 
 interface RecordsTableProps {
@@ -152,6 +161,9 @@ export function RecordsTable({
                 Diagnosis / Reason <SortIcon column="reason" />
               </button>
             </TableHead>
+            <TableHead className="w-[36px] px-1">
+              <span className="sr-only">Summary</span>
+            </TableHead>
             {memberNames && (
               <TableHead className="w-[120px]">
                 <span className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
@@ -167,7 +179,8 @@ export function RecordsTable({
           <TableBody>
             {sorted.map((record) => {
               const reason = extractReason(record);
-              const summary = extractSummary(record);
+              const summaryLine = extractSummary(record);
+              const hasConsultationSummary = !!record.summary;
               return (
                 <TableRow
                   key={record.id}
@@ -200,8 +213,59 @@ export function RecordsTable({
                     ) : (
                       <p className="text-sm text-muted-foreground">—</p>
                     )}
-                    {summary && (
-                      <p className="text-xs text-muted-foreground/70 truncate mt-0.5">{summary}</p>
+                    {summaryLine && (
+                      <p className="text-xs text-muted-foreground/70 truncate mt-0.5">
+                        {summaryLine}
+                      </p>
+                    )}
+                  </TableCell>
+                  {/* Eye icon — hover to preview consultation summary */}
+                  <TableCell
+                    className="py-2 w-[36px] text-center"
+                    onClick={(e) => e.stopPropagation()}
+                  >
+                    {hasConsultationSummary ? (
+                      <Popover modal={false}>
+                        <PopoverTrigger
+                          openOnHover
+                          delay={300}
+                          closeDelay={200}
+                          className="inline-flex items-center justify-center rounded p-0.5 text-muted-foreground hover:text-blue-500 hover:bg-blue-50 transition-colors cursor-pointer"
+                        >
+                          <Eye className="h-3.5 w-3.5" />
+                        </PopoverTrigger>
+                        <PopoverContent
+                          side="left"
+                          sideOffset={8}
+                          align="start"
+                          className="w-96 max-h-[360px] overflow-y-auto p-0"
+                        >
+                          <div className="p-3 space-y-2">
+                            <PopoverHeader>
+                              <PopoverTitle className="text-xs flex items-center gap-2">
+                                <RecordTypeBadge type={record.record_type} />
+                                {formatDate(record.record_date)}
+                                {record.provider_name && (
+                                  <span className="text-muted-foreground font-normal">
+                                    · {record.provider_name}
+                                  </span>
+                                )}
+                              </PopoverTitle>
+                            </PopoverHeader>
+                            <div
+                              className="text-xs text-muted-foreground leading-relaxed prose prose-sm max-w-none prose-table:text-[11px] prose-th:px-1.5 prose-th:py-0.5 prose-td:px-1.5 prose-td:py-0.5 prose-th:bg-muted/50"
+                              dangerouslySetInnerHTML={{
+                                __html: simpleMarkdown(record.summary || ""),
+                              }}
+                            />
+                            <PopoverDescription className="text-[10px] pt-1 border-t">
+                              Click row to view full record
+                            </PopoverDescription>
+                          </div>
+                        </PopoverContent>
+                      </Popover>
+                    ) : (
+                      <span className="inline-flex items-center justify-center w-[22px] h-[22px]" />
                     )}
                   </TableCell>
                   {memberNames && (

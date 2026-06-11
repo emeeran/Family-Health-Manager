@@ -19,6 +19,7 @@ class HealthRecordCreate(BaseModel):
     prescription_text: str | None = Field(None, description="Prescription notes")
     next_review_date: date | None = Field(None, description="Next review date")
     tags: list[str] | None = Field(None, description="Record tags")
+    summary: str | None = Field(None, description="AI-generated consultation summary")
 
 
 class HealthRecordUpdate(BaseModel):
@@ -30,6 +31,7 @@ class HealthRecordUpdate(BaseModel):
     prescription_text: str | None = Field(None, description="Prescription notes")
     next_review_date: date | None = Field(None, description="Next review date")
     tags: list[str] | None = Field(None, description="Record tags")
+    summary: str | None = Field(None, description="AI-generated consultation summary")
 
 
 class HealthRecordResponse(BaseModel):
@@ -47,6 +49,7 @@ class HealthRecordResponse(BaseModel):
     diagnosis: str | None = Field(None, description="Diagnosis")
     prescription_text: str | None = Field(None, description="Prescription notes")
     next_review_date: date | None = Field(None, description="Next review date")
+    summary: str | None = Field(None, description="AI-generated consultation summary")
     is_deleted: bool = Field(..., description="Soft-delete flag")
     created_at: datetime = Field(..., description="Creation timestamp")
     updated_at: datetime = Field(..., description="Last update timestamp")

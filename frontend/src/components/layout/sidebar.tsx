@@ -5,7 +5,7 @@ import {
   Users,
   Stethoscope,
   ClipboardList,
-  MessageSquare,
+  Sparkles,
   PanelLeftClose,
   PanelLeftOpen,
 } from "lucide-react";
@@ -26,7 +26,7 @@ const navItems: NavItem[] = [
   { label: "People", href: "/people", icon: Users },
   { label: "Providers", href: "/providers", icon: Stethoscope },
   { label: "Records", href: "/records", icon: ClipboardList },
-  { label: "Chat", href: "/chat", icon: MessageSquare },
+  { label: "AI Tools", href: "/ai-tools", icon: Sparkles },
 ];
 
 export const Sidebar = memo(function Sidebar() {

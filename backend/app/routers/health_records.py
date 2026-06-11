@@ -6,6 +6,7 @@ from uuid import UUID
 from fastapi import APIRouter, Depends, HTTPException, Query, UploadFile, File, Response
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, update
+from sqlalchemy.orm import joinedload
 import json
 from app.core.database import get_db
 from app.core.deps import get_household_from_token, require_member_in_household, decode_cursor
@@ -243,6 +244,42 @@ async def create_record(
 
     record_service = HealthRecordService(db)
     tags_json = json.dumps(request.tags) if request.tags else None
+
+    # Auto-generate summary if not provided and record has clinical data
+    summary_text = request.summary
+    if not summary_text and request.clinical_data:
+        try:
+            ai_service = AIService(db)
+            # Build extracted data dict from the request for summary generation
+            extracted_data: dict = {}
+            if request.diagnosis:
+                extracted_data["diagnosis"] = request.diagnosis
+            if request.prescription_text:
+                extracted_data["prescription_text"] = request.prescription_text
+
+            # Parse structured data from clinical_data if it's JSON
+            try:
+                parsed_cd = json.loads(request.clinical_data) if isinstance(request.clinical_data, str) else request.clinical_data
+                if isinstance(parsed_cd, dict):
+                    for key in ("prescriptions", "lab_tests", "chief_complaint",
+                                "existing_conditions", "investigations"):
+                        if key in parsed_cd and parsed_cd[key]:
+                            extracted_data[key] = parsed_cd[key]
+                    notes = parsed_cd.get("_notes") or parsed_cd.get("notes")
+                    if notes:
+                        extracted_data["clinical_data"] = notes
+            except (json.JSONDecodeError, ValueError):
+                extracted_data["clinical_data"] = request.clinical_data
+
+            extracted_data["record_type"] = request.record_type.value
+            extracted_data["record_date"] = str(request.record_date)
+            if request.record_time:
+                extracted_data["record_time"] = str(request.record_time)
+
+            summary_text = await ai_service.generate_consultation_summary(extracted_data)
+        except Exception as exc:
+            logger.warning("Auto-summary generation skipped: %s", exc)
+
     try:
         record = await record_service.create_record(
             member_id=member_id,
@@ -255,6 +292,7 @@ async def create_record(
             prescription_text=request.prescription_text,
             next_review_date=request.next_review_date,
             tags=tags_json,
+            summary=summary_text,
         )
     except ValueError as e:
         if "Duplicate" in str(e):
@@ -346,6 +384,104 @@ async def create_record(
     await cache.invalidate_async(f"household_records:{household.id}")
     await cache.invalidate_async(f"dashboard_summary:{household.id}")
     return record
+
+
+@router.post("/backfill-summaries")
+async def backfill_summaries(
+    member_id: UUID,
+    _member: FamilyMember = Depends(require_member_in_household),
+    db: AsyncSession = Depends(get_db),
+    limit: int = Query(10, le=50, description="Max records to process per call"),
+):
+    """Generate summaries for existing records that don't have one yet.
+
+    Processes records in batches to avoid overwhelming AI providers.
+    Call repeatedly until updated_count returns 0.
+    """
+    # Find records without a summary (eagerly load provider for summary generation)
+    result = await db.execute(
+        select(HealthRecord)
+        .options(joinedload(HealthRecord.provider))
+        .where(
+            HealthRecord.family_member_id == member_id,
+            HealthRecord.is_deleted.is_(False),
+            HealthRecord.summary.is_(None),
+        )
+        .order_by(HealthRecord.record_date.desc())
+        .limit(limit)
+    )
+    records = list(result.unique().scalars().all())
+
+    if not records:
+        return {"updated_count": 0, "total_remaining": 0, "message": "All records already have summaries"}
+
+    ai_service = AIService(db)
+    updated = 0
+    errors = 0
+
+    for record in records:
+        try:
+            # Build extracted data from the record
+            extracted_data: dict = {}
+            if record.diagnosis:
+                extracted_data["diagnosis"] = record.diagnosis
+            if record.prescription_text:
+                extracted_data["prescription_text"] = record.prescription_text
+            extracted_data["record_type"] = record.record_type.value
+            extracted_data["record_date"] = str(record.record_date)
+            if record.record_time:
+                extracted_data["record_time"] = str(record.record_time)
+            if record.next_review_date:
+                extracted_data["next_review_date"] = str(record.next_review_date)
+            provider = getattr(record, "provider", None)
+            if provider:
+                extracted_data["provider_name"] = provider.name
+
+            try:
+                parsed_cd = json.loads(record.clinical_data)
+                if isinstance(parsed_cd, dict):
+                    for key in ("prescriptions", "lab_tests", "chief_complaint",
+                                "existing_conditions", "investigations"):
+                        if key in parsed_cd and parsed_cd[key]:
+                            extracted_data[key] = parsed_cd[key]
+                    notes = parsed_cd.get("_notes") or parsed_cd.get("notes")
+                    if notes:
+                        extracted_data["clinical_data"] = notes
+            except (json.JSONDecodeError, ValueError):
+                extracted_data["clinical_data"] = record.clinical_data
+
+            summary = await ai_service.generate_consultation_summary(extracted_data)
+            if summary:
+                record.summary = summary
+                updated += 1
+            else:
+                # Even if summary is empty, the template fallback should produce something
+                # If not, create a minimal placeholder
+                record.summary = f"## Consultation Summary\n\n{record.record_type.value} on {record.record_date}"
+                updated += 1
+        except Exception as exc:
+            logger.warning("Summary backfill failed for record %s: %s", record.id, exc)
+            errors += 1
+
+    await db.flush()
+
+    # Count remaining
+    remaining_result = await db.execute(
+        select(HealthRecord.id)
+        .where(
+            HealthRecord.family_member_id == member_id,
+            HealthRecord.is_deleted.is_(False),
+            HealthRecord.summary.is_(None),
+        )
+    )
+    remaining = len(remaining_result.all())
+
+    return {
+        "updated_count": updated,
+        "error_count": errors,
+        "total_remaining": remaining,
+        "message": f"Generated {updated} summaries. {remaining} remaining.",
+    }
 
 
 @router.get("/timeline/list", response_model=TimelineResponse)
@@ -709,3 +845,55 @@ async def regenerate_record_insight_stream(
         ),
         db,
     )
+
+
+@router.post("/{record_id}/regenerate-summary", response_model=HealthRecordResponse)
+async def regenerate_summary(
+    member_id: UUID,
+    record_id: UUID,
+    _member: FamilyMember = Depends(require_member_in_household),
+    db: AsyncSession = Depends(get_db),
+):
+    """Regenerate the consultation summary for a health record."""
+    record_service = HealthRecordService(db)
+    try:
+        record = await record_service.get_record(member_id, record_id)
+    except ValueError:
+        raise HTTPException(status_code=404, detail="Record not found")
+
+    # Build extracted data from the record
+    extracted_data: dict = {}
+    if record.diagnosis:
+        extracted_data["diagnosis"] = record.diagnosis
+    if record.prescription_text:
+        extracted_data["prescription_text"] = record.prescription_text
+    extracted_data["record_type"] = record.record_type.value
+    extracted_data["record_date"] = str(record.record_date)
+    if record.record_time:
+        extracted_data["record_time"] = str(record.record_time)
+    if record.next_review_date:
+        extracted_data["next_review_date"] = str(record.next_review_date)
+    if record.provider_name:
+        extracted_data["provider_name"] = record.provider_name
+
+    try:
+        parsed_cd = json.loads(record.clinical_data)
+        if isinstance(parsed_cd, dict):
+            for key in ("prescriptions", "lab_tests", "chief_complaint",
+                        "existing_conditions", "investigations"):
+                if key in parsed_cd and parsed_cd[key]:
+                    extracted_data[key] = parsed_cd[key]
+            notes = parsed_cd.get("_notes") or parsed_cd.get("notes")
+            if notes:
+                extracted_data["clinical_data"] = notes
+    except (json.JSONDecodeError, ValueError):
+        extracted_data["clinical_data"] = record.clinical_data
+
+    ai_service = AIService(db)
+    try:
+        summary = await ai_service.generate_consultation_summary(extracted_data)
+    except Exception as exc:
+        raise HTTPException(status_code=502, detail=f"Summary generation failed: {exc}")
+
+    record = await record_service.update_record(record_id, summary=summary)
+    return record
