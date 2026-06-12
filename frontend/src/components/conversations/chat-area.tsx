@@ -50,6 +50,7 @@ export function ChatArea({
   const [messages, setMessages] = useState<MessageResponse[]>(initialMessages ?? []);
   const [input, setInput] = useState("");
   const [sending, setSending] = useState(false);
+  const cancelStreamRef = useRef<(() => void) | null>(null);
   const [streamingContent, setStreamingContent] = useState("");
 
   // Track which conversation's messages are loaded to avoid SWR race conditions.
@@ -125,30 +126,35 @@ export function ChatArea({
 
     try {
       let streamedText = "";
-      await sendMessageStream(activeConvId, { content: text }, (event: StreamEvent) => {
-        if (event.stage === "user_message") {
-          const realId = event.id as string;
-          setMessages((prev) =>
-            prev.map((m) =>
-              m.id === optimisticUserMsg.id
-                ? { ...m, id: realId, created_at: (event.created_at as string) || m.created_at }
-                : m
-            )
-          );
-        } else if (event.stage === "token") {
-          streamedText += event.content as string;
-          setStreamingContent(streamedText);
-        } else if (event.stage === "complete") {
-          const assistantMsg = event.assistant_message as MessageResponse;
-          setStreamingContent("");
-          setMessages((prev) => [...prev, assistantMsg]);
-        } else if (event.stage === "error") {
-          toast.error((event.message as string) || "AI service unavailable");
-          setMessages((prev) => prev.filter((m) => m.id !== optimisticUserMsg.id));
-          setInput(text);
+      const { promise, cancel } = sendMessageStream(
+        activeConvId,
+        { content: text },
+        (event: StreamEvent) => {
+          if (event.stage === "user_message") {
+            const realId = event.id as string;
+            setMessages((prev) =>
+              prev.map((m) =>
+                m.id === optimisticUserMsg.id
+                  ? { ...m, id: realId, created_at: (event.created_at as string) || m.created_at }
+                  : m
+              )
+            );
+          } else if (event.stage === "token") {
+            streamedText += event.content as string;
+            setStreamingContent(streamedText);
+          } else if (event.stage === "complete") {
+            const assistantMsg = event.assistant_message as MessageResponse;
+            setStreamingContent("");
+            setMessages((prev) => [...prev, assistantMsg]);
+          } else if (event.stage === "error") {
+            toast.error((event.message as string) || "AI service unavailable");
+            setMessages((prev) => prev.filter((m) => m.id !== optimisticUserMsg.id));
+            setInput(text);
+          }
         }
-      });
-    } catch {
+      );
+      cancelStreamRef.current = cancel;
+      await promise;
       try {
         setStreamingContent("");
         setMessages((prev) => prev.filter((m) => m.id !== optimisticUserMsg.id));
@@ -162,6 +168,7 @@ export function ChatArea({
     } finally {
       setSending(false);
       setStreamingContent("");
+      cancelStreamRef.current = null;
       textareaRef.current?.focus();
     }
   }
@@ -234,8 +241,14 @@ export function ChatArea({
               className="flex-1 resize-none bg-transparent text-sm leading-relaxed placeholder:text-muted-foreground/50 focus-visible:outline-none disabled:opacity-50 max-h-36 py-0.5"
             />
             <Button
-              onClick={() => handleSend()}
-              disabled={sending || !input.trim()}
+              onClick={() => {
+                if (sending) {
+                  cancelStreamRef.current?.();
+                } else {
+                  handleSend();
+                }
+              }}
+              disabled={!sending && !input.trim()}
               size="icon"
               className="h-8 w-8 shrink-0 rounded-full"
             >

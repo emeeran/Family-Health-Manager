@@ -85,49 +85,52 @@ export function RecordDetailContent({ record: initialRecord, member }: RecordDet
     setStreamStage("Starting...");
     let accumulated = "";
     try {
-      await streamRequest(`/members/${member.id}/records/${record.id}/regenerate-insight/stream`, {
-        onEvent: (event) => {
-          const e = event as Record<string, unknown>;
-          const stage = e.stage as string;
-          if (stage === "context") {
-            setStreamStage((e.message as string) || "Preparing...");
-          } else if (stage === "provider") {
-            setStreamStage(`Generating via ${e.provider}...`);
-          } else if (stage === "token") {
-            accumulated += (e.content as string) || "";
-            setStreamText(accumulated);
-          } else if (stage === "complete") {
-            // Refresh full insight from server (includes verification)
-            const insightId = e.insight_id as string;
-            const provider = e.provider as string;
-            setInsight((prev) => ({
-              id: insightId,
-              prompt: prev?.prompt || "",
-              response: accumulated,
-              provider_used: provider,
-              generated_at: new Date().toISOString(),
-              verification: {
-                status: "pending",
-                claims_checked: 0,
-                verifier_provider: "",
-                summary: null,
-                warnings: null,
-                verified_at: "",
-              },
-            }));
-            setStreamStage("");
-            // Reload from server to get proper verification
-            getRecordInsight(member.id, record.id)
-              .then((res) => {
-                if (res.insight) setInsight(res.insight);
-              })
-              .catch(() => {});
-          } else if (stage === "error") {
-            toast.error((e.message as string) || "Generation failed");
-          }
-        },
-      });
-      toast.success("AI insight regenerated");
+      const { promise } = streamRequest(
+        `/members/${member.id}/records/${record.id}/regenerate-insight/stream`,
+        {
+          onEvent: (event) => {
+            const e = event as Record<string, unknown>;
+            const stage = e.stage as string;
+            if (stage === "context") {
+              setStreamStage((e.message as string) || "Preparing...");
+            } else if (stage === "provider") {
+              setStreamStage(`Generating via ${e.provider}...`);
+            } else if (stage === "token") {
+              accumulated += (e.content as string) || "";
+              setStreamText(accumulated);
+            } else if (stage === "complete") {
+              // Refresh full insight from server (includes verification)
+              const insightId = e.insight_id as string;
+              const provider = e.provider as string;
+              setInsight((prev) => ({
+                id: insightId,
+                prompt: prev?.prompt || "",
+                response: accumulated,
+                provider_used: provider,
+                generated_at: new Date().toISOString(),
+                verification: {
+                  status: "pending",
+                  claims_checked: 0,
+                  verifier_provider: "",
+                  summary: null,
+                  warnings: null,
+                  verified_at: "",
+                },
+              }));
+              setStreamStage("");
+              // Reload from server to get proper verification
+              getRecordInsight(member.id, record.id)
+                .then((res) => {
+                  if (res.insight) setInsight(res.insight);
+                })
+                .catch(() => {});
+            } else if (stage === "error") {
+              toast.error((e.message as string) || "Generation failed");
+            }
+          },
+        }
+      );
+      await promise;
     } catch {
       toast.error("Failed to regenerate insight");
     } finally {

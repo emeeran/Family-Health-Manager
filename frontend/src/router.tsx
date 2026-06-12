@@ -23,6 +23,7 @@ const AiToolsPreConsultPage = lazy(() => import("@/pages/ai-tools/pre-consultati
 const AiToolsDrugInteractionsPage = lazy(() => import("@/pages/ai-tools/drug-interactions"));
 const AiToolsSummariesPage = lazy(() => import("@/pages/ai-tools/summaries"));
 const AiToolsSmartEntryPage = lazy(() => import("@/pages/ai-tools/smart-entry"));
+const AiToolsDocumentExtractionPage = lazy(() => import("@/pages/ai-tools/document-extraction"));
 
 // Member pages (kept for deep linking)
 const NewMemberPage = lazy(() => import("@/pages/member-new"));
@@ -105,6 +106,10 @@ export const router = createBrowserRouter([
       { path: "ai-tools/drug-interactions", element: withSuspense(AiToolsDrugInteractionsPage) },
       { path: "ai-tools/summaries", element: withSuspense(AiToolsSummariesPage) },
       { path: "ai-tools/smart-entry", element: withSuspense(AiToolsSmartEntryPage) },
+      {
+        path: "ai-tools/document-extraction",
+        element: withSuspense(AiToolsDocumentExtractionPage),
+      },
 
       // ── People / Member sub-routes ──
       { path: "people/new", element: withSuspense(NewMemberPage) },

@@ -3,6 +3,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { AlertTriangle, CheckCircle2, Loader2, ShieldAlert, Shield, ShieldOff } from "lucide-react";
 import { getDrugInteractions, getLatestDrugInteractions } from "@/lib/api/members";
+import { ApiError } from "@/lib/api-client";
 import type { DrugInteraction } from "@/lib/types/member";
 
 interface DrugInteractionReportProps {
@@ -42,6 +43,7 @@ export const DrugInteractionReport = memo(function DrugInteractionReport({
   const [loading, setLoading] = useState(false);
   const [initialLoading, setInitialLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [cachedAt, setCachedAt] = useState<string | null>(null);
 
   // Auto-fetch latest on mount
   useEffect(() => {
@@ -55,9 +57,13 @@ export const DrugInteractionReport = memo(function DrugInteractionReport({
         const result = await getLatestDrugInteractions(memberId);
         if (!cancelled) {
           setInteractions(result.interactions);
+          setCachedAt(result.cached_at ?? null);
         }
-      } catch {
-        // Auto-generation may fail, user can retry
+      } catch (err) {
+        if (err instanceof ApiError && err.status === 401) {
+          if (!cancelled) setError("Session expired. Please refresh the page and log in again.");
+        }
+        // Other errors: auto-generation may fail, user can retry
       } finally {
         if (!cancelled) setInitialLoading(false);
       }
@@ -73,8 +79,13 @@ export const DrugInteractionReport = memo(function DrugInteractionReport({
     try {
       const result = await getDrugInteractions(memberId);
       setInteractions(result.interactions);
-    } catch {
-      setError("Failed to check interactions. Please try again.");
+      setCachedAt(result.cached_at ?? null);
+    } catch (err) {
+      if (err instanceof ApiError && err.status === 401) {
+        setError("Session expired. Please refresh the page and log in again.");
+      } else {
+        setError("Failed to check interactions. Please try again.");
+      }
     } finally {
       setLoading(false);
     }
@@ -201,6 +212,15 @@ export const DrugInteractionReport = memo(function DrugInteractionReport({
                   );
                 })}
               </div>
+            )}
+            {cachedAt && (
+              <p className="text-[11px] text-muted-foreground/60 mt-2">
+                Last checked{" "}
+                {(() => {
+                  const hours = Math.round((Date.now() - new Date(cachedAt).getTime()) / 3600000);
+                  return hours < 1 ? "just now" : `${hours}h ago`;
+                })()}
+              </p>
             )}
           </>
         )}

@@ -4,6 +4,8 @@ import type {
   HouseholdResponse,
   HouseholdSettingsResponse,
   HouseholdSettingsUpdate,
+  AIProviderConfig,
+  AIProviderConfigResponse,
 } from "../types/household";
 import type { HealthRecordResponse } from "../types/health-record";
 
@@ -42,5 +44,16 @@ export function updateSettings(data: HouseholdSettingsUpdate) {
   return apiRequest<HouseholdSettingsResponse>("/household/settings", {
     method: "PUT",
     body: data,
+  });
+}
+
+export function getAIProviderConfig() {
+  return apiRequest<AIProviderConfigResponse>("/household/ai-provider-config");
+}
+
+export function updateAIProviderConfig(config: AIProviderConfig) {
+  return apiRequest<AIProviderConfigResponse>("/household/ai-provider-config", {
+    method: "PUT",
+    body: config,
   });
 }

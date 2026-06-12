@@ -120,10 +120,12 @@ class AIService:
 
     # ---- Constructor ----
 
-    def __init__(self, db: AsyncSession):
+    def __init__(self, db: AsyncSession, household_id: UUID | None = None):
         self.db = db
+        self.household_id = household_id
         self.last_provider: str = ""
         self._last_provider_ref: list[str] = [""]
+        self._provider_config: "AIProviderConfig | None" = None
 
     # ---- Insight generation (kept inline for test patching) ----
 
@@ -641,25 +643,25 @@ class AIService:
 
     # ---- Provider methods (delegate to providers/) ----
 
-    async def _call_ollama_text(self, prompt: str) -> str | None:
+    async def _call_ollama_text(self, prompt: str, model: str | None = None) -> str | None:
         from app.services.ai.providers.ollama import call_ollama_text
-        return await call_ollama_text(prompt)
+        return await call_ollama_text(prompt, model=model)
 
-    async def _call_gemini_text(self, prompt: str) -> str | None:
+    async def _call_gemini_text(self, prompt: str, model: str | None = None) -> str | None:
         from app.services.ai.providers.gemini import call_gemini_text
-        return await call_gemini_text(prompt)
+        return await call_gemini_text(prompt, model=model or "gemini-2.5-flash")
 
-    async def _call_openai_text(self, prompt: str) -> str | None:
+    async def _call_openai_text(self, prompt: str, model: str | None = None) -> str | None:
         from app.services.ai.providers.openai import call_openai_text
-        return await call_openai_text(prompt)
+        return await call_openai_text(prompt, model=model)
 
-    async def _call_groq_text(self, prompt: str) -> str | None:
+    async def _call_groq_text(self, prompt: str, model: str | None = None) -> str | None:
         from app.services.ai.providers.groq import call_groq_text
-        return await call_groq_text(prompt)
+        return await call_groq_text(prompt, model=model or "meta-llama/llama-4-scout-17b-16e-instruct")
 
-    async def _call_openrouter_text(self, prompt: str) -> str | None:
+    async def _call_openrouter_text(self, prompt: str, model: str | None = None) -> str | None:
         from app.services.ai.providers.openrouter import call_openrouter_text
-        return await call_openrouter_text(prompt)
+        return await call_openrouter_text(prompt, model=model or "deepseek/deepseek-v4-flash")
 
     async def _ollama_chat(self, model: str, prompt: str) -> str | None:
         from app.services.ai.providers.ollama import ollama_chat
@@ -670,22 +672,65 @@ class AIService:
         async for chunk in ollama_chat_stream(model, prompt):
             yield chunk
 
+    # ---- Provider config loading ----
+
+    _PROVIDER_FN_MAP: dict[str, str] = {
+        "ollama": "_call_ollama_text",
+        "openrouter": "_call_openrouter_text",
+        "groq": "_call_groq_text",
+        "gemini": "_call_gemini_text",
+        "openai": "_call_openai_text",
+    }
+
+    async def _get_provider_config(self):
+        """Lazy-load provider config from household settings."""
+        if self._provider_config is not None:
+            return self._provider_config
+        if self.household_id:
+            try:
+                from sqlalchemy import select
+                from app.models.base import Household
+                from app.schemas.household import FeatureSettings
+                result = await self.db.execute(
+                    select(Household).where(Household.id == self.household_id)
+                )
+                household = result.scalar_one_or_none()
+                if household and household.settings_json:
+                    data = json.loads(household.settings_json)
+                    fs = FeatureSettings(**data)
+                    self._provider_config = fs.ai_providers
+            except Exception as exc:
+                logger.warning("Failed to load provider config: %s", exc)
+        if self._provider_config is None:
+            from app.schemas.ai_provider_config import default_provider_config
+            self._provider_config = default_provider_config()
+        return self._provider_config
+
+    def _get_provider_fn(self, provider_id: str):
+        """Map provider ID string to bound method."""
+        method_name = self._PROVIDER_FN_MAP.get(provider_id)
+        if method_name:
+            return getattr(self, method_name)
+        return None
+
     # ---- Internal AI call routing ----
 
     async def _call_ai(self, prompt: str, context: str) -> tuple[str, str]:
-        """Call AI provider with failover chain — Ollama first, cloud as fallback."""
+        """Call AI provider with failover chain — order and models from household config."""
+        from app.schemas.ai_provider_config import PROVIDER_LABELS
         system_note = _CLINICAL_SYSTEM_NOTE.format(today=self._fmt_date(date.today()))
         full_prompt = f"{system_note}{context}\n\nUser: {prompt}\n\nAssistant:" if context else prompt
 
-        providers = [
-            (self._call_ollama_text, "Ollama (local)"),
-            (self._call_openrouter_text, "OpenRouter DeepSeek V4 Flash"),
-            (self._call_groq_text, "Groq Llama-4-Scout"),
-            (self._call_gemini_text, "Google Gemini 2.5 Flash"),
-        ]
-        for provider_fn, label in providers:
+        config = await self._get_provider_config()
+        for prov in config.providers:
+            if not prov.enabled:
+                continue
+            provider_fn = self._get_provider_fn(prov.id)
+            if not provider_fn:
+                continue
+            label = f"{PROVIDER_LABELS.get(prov.id, prov.id)} ({prov.model})"
             try:
-                result = await provider_fn(full_prompt)
+                result = await provider_fn(full_prompt, model=prov.model)
                 if result:
                     logger.info("AI text call succeeded via %s", label)
                     return result, label
@@ -698,18 +743,19 @@ class AIService:
         self, prompt: str, exclude_provider: str
     ) -> tuple[str, str]:
         """Call AI provider with failover, skipping the excluded provider."""
-        providers = [
-            (self._call_ollama_text, "Ollama (local)"),
-            (self._call_openrouter_text, "OpenRouter DeepSeek V4 Flash"),
-            (self._call_groq_text, "Groq Llama-4-Scout"),
-            (self._call_gemini_text, "Google Gemini 2.5 Flash"),
-            (self._call_ollama_text, "Ollama (local)"),
-        ]
-        for provider_fn, label in providers:
+        from app.schemas.ai_provider_config import PROVIDER_LABELS
+        config = await self._get_provider_config()
+        for prov in config.providers:
+            if not prov.enabled:
+                continue
+            provider_fn = self._get_provider_fn(prov.id)
+            if not provider_fn:
+                continue
+            label = f"{PROVIDER_LABELS.get(prov.id, prov.id)} ({prov.model})"
             if label == exclude_provider:
                 continue
             try:
-                result = await provider_fn(prompt)
+                result = await provider_fn(prompt, model=prov.model)
                 if result:
                     logger.info("Verification AI call succeeded via %s", label)
                     return result, label

@@ -3,6 +3,8 @@ from pydantic import BaseModel, Field, ConfigDict
 from datetime import datetime
 from uuid import UUID
 
+from app.schemas.ai_provider_config import AIProviderConfig, default_provider_config
+
 
 class FeatureSettings(BaseModel):
     """Feature toggle settings for a household."""
@@ -12,6 +14,7 @@ class FeatureSettings(BaseModel):
     notifications: bool = True
     email_notifications: bool = False
     smart_entry: bool = True
+    ai_providers: AIProviderConfig = Field(default_factory=default_provider_config)
 
 
 class HouseholdSettingsResponse(BaseModel):

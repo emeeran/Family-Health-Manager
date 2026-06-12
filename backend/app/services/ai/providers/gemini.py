@@ -1,29 +1,34 @@
 """Google Gemini AI provider."""
 import logging
 
+
 from app.core.config import get_settings
-from app.services.ai.base import get_cloud_client
+from app.services.ai.base import get_cloud_client, retry_with_backoff
 
 settings = get_settings()
 logger = logging.getLogger(__name__)
 
 
-async def call_gemini_text(prompt: str) -> str | None:
+async def call_gemini_text(prompt: str, model: str = "gemini-2.5-flash") -> str | None:
     """Call Google Gemini for text-based generation."""
     if not settings.GEMINI_API_KEY:
         return None
     url = (
-        "https://generativelanguage.googleapis.com/v1beta/"
-        "models/gemini-2.5-flash:generateContent"
+        f"https://generativelanguage.googleapis.com/v1beta/"
+        f"models/{model}:generateContent"
     )
     payload = {
         "contents": [{"parts": [{"text": prompt}]}],
         "generationConfig": {"temperature": 0.1},
     }
-    client = await get_cloud_client()
-    resp = await client.post(url, json=payload, headers={"x-goog-api-key": settings.GEMINI_API_KEY})
-    resp.raise_for_status()
-    data = resp.json()
+
+    async def _do_call():
+        client = await get_cloud_client()
+        resp = await client.post(url, json=payload, headers={"x-goog-api-key": settings.GEMINI_API_KEY})
+        resp.raise_for_status()
+        return resp.json()
+
+    data = await retry_with_backoff(_do_call)
     return data["candidates"][0]["content"]["parts"][0]["text"]
 
 

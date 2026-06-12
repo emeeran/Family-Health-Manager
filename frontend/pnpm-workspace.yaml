@@ -1,0 +1,4 @@
+allowBuilds:
+  '@evilmartians/lefthook-installer': set this to true or false
+  core-js: set this to true or false
+  lefthook: set this to true or false

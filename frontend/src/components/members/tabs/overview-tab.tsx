@@ -709,7 +709,7 @@ ${sectionHtml}
           const search = action.search ? `?${action.search}` : "";
           return (
             <Link
-              key={`${linkTo}${search}`}
+              key={`action-${action.label}`}
               to={`${linkTo}${search}`}
               className={`inline-flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-xs font-semibold transition-colors ${action.color}`}
             >

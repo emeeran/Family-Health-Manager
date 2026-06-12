@@ -36,7 +36,7 @@ async def generate_member_insights(
     except ValueError:
         raise HTTPException(status_code=404, detail="Member not found")
 
-    ai_service = AIService(db)
+    ai_service = AIService(db, household_id=household.id)
     prompt = COMPREHENSIVE_INSIGHT_PROMPT
     try:
         insight = await ai_service.generate_insight(
@@ -87,7 +87,7 @@ async def generate_member_insights_stream(
     except ValueError:
         raise HTTPException(status_code=404, detail="Member not found")
 
-    ai_service = AIService(db)
+    ai_service = AIService(db, household_id=household.id)
     prompt = COMPREHENSIVE_INSIGHT_PROMPT
 
     return make_sse_stream(
@@ -140,7 +140,7 @@ async def get_latest_insight(
         }
 
     from app.services.ai_service import AIService
-    ai_service = AIService(db)
+    ai_service = AIService(db, household_id=household.id)
     prompt = COMPREHENSIVE_INSIGHT_PROMPT
     try:
         insight = await ai_service.generate_insight(

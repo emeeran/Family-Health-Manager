@@ -48,7 +48,9 @@ export function getMemberDetail(memberId: string) {
 }
 
 export function getDrugInteractions(memberId: string) {
-  return apiRequest<DrugInteractionResponse>(`/members/${memberId}/drug-interactions`);
+  return apiRequest<DrugInteractionResponse>(`/members/${memberId}/drug-interactions`, {
+    timeout: 120_000,
+  });
 }
 
 export function getLatestInsight(memberId: string) {
@@ -56,7 +58,9 @@ export function getLatestInsight(memberId: string) {
 }
 
 export function getLatestDrugInteractions(memberId: string) {
-  return apiRequest<DrugInteractionResponse>(`/members/${memberId}/latest-drug-interactions`);
+  return apiRequest<DrugInteractionResponse>(`/members/${memberId}/latest-drug-interactions`, {
+    timeout: 120_000,
+  });
 }
 
 export function addMedication(

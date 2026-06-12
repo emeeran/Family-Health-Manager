@@ -125,7 +125,7 @@ async def generate_pre_consultation_note(
     await _verify_member(household.id, member_id, db)
     prompt = await _build_preconsult_prompt(member_id, provider_id, None, household.id, db)
 
-    ai_service = AIService(db)
+    ai_service = AIService(db, household_id=household.id)
     try:
         insight = await ai_service.generate_insight(
             prompt=prompt,
@@ -220,7 +220,7 @@ async def generate_pre_consultation_note_stream(
         logger.error("Pre-consultation setup failed: %s", exc, exc_info=True)
         raise HTTPException(status_code=500, detail=f"Setup failed: {type(exc).__name__}: {exc}")
 
-    ai_service = AIService(db)
+    ai_service = AIService(db, household_id=household.id)
     return make_sse_stream(
         ai_service.generate_insight_stream(
             prompt=prompt,

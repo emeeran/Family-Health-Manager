@@ -53,12 +53,16 @@ async def get_latest_drug_interactions(
         try:
             interactions = json.loads(cached.response)
             if isinstance(interactions, list):
-                return {"interactions": interactions, "medications_checked": len(medications)}
+                return {
+                    "interactions": interactions,
+                    "medications_checked": len(medications),
+                    "cached_at": cached.generated_at.isoformat(),
+                }
         except (json.JSONDecodeError, ValueError):
             pass
 
     from app.services.ai_service import AIService
-    ai_service = AIService(db)
+    ai_service = AIService(db, household_id=household.id)
     try:
         interactions = await ai_service.check_drug_interactions(medications)
         cached_insight = AIInsight(
@@ -72,7 +76,7 @@ async def get_latest_drug_interactions(
         logger.error("Drug interaction check failed: %s", exc)
         interactions = []
 
-    return {"interactions": interactions, "medications_checked": len(medications)}
+    return {"interactions": interactions, "medications_checked": len(medications), "cached_at": None}
 
 
 @router.get("/{member_id}/drug-interactions")
@@ -96,7 +100,7 @@ async def get_drug_interactions(
         return {"interactions": [], "medications_checked": len(medications)}
 
     try:
-        ai_service = AIService(db)
+        ai_service = AIService(db, household_id=household.id)
         interactions = await ai_service.check_drug_interactions(medications)
     except Exception as exc:
         logger.error("Drug interaction check failed: %s", exc)

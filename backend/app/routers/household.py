@@ -18,6 +18,12 @@ from app.schemas.household import (
     HouseholdSettingsUpdate,
     FeatureSettings,
 )
+from app.schemas.ai_provider_config import (
+    AIProviderConfig,
+    AIProviderConfigResponse,
+    AVAILABLE_MODELS,
+    PROVIDER_LABELS,
+)
 from app.schemas.health_record import HealthRecordResponse
 from app.models.base import Household, FamilyMember, User
 from app.models.record import HealthRecord
@@ -96,6 +102,43 @@ async def update_settings(
     db_household.settings_json = settings_json
     await db.flush()
     return HouseholdSettingsResponse(settings=request.settings)
+
+
+@router.get("/ai-provider-config", response_model=AIProviderConfigResponse)
+async def get_ai_provider_config(
+    household: Household = Depends(get_household_from_token),
+):
+    """Get AI provider configuration for the household."""
+    settings = _parse_settings(household)
+    return AIProviderConfigResponse(
+        config=settings.ai_providers,
+        available_models=AVAILABLE_MODELS,
+        provider_labels=PROVIDER_LABELS,
+    )
+
+
+@router.put("/ai-provider-config", response_model=AIProviderConfigResponse)
+async def update_ai_provider_config(
+    request: AIProviderConfig,
+    household: Household = Depends(get_household_from_token),
+    db: AsyncSession = Depends(get_db),
+):
+    """Update AI provider configuration for the household."""
+    # Load existing settings, replace only ai_providers
+    existing = _parse_settings(household)
+    existing.ai_providers = request
+    settings_json = existing.model_dump_json()
+    result = await db.execute(
+        select(Household).where(Household.id == household.id)
+    )
+    db_household = result.scalar_one()
+    db_household.settings_json = settings_json
+    await db.flush()
+    return AIProviderConfigResponse(
+        config=request,
+        available_models=AVAILABLE_MODELS,
+        provider_labels=PROVIDER_LABELS,
+    )
 
 
 @router.get("/records", response_model=list[HealthRecordResponse])

@@ -88,3 +88,46 @@ def get_cache(key: str) -> str | None:
         member_context_cache.move_to_end(key)
         return value
     return None
+
+
+async def retry_with_backoff(
+    fn,
+    *args,
+    max_retries: int = 2,
+    base_delay: float = 1.0,
+    retryable_statuses: tuple[int, ...] = (429, 502, 503, 504),
+    **kwargs,
+):
+    """Retry an async call with exponential backoff on transient errors.
+
+    Retries on httpx.HTTPStatusError with matching status codes.
+    Respects Retry-After header on 429 responses.
+    """
+    import httpx
+
+    last_exc = None
+    for attempt in range(max_retries + 1):
+        try:
+            return await fn(*args, **kwargs)
+        except httpx.HTTPStatusError as exc:
+            last_exc = exc
+            status = exc.response.status_code
+            if status not in retryable_statuses or attempt == max_retries:
+                raise
+
+            # Respect Retry-After header on 429
+            delay = base_delay * (2 ** attempt)
+            if status == 429:
+                retry_after = exc.response.headers.get("Retry-After")
+                if retry_after:
+                    try:
+                        delay = max(delay, float(retry_after))
+                    except ValueError:
+                        pass
+
+            logger.warning(
+                "Retryable error %d on attempt %d/%d, waiting %.1fs: %s",
+                status, attempt + 1, max_retries + 1, delay, exc,
+            )
+            await asyncio.sleep(delay)
+    raise last_exc

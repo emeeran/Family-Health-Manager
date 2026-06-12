@@ -5,11 +5,30 @@ import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import { PenLine, Loader2, CheckCircle2 } from "lucide-react";
+import { PenLine, Loader2, CheckCircle2, Lightbulb } from "lucide-react";
 import { parseNaturalLanguage, createRecord } from "@/lib/api/records";
 import { RECORD_TYPE_LABELS } from "@/lib/constants";
 import type { RecordType } from "@/lib/types/enums";
 import { toast } from "sonner";
+
+const EXAMPLES = [
+  {
+    label: "Doctor Visit",
+    text: "Visited Dr. Sharma on March 10th for persistent headache. BP was 150/95. Diagnosed with tension headache. Prescribed ibuprofen 400mg twice daily for 5 days.",
+  },
+  {
+    label: "Lab Result",
+    text: "Blood test on Feb 20th: HbA1c 7.8%, Fasting glucose 142 mg/dL, Creatinine 1.1 mg/dL. All other values normal.",
+  },
+  {
+    label: "Prescription",
+    text: "Started Metformin 500mg twice daily after food on January 5th for Type 2 Diabetes. Also continuing Amlodipine 5mg once daily for blood pressure.",
+  },
+  {
+    label: "Vitals",
+    text: "Morning vitals today: BP 128/82, pulse 72, temperature 98.4°F, blood sugar fasting 110 mg/dL, weight 78kg.",
+  },
+];
 
 export default function AiToolsSmartEntryPage() {
   const [searchParams] = useSearchParams();
@@ -27,6 +46,7 @@ export default function AiToolsSmartEntryPage() {
     preview_fields: { label: string; value: string }[];
   } | null>(null);
   const [saving, setSaving] = useState(false);
+  const [showExamples, setShowExamples] = useState(false);
 
   async function handleParse() {
     if (!text.trim()) return;
@@ -85,6 +105,38 @@ export default function AiToolsSmartEntryPage() {
               {parsing ? <Loader2 className="h-3.5 w-3.5 mr-1.5 animate-spin" /> : null}
               Parse & Preview
             </Button>
+
+            {/* Examples */}
+            {!parsed && !text.trim() && (
+              <div className="space-y-2">
+                <button
+                  type="button"
+                  onClick={() => setShowExamples(!showExamples)}
+                  className="flex items-center gap-1.5 text-xs text-muted-foreground hover:text-foreground transition-colors"
+                >
+                  <Lightbulb className="h-3.5 w-3.5" />
+                  {showExamples ? "Hide examples" : "See examples"}
+                </button>
+                {showExamples && (
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                    {EXAMPLES.map((ex) => (
+                      <button
+                        key={ex.label}
+                        type="button"
+                        onClick={() => {
+                          setText(ex.text);
+                          setShowExamples(false);
+                        }}
+                        className="text-left rounded-lg border bg-muted/30 p-2.5 hover:bg-muted/60 transition-colors"
+                      >
+                        <p className="text-xs font-medium text-foreground/80 mb-1">{ex.label}</p>
+                        <p className="text-[11px] text-muted-foreground line-clamp-2">{ex.text}</p>
+                      </button>
+                    ))}
+                  </div>
+                )}
+              </div>
+            )}
           </CardContent>
         </Card>
 

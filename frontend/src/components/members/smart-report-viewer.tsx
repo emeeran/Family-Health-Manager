@@ -1,6 +1,7 @@
 import { useEffect, useMemo } from "react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
+import { exportHTMLToPDF } from "@/lib/pdf-export";
 import { VerificationBadge } from "@/components/shared/verification-badge";
 import { InsightReport } from "@/components/members/insight-report-viewer";
 import type { VerificationResult } from "@/lib/types/message";
@@ -539,7 +540,7 @@ export function SmartReportViewer({
   }, [onBack]);
 
   /* ── PDF Export ── */
-  function handleExportPDF() {
+  async function handleExportPDF() {
     if (!reportData) return;
     const esc = (s: string) =>
       s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
@@ -793,11 +794,17 @@ ${reportData.recommendations.length > 0 ? `<h2>Clinical Recommendations</h2>${re
 </div>
 </body></html>`;
 
-    const win = window.open("", "_blank");
-    if (!win) return;
-    win.document.write(html);
-    win.document.close();
-    setTimeout(() => win.print(), 200);
+    const genDate2 = new Date(generatedAt);
+    const rid = `SR-${genDate2.getFullYear()}${String(genDate2.getMonth() + 1).padStart(2, "0")}${String(genDate2.getDate()).padStart(2, "0")}`;
+    try {
+      await exportHTMLToPDF(html, `${rid}.pdf`);
+    } catch {
+      const win = window.open("", "_blank");
+      if (!win) return;
+      win.document.write(html);
+      win.document.close();
+      setTimeout(() => win.print(), 200);
+    }
   }
 
   /* ── Fallback ── */

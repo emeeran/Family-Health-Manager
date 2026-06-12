@@ -1,3 +1,19 @@
+export interface ProviderConfigItem {
+  id: string;
+  enabled: boolean;
+  model: string;
+}
+
+export interface AIProviderConfig {
+  providers: ProviderConfigItem[];
+}
+
+export interface AIProviderConfigResponse {
+  config: AIProviderConfig;
+  available_models: Record<string, string[]>;
+  provider_labels: Record<string, string>;
+}
+
 export interface FeatureSettings {
   ai_features: boolean;
   ai_verification: boolean;

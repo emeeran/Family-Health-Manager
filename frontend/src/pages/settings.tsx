@@ -25,18 +25,40 @@ import {
 import { getMe, changePassword } from "@/lib/api/auth";
 import { PasswordInput } from "@/components/shared/password-input";
 import { BackupRestoreSection } from "@/components/content/backup-restore";
+import { getAIStatus, type ProviderStatus } from "@/lib/api/ai";
+import { getAIProviderConfig, updateAIProviderConfig } from "@/lib/api/household";
+import type { ProviderConfigItem, AIProviderConfigResponse } from "@/lib/types/household";
 import { toast } from "sonner";
+import {
+  CheckCircle2,
+  XCircle,
+  RefreshCw,
+  Loader2,
+  Wifi,
+  WifiOff,
+  ChevronUp,
+  ChevronDown,
+  GripVertical,
+} from "lucide-react";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import type { FeatureSettings } from "@/lib/types/household";
 
 // ── Tab configuration ──────────────────────────────────────────
 
-type TabId = "general" | "features";
+type TabId = "general" | "features" | "ai-providers";
 
-const VALID_TABS = new Set<string>(["general", "features"]);
+const VALID_TABS = new Set<string>(["general", "features", "ai-providers"]);
 
 const TABS: { id: TabId; label: string }[] = [
   { id: "general", label: "General" },
   { id: "features", label: "Features" },
+  { id: "ai-providers", label: "AI Providers" },
 ];
 
 // ── Feature definitions ────────────────────────────────────────
@@ -395,6 +417,8 @@ export default function SettingsPage() {
           </Card>
         </div>
       )}
+
+      {activeTab === "ai-providers" && <AIProvidersTab />}
     </div>
   );
 }
@@ -486,5 +510,307 @@ function ResetDatabaseDialog() {
         </DialogContent>
       </Dialog>
     </>
+  );
+}
+
+// ── AI Providers Tab ──────────────────────────────────────────
+
+function AIProvidersTab() {
+  // Config state
+  const [config, setConfig] = useState<AIProviderConfigResponse | null>(null);
+  const [configLoading, setConfigLoading] = useState(true);
+  const [saving, setSaving] = useState(false);
+
+  // Status state
+  const [statusProviders, setStatusProviders] = useState<ProviderStatus[]>([]);
+  const [refreshing, setRefreshing] = useState(false);
+  const [checkedAt, setCheckedAt] = useState<Date | null>(null);
+
+  // Load config on mount
+  useEffect(() => {
+    getAIProviderConfig()
+      .then((result) => setConfig(result))
+      .catch(() => toast.error("Failed to load provider config"))
+      .finally(() => setConfigLoading(false));
+  }, []);
+
+  async function saveConfig(providers: ProviderConfigItem[]) {
+    if (!config) return;
+    setSaving(true);
+    try {
+      const result = await updateAIProviderConfig({ providers });
+      setConfig(result);
+    } catch {
+      toast.error("Failed to save provider config");
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  async function fetchStatus() {
+    setRefreshing(true);
+    try {
+      const result = await getAIStatus();
+      setStatusProviders(result.providers);
+      setCheckedAt(new Date());
+    } catch {
+      toast.error("Failed to check provider status");
+    } finally {
+      setRefreshing(false);
+    }
+  }
+
+  // Auto-check status once config loads
+  useEffect(() => {
+    if (config) fetchStatus();
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- run once when config loads, not on every config change
+  }, [config?.config.providers.length]);
+
+  function handleToggle(index: number, enabled: boolean) {
+    if (!config) return;
+    const updated = config.config.providers.map((p, i) => (i === index ? { ...p, enabled } : p));
+    setConfig({ ...config, config: { providers: updated } });
+    saveConfig(updated);
+  }
+
+  function handleModelChange(index: number, model: string) {
+    if (!config) return;
+    const updated = config.config.providers.map((p, i) => (i === index ? { ...p, model } : p));
+    setConfig({ ...config, config: { providers: updated } });
+    saveConfig(updated);
+  }
+
+  function handleMoveUp(index: number) {
+    if (index === 0 || !config) return;
+    const arr = [...config.config.providers];
+    [arr[index - 1], arr[index]] = [arr[index], arr[index - 1]];
+    setConfig({ ...config, config: { providers: arr } });
+    saveConfig(arr);
+  }
+
+  function handleMoveDown(index: number) {
+    if (!config || index >= config.config.providers.length - 1) return;
+    const arr = [...config.config.providers];
+    [arr[index], arr[index + 1]] = [arr[index + 1], arr[index]];
+    setConfig({ ...config, config: { providers: arr } });
+    saveConfig(arr);
+  }
+
+  if (configLoading) {
+    return (
+      <div className="space-y-4 pt-2">
+        <Card>
+          <CardContent className="flex items-center justify-center gap-2 py-8">
+            <Loader2 className="h-4 w-4 animate-spin text-muted-foreground" />
+            <span className="text-sm text-muted-foreground">Loading provider config...</span>
+          </CardContent>
+        </Card>
+      </div>
+    );
+  }
+
+  if (!config) return null;
+
+  const labels = config.provider_labels;
+  const models = config.available_models;
+  const providers = config.config.providers;
+
+  // Build a map from provider id to status
+  const statusMap = new Map(statusProviders.map((s) => [s.id ?? s.name, s]));
+
+  return (
+    <div className="space-y-6 pt-2">
+      {/* Section A: Provider Configuration */}
+      <div className="space-y-3">
+        <div className="flex items-center justify-between">
+          <div>
+            <h3 className="text-sm font-medium">Provider Configuration</h3>
+            <p className="text-xs text-muted-foreground mt-0.5">
+              Reorder to set fallback priority. Top provider is tried first.
+            </p>
+          </div>
+          {saving && (
+            <span className="text-xs text-muted-foreground flex items-center gap-1">
+              <Loader2 className="h-3 w-3 animate-spin" /> Saving...
+            </span>
+          )}
+        </div>
+
+        <div className="space-y-2">
+          {providers.map((prov, i) => (
+            <ProviderConfigRow
+              key={prov.id}
+              provider={prov}
+              label={labels[prov.id] || prov.id}
+              availableModels={models[prov.id] || []}
+              isFirst={i === 0}
+              isLast={i === providers.length - 1}
+              status={statusMap.get(prov.id)}
+              onToggle={(enabled) => handleToggle(i, enabled)}
+              onModelChange={(model) => handleModelChange(i, model)}
+              onMoveUp={() => handleMoveUp(i)}
+              onMoveDown={() => handleMoveDown(i)}
+            />
+          ))}
+        </div>
+      </div>
+
+      {/* Section B: Live Status */}
+      <div className="space-y-3">
+        <div className="flex items-center justify-between">
+          <h3 className="text-sm font-medium">Live Status</h3>
+          <Button
+            size="sm"
+            variant="outline"
+            className="h-7 gap-1.5 text-xs"
+            onClick={fetchStatus}
+            disabled={refreshing}
+          >
+            <RefreshCw className={`h-3 w-3 ${refreshing ? "animate-spin" : ""}`} />
+            Check Status
+          </Button>
+        </div>
+
+        {statusProviders.length > 0 ? (
+          <div className="grid gap-2 sm:grid-cols-2">
+            {statusProviders.map((sp) => (
+              <div
+                key={sp.name}
+                className={`flex items-center gap-2 px-3 py-2 rounded-lg border text-xs ${
+                  sp.available
+                    ? "border-emerald-200 bg-emerald-50/50"
+                    : "border-red-200 bg-red-50/50 opacity-70"
+                }`}
+              >
+                {sp.available ? (
+                  <CheckCircle2 className="h-3.5 w-3.5 text-emerald-600 shrink-0" />
+                ) : (
+                  <XCircle className="h-3.5 w-3.5 text-red-500 shrink-0" />
+                )}
+                <span className="font-medium flex-1">{sp.name}</span>
+                {sp.available && sp.response_ms != null && (
+                  <span className="text-emerald-600">{sp.response_ms}ms</span>
+                )}
+                {!sp.available && sp.error && (
+                  <span className="text-muted-foreground truncate max-w-[120px]">{sp.error}</span>
+                )}
+              </div>
+            ))}
+          </div>
+        ) : (
+          <p className="text-xs text-muted-foreground py-4 text-center">
+            Click "Check Status" to test provider connectivity.
+          </p>
+        )}
+
+        {checkedAt && (
+          <p className="text-[11px] text-muted-foreground/60">
+            Last checked{" "}
+            {Math.round((Date.now() - checkedAt.getTime()) / 1000) < 60
+              ? "just now"
+              : `${Math.round((Date.now() - checkedAt.getTime()) / 60000)}m ago`}
+          </p>
+        )}
+      </div>
+    </div>
+  );
+}
+
+// ── Provider Config Row ──
+
+function ProviderConfigRow({
+  provider,
+  label,
+  availableModels,
+  isFirst,
+  isLast,
+  status,
+  onToggle,
+  onModelChange,
+  onMoveUp,
+  onMoveDown,
+}: {
+  provider: ProviderConfigItem;
+  label: string;
+  availableModels: string[];
+  isFirst: boolean;
+  isLast: boolean;
+  status?: ProviderStatus;
+  onToggle: (enabled: boolean) => void;
+  onModelChange: (model: string) => void;
+  onMoveUp: () => void;
+  onMoveDown: () => void;
+}) {
+  const isOllama = availableModels.length === 0;
+
+  return (
+    <div
+      className={`flex items-center gap-2 px-3 py-2.5 rounded-lg border ${provider.enabled ? "" : "opacity-60"}`}
+    >
+      {/* Reorder buttons */}
+      <div className="flex flex-col gap-0.5 shrink-0">
+        <button
+          onClick={onMoveUp}
+          disabled={isFirst}
+          className="p-0.5 text-muted-foreground hover:text-foreground disabled:opacity-20 transition-colors"
+        >
+          <ChevronUp className="h-3 w-3" />
+        </button>
+        <button
+          onClick={onMoveDown}
+          disabled={isLast}
+          className="p-0.5 text-muted-foreground hover:text-foreground disabled:opacity-20 transition-colors"
+        >
+          <ChevronDown className="h-3 w-3" />
+        </button>
+      </div>
+
+      {/* Status dot */}
+      {status ? (
+        status.available ? (
+          <Wifi className="h-3.5 w-3.5 text-emerald-500 shrink-0" />
+        ) : (
+          <WifiOff className="h-3.5 w-3.5 text-muted-foreground/40 shrink-0" />
+        )
+      ) : (
+        <GripVertical className="h-3.5 w-3.5 text-muted-foreground/30 shrink-0" />
+      )}
+
+      {/* Provider name */}
+      <span className="text-sm font-medium min-w-[100px]">{label}</span>
+
+      {/* Model selector */}
+      <div className="flex-1 min-w-0">
+        {isOllama ? (
+          <Input
+            value={provider.model}
+            onChange={(e) => onModelChange(e.target.value)}
+            placeholder="Model name"
+            className="h-7 text-xs"
+            disabled={!provider.enabled}
+          />
+        ) : (
+          <Select
+            value={provider.model}
+            onValueChange={(v) => v && onModelChange(v)}
+            disabled={!provider.enabled}
+          >
+            <SelectTrigger className="h-7 text-xs">
+              <SelectValue placeholder="Select model" />
+            </SelectTrigger>
+            <SelectContent>
+              {availableModels.map((m) => (
+                <SelectItem key={m} value={m}>
+                  <span className="text-xs">{m}</span>
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        )}
+      </div>
+
+      {/* Enable toggle */}
+      <Switch size="sm" checked={provider.enabled} onCheckedChange={onToggle} />
+    </div>
   );
 }

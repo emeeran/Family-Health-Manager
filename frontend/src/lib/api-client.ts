@@ -15,6 +15,8 @@ interface ApiOptions {
   body?: unknown;
   params?: Record<string, string | undefined>;
   isFormData?: boolean;
+  /** Override default request timeout (ms). */
+  timeout?: number;
   /** Internal: true when this request is a retry after token refresh. */
   _isRetry?: boolean;
 }
@@ -63,7 +65,7 @@ function forceLogout(): never {
 /* ------------------------------------------------------------------ */
 
 export async function apiRequest<T>(path: string, options: ApiOptions = {}): Promise<T> {
-  const { method = "GET", body, params, isFormData = false, _isRetry = false } = options;
+  const { method = "GET", body, params, isFormData = false, timeout, _isRetry = false } = options;
 
   const sp = new URLSearchParams();
   if (params) {
@@ -82,7 +84,7 @@ export async function apiRequest<T>(path: string, options: ApiOptions = {}): Pro
   }
 
   const controller = new AbortController();
-  const timeoutId = setTimeout(() => controller.abort(), REQUEST_TIMEOUT);
+  const timeoutId = setTimeout(() => controller.abort(), timeout ?? REQUEST_TIMEOUT);
 
   try {
     const response = await fetch(url, {
@@ -151,15 +153,16 @@ export async function apiRequest<T>(path: string, options: ApiOptions = {}): Pro
  * Stream SSE events from a POST endpoint.
  * Calls `onEvent` for each parsed JSON event from the server.
  * Returns a promise that resolves when the stream ends.
+ * Call the returned cancel function to abort the stream at any time.
  */
-export async function streamRequest(
+export function streamRequest(
   path: string,
   options: {
     body?: unknown;
     onEvent: (event: Record<string, unknown>) => void;
   },
   _isRetry = false
-): Promise<void> {
+): { promise: Promise<void>; cancel: () => void } {
   const { body, onEvent } = options;
   const url = `${API_BASE_URL}${path}`;
 
@@ -171,81 +174,96 @@ export async function streamRequest(
   const STREAM_TIMEOUT = 300_000;
   const timeoutId = setTimeout(() => controller.abort(), STREAM_TIMEOUT);
 
-  try {
-    const response = await fetch(url, {
-      method: "POST",
-      headers,
-      body: body ? JSON.stringify(body) : undefined,
-      signal: controller.signal,
-      credentials: "include",
-    });
-
-    // ── 401: try refresh then retry once ──
-    if (response.status === 401 && !path.startsWith("/auth/")) {
-      if (_isRetry) forceLogout();
-      const refreshed = await tryRefreshToken();
-      if (refreshed) {
-        return streamRequest(path, options, true);
-      }
-      forceLogout();
-    }
-
-    if (!response.ok) {
-      const text = await response.text().catch(() => "");
-      let error;
-      try {
-        error = JSON.parse(text);
-      } catch {
-        error = {
-          status_code: response.status,
-          message: response.statusText || `HTTP ${response.status}`,
-          detail: text.slice(0, 200),
-        };
-      }
-      console.error(`Stream ${response.status} on ${path}:`, error);
-      throw new ApiError(response.status, error);
-    }
-
-    const reader = response.body?.getReader();
-    if (!reader) return;
-
-    const decoder = new TextDecoder();
-    let buffer = "";
-
+  const promise = (async () => {
     try {
-      while (true) {
-        const { done, value } = await reader.read();
-        if (done) break;
+      const response = await fetch(url, {
+        method: "POST",
+        headers,
+        body: body ? JSON.stringify(body) : undefined,
+        signal: controller.signal,
+        credentials: "include",
+      });
 
-        buffer += decoder.decode(value, { stream: true });
-        const lines = buffer.split("\n");
-        buffer = lines.pop() || "";
+      // ── 401: try refresh then retry once ──
+      if (response.status === 401 && !path.startsWith("/auth/")) {
+        if (_isRetry) forceLogout();
+        const refreshed = await tryRefreshToken();
+        if (refreshed) {
+          const retry = streamRequest(path, options, true);
+          return retry.promise;
+        }
+        forceLogout();
+      }
 
-        for (const line of lines) {
-          const trimmed = line.trim();
-          if (trimmed.startsWith("data: ")) {
-            try {
-              const event = JSON.parse(trimmed.slice(6));
-              onEvent(event);
-            } catch {
-              // Skip malformed JSON lines
+      if (!response.ok) {
+        const text = await response.text().catch(() => "");
+        let error;
+        try {
+          error = JSON.parse(text);
+        } catch {
+          error = {
+            status_code: response.status,
+            message: response.statusText || `HTTP ${response.status}`,
+            detail: text.slice(0, 200),
+          };
+        }
+        console.error(`Stream ${response.status} on ${path}:`, error);
+        throw new ApiError(response.status, error);
+      }
+
+      const reader = response.body?.getReader();
+      if (!reader) return;
+
+      const decoder = new TextDecoder();
+      let buffer = "";
+
+      try {
+        while (true) {
+          const { done, value } = await reader.read();
+          if (done) break;
+
+          buffer += decoder.decode(value, { stream: true });
+          const lines = buffer.split("\n");
+          buffer = lines.pop() || "";
+
+          for (const line of lines) {
+            const trimmed = line.trim();
+            if (trimmed.startsWith("data: ")) {
+              try {
+                const event = JSON.parse(trimmed.slice(6));
+                onEvent(event);
+              } catch {
+                // Skip malformed JSON lines
+              }
             }
           }
         }
+      } finally {
+        reader.releaseLock();
       }
+    } catch (err) {
+      if (err instanceof ApiError) throw err;
+      if (err instanceof DOMException && err.name === "AbortError") {
+        // User-initiated cancel vs timeout
+        if (controller.signal.aborted && !timeoutId.refresh) {
+          return; // Cancelled by user — resolve silently
+        }
+        throw new ApiError(408, { message: "Request timed out" });
+      }
+      if (err instanceof TypeError) {
+        throw new ApiError(0, { message: "Network error. Check your connection." });
+      }
+      throw err;
     } finally {
-      reader.releaseLock();
+      clearTimeout(timeoutId);
     }
-  } catch (err) {
-    if (err instanceof ApiError) throw err;
-    if (err instanceof DOMException && err.name === "AbortError") {
-      throw new ApiError(408, { message: "Request timed out" });
-    }
-    if (err instanceof TypeError) {
-      throw new ApiError(0, { message: "Network error. Check your connection." });
-    }
-    throw err;
-  } finally {
-    clearTimeout(timeoutId);
-  }
+  })();
+
+  return {
+    promise,
+    cancel: () => {
+      clearTimeout(timeoutId);
+      controller.abort();
+    },
+  };
 }

@@ -36,6 +36,7 @@ logger = logging.getLogger(__name__)
 async def extract_from_document(
     member_id: UUID,
     file: UploadFile = File(...),
+    household: Household = Depends(get_household_from_token),
     _member: FamilyMember = Depends(require_member_in_household),
     db: AsyncSession = Depends(get_db),
 ):
@@ -45,7 +46,7 @@ async def extract_from_document(
     validate_file(file)
     file_path, unique_filename = await save_file(file, prefix="staging")
 
-    ai_service = AIService(db)
+    ai_service = AIService(db, household_id=household.id)
     transcription = None
     try:
         result = await ai_service.extract_medical_data(
@@ -131,6 +132,7 @@ async def _extract_single_file(
 async def extract_batch(
     member_id: UUID,
     files: list[UploadFile] = File(...),
+    household: Household = Depends(get_household_from_token),
     _member: FamilyMember = Depends(require_member_in_household),
     db: AsyncSession = Depends(get_db),
 ):
@@ -145,7 +147,7 @@ async def extract_batch(
     # This is safe because extraction only calls read-only AI provider methods
     # (no mutable state mutation). The _ollama_client lazy-init is the only
     # shared mutable field, but Ollama runs as a separate service now.
-    ai_service = AIService(db)
+    ai_service = AIService(db, household_id=household.id)
     results: list[BatchExtractionItemSchema] = []
     batch_size = 3
 
@@ -249,7 +251,7 @@ async def create_record(
     summary_text = request.summary
     if not summary_text and request.clinical_data:
         try:
-            ai_service = AIService(db)
+            ai_service = AIService(db, household_id=household.id)
             # Build extracted data dict from the request for summary generation
             extracted_data: dict = {}
             if request.diagnosis:
@@ -389,6 +391,7 @@ async def create_record(
 @router.post("/backfill-summaries")
 async def backfill_summaries(
     member_id: UUID,
+    household: Household = Depends(get_household_from_token),
     _member: FamilyMember = Depends(require_member_in_household),
     db: AsyncSession = Depends(get_db),
     limit: int = Query(10, le=50, description="Max records to process per call"),
@@ -415,7 +418,7 @@ async def backfill_summaries(
     if not records:
         return {"updated_count": 0, "total_remaining": 0, "message": "All records already have summaries"}
 
-    ai_service = AIService(db)
+    ai_service = AIService(db, household_id=household.id)
     updated = 0
     errors = 0
 
@@ -818,6 +821,7 @@ async def regenerate_record_insight(
 async def regenerate_record_insight_stream(
     member_id: UUID,
     record_id: UUID,
+    household: Household = Depends(get_household_from_token),
     _member: FamilyMember = Depends(require_member_in_household),
     db: AsyncSession = Depends(get_db),
 ):
@@ -834,7 +838,7 @@ async def regenerate_record_insight_stream(
     insight_svc = InsightService(db)
     prompt = insight_svc._build_prompt(record)
 
-    ai_service = AIService(db)
+    ai_service = AIService(db, household_id=household.id)
 
     return make_sse_stream(
         ai_service.generate_insight_stream(
@@ -889,7 +893,7 @@ async def regenerate_summary(
     except (json.JSONDecodeError, ValueError):
         extracted_data["clinical_data"] = record.clinical_data
 
-    ai_service = AIService(db)
+    ai_service = AIService(db, household_id=household.id)
     try:
         summary = await ai_service.generate_consultation_summary(extracted_data)
     except Exception as exc:

@@ -1,8 +1,9 @@
-import { useEffect, useState } from "react";
+import { useEffect, useState, useRef } from "react";
 import { Button } from "@/components/ui/button";
 import { VerificationBadge } from "@/components/shared/verification-badge";
 import type { VerificationResult } from "@/lib/types/message";
 import { ArrowLeft, Download, Brain, ClipboardList } from "lucide-react";
+import { exportElementToPDF } from "@/lib/pdf-export";
 
 /* ── Shared markdown parsing ── */
 
@@ -225,6 +226,18 @@ export function InsightReport({
   });
   const reportId = `DSR-${genDate.getFullYear()}${String(genDate.getMonth() + 1).padStart(2, "0")}${String(genDate.getDate()).padStart(2, "0")}-${String(genDate.getHours()).padStart(2, "0")}${String(genDate.getMinutes()).padStart(2, "0")}`;
 
+  const articleRef = useRef<HTMLElement>(null);
+
+  async function handleExportPDF() {
+    const el = articleRef.current;
+    if (!el) return;
+    try {
+      await exportElementToPDF(el, `${reportId}.pdf`);
+    } catch {
+      window.print();
+    }
+  }
+
   return (
     <div className="min-h-screen bg-white">
       <div className="sticky top-0 z-20 border-b border-gray-200 bg-white/95 backdrop-blur-sm print:hidden">
@@ -237,7 +250,7 @@ export function InsightReport({
             Dashboard
           </button>
           <div className="flex items-center gap-3">
-            <Button size="sm" variant="outline" onClick={() => window.print()} className="gap-1.5">
+            <Button size="sm" variant="outline" onClick={handleExportPDF} className="gap-1.5">
               <Download className="h-3.5 w-3.5" />
               Export PDF
             </Button>
@@ -245,7 +258,7 @@ export function InsightReport({
           </div>
         </div>
       </div>
-      <article className="max-w-[900px] mx-auto px-10 py-8 text-gray-800">
+      <article ref={articleRef} className="max-w-[900px] mx-auto px-10 py-8 text-gray-800">
         <header className="mb-6 pb-5 border-b-2 border-gray-900">
           <div className="flex items-center gap-2 mb-3">
             <div className="h-7 w-7 rounded-md bg-gradient-to-br from-(--brand-accent) to-(--brand-primary) flex items-center justify-center">
@@ -439,6 +452,21 @@ export function PreConsultationNoteViewer({
     day: "numeric",
   });
 
+  const noteRef = useRef<HTMLElement>(null);
+
+  async function handlePDF() {
+    const el = noteRef.current;
+    if (!el) {
+      onExportPDF();
+      return;
+    }
+    try {
+      await exportElementToPDF(el, `pre-consultation-${dateStr}.pdf`);
+    } catch {
+      onExportPDF();
+    }
+  }
+
   return (
     <div className="min-h-screen bg-white">
       <div className="sticky top-0 z-20 border-b border-gray-200 bg-white/95 backdrop-blur-sm print:hidden">
@@ -451,7 +479,7 @@ export function PreConsultationNoteViewer({
             Back
           </button>
           <div className="flex items-center gap-2">
-            <Button size="sm" variant="outline" onClick={onExportPDF} className="gap-1 h-7 text-xs">
+            <Button size="sm" variant="outline" onClick={handlePDF} className="gap-1 h-7 text-xs">
               <Download className="h-3 w-3" />
               PDF
             </Button>
@@ -459,7 +487,7 @@ export function PreConsultationNoteViewer({
           </div>
         </div>
       </div>
-      <article className="max-w-[640px] mx-auto px-6 py-4">
+      <article ref={noteRef} className="max-w-[640px] mx-auto px-6 py-4">
         <header className="mb-3 pb-2 border-b border-gray-200">
           <div className="flex items-center gap-1.5 mb-1">
             <ClipboardList className="h-4 w-4 text-teal-600" />

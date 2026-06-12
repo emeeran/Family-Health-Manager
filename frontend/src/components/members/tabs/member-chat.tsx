@@ -123,12 +123,13 @@ export function MemberChat({ memberId, memberName }: MemberChatProps) {
 
       let fullContent = "";
       try {
-        await sendMessageStream(convId, { content: text }, (event: StreamEvent) => {
+        const { promise } = sendMessageStream(convId, { content: text }, (event: StreamEvent) => {
           if (event.type === "token" && typeof event.content === "string") {
             fullContent += event.content;
             setStreamingContent(fullContent);
           }
         });
+        await promise;
       } catch {
         const result = await sendMessage(convId, { content: text });
         fullContent = result.assistant_message.content;

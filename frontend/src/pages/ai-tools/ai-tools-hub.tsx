@@ -20,6 +20,7 @@ import {
   Pill,
   FileText,
   PenLine,
+  FileUp,
   Users,
   Loader2,
   ChevronRight,
@@ -75,6 +76,13 @@ const tools: ToolCard[] = [
     icon: PenLine,
     path: "/ai-tools/smart-entry",
     color: "text-cyan-500",
+  },
+  {
+    title: "Document Extraction",
+    description: "Upload medical documents and AI extracts structured health data into records",
+    icon: FileUp,
+    path: "/ai-tools/document-extraction",
+    color: "text-indigo-500",
   },
 ];
 

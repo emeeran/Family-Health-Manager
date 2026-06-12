@@ -1,4 +1,4 @@
-import { useState, memo } from "react";
+import { useState, useRef, memo } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { VerificationBadge } from "@/components/shared/verification-badge";
@@ -7,6 +7,7 @@ import { generateMemberInsights } from "@/lib/api/members";
 import { Brain, Sparkles, Loader2, CheckCircle2 } from "lucide-react";
 import { toast } from "sonner";
 import type { GeneratedInsight } from "@/lib/api/members";
+import { useVerificationPolling } from "@/lib/hooks/use-verification-polling";
 
 export interface InsightCardProps {
   memberId: string;
@@ -27,14 +28,17 @@ export const InsightCard = memo(function InsightCard({
   const [insight, setInsight] = useState<GeneratedInsight | null>(existingInsight);
   const [streamText, setStreamText] = useState("");
   const [streamStage, setStreamStage] = useState("");
+  const [error, setError] = useState<string | null>(null);
+  const cancelRef = useRef<(() => void) | null>(null);
 
   async function handleGenerate() {
     setLoading(true);
+    setError(null);
     setStreamText("");
     setStreamStage("Starting...");
     try {
       let fullText = "";
-      await streamRequest(`/members/${memberId}/generate-insights/stream`, {
+      const { promise, cancel } = streamRequest(`/members/${memberId}/generate-insights/stream`, {
         onEvent: (event) => {
           const e = event as Record<string, unknown>;
           const stage = e.stage as string;
@@ -64,15 +68,20 @@ export const InsightCard = memo(function InsightCard({
           }
         },
       });
-    } catch {
-      toast.error("Failed to generate insights");
+      cancelRef.current = cancel;
+      await promise;
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : "Failed to generate insights";
+      setError(msg);
     } finally {
       setLoading(false);
       setStreamStage("");
+      cancelRef.current = null;
     }
   }
 
   const currentInsight = insight || existingInsight;
+  const verification = useVerificationPolling(memberId, currentInsight);
 
   return (
     <Card className="overflow-hidden">
@@ -107,6 +116,16 @@ export const InsightCard = memo(function InsightCard({
                 </>
               )}
             </Button>
+            {loading && (
+              <Button
+                size="sm"
+                variant="ghost"
+                className="text-xs text-muted-foreground"
+                onClick={() => cancelRef.current?.()}
+              >
+                Cancel
+              </Button>
+            )}
           </div>
         </div>
       </CardHeader>
@@ -128,6 +147,14 @@ export const InsightCard = memo(function InsightCard({
               {streamStage || "Analyzing records..."}
             </p>
           </div>
+        ) : error ? (
+          <div className="p-3 rounded-lg bg-destructive/10 border border-destructive/20 space-y-2">
+            <p className="text-sm text-destructive font-medium">{error}</p>
+            <Button size="sm" variant="outline" onClick={handleGenerate}>
+              <Sparkles className="h-3.5 w-3.5 mr-1" />
+              Retry
+            </Button>
+          </div>
         ) : currentInsight ? (
           <div className="flex items-center gap-2 p-3 rounded-lg bg-emerald-50 border border-emerald-200">
             <CheckCircle2 className="h-4 w-4 text-emerald-600 shrink-0" />
@@ -139,7 +166,7 @@ export const InsightCard = memo(function InsightCard({
               })}{" "}
               via <span className="font-bold">{currentInsight.provider_used}</span>
             </p>
-            <VerificationBadge verification={currentInsight.verification} />
+            <VerificationBadge verification={verification} />
           </div>
         ) : (
           <p className="text-sm text-foreground/60">

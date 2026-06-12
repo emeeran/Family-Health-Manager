@@ -1,4 +1,4 @@
-import { useState, useEffect, memo } from "react";
+import { useState, useEffect, useRef, memo } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
@@ -27,6 +27,7 @@ import { useNavigate } from "react-router-dom";
 import type { GeneratedInsight } from "@/lib/api/members";
 
 import type { ProviderResponse } from "@/lib/types/provider";
+import { useVerificationPolling } from "@/lib/hooks/use-verification-polling";
 
 export interface PreConsultationCardProps {
   memberId: string;
@@ -48,10 +49,12 @@ export const PreConsultationCard = memo(function PreConsultationCard({
   const [note, setNote] = useState<GeneratedInsight | null>(existingNote);
   const [streamText, setStreamText] = useState("");
   const [streamStage, setStreamStage] = useState("");
+  const [genError, setGenError] = useState<string | null>(null);
   const [symptoms, setSymptoms] = useState("");
   const [showSymptomInput, setShowSymptomInput] = useState(!existingNote);
   const [providers, setProviders] = useState<ProviderResponse[]>([]);
   const [selectedProviderId, setSelectedProviderId] = useState<string>("");
+  const cancelRef = useRef<(() => void) | null>(null);
 
   useEffect(() => {
     if (existingNote && showSymptomInput) {
@@ -75,6 +78,7 @@ export const PreConsultationCard = memo(function PreConsultationCard({
 
   async function handleGenerate() {
     setLoading(true);
+    setGenError(null);
     setStreamText("");
     setStreamStage("Loading medical history...");
     try {
@@ -83,50 +87,55 @@ export const PreConsultationCard = memo(function PreConsultationCard({
       if (symptoms.trim()) params.set("symptoms", symptoms.trim());
       if (selectedProviderId) params.set("provider_id", selectedProviderId);
       const qs = params.toString() ? `?${params.toString()}` : "";
-      await streamRequest(`/members/${memberId}/pre-consultation-note/stream${qs}`, {
-        onEvent: (event) => {
-          const e = event as Record<string, unknown>;
-          const stage = e.stage as string;
-          if (stage === "context") {
-            setStreamStage((e.message as string) || "Preparing...");
-          } else if (stage === "provider") {
-            setStreamStage(`Generating via ${e.provider}...`);
-          } else if (stage === "token") {
-            fullText += e.content as string;
-            setStreamText(fullText);
-          } else if (stage === "complete") {
-            const result: GeneratedInsight = {
-              id: e.insight_id as string,
-              response: fullText,
-              provider_used: e.provider as string,
-              generated_at: new Date().toISOString(),
-              verification: null,
-            };
-            setNote(result);
-            setStreamStage("");
-            setShowSymptomInput(false);
-            onNoteReady(result);
-          } else if (stage === "error") {
-            toast.error((e.message as string) || "Generation failed");
-          }
-        },
-      });
+      const { promise, cancel } = streamRequest(
+        `/members/${memberId}/pre-consultation-note/stream${qs}`,
+        {
+          onEvent: (event) => {
+            const e = event as Record<string, unknown>;
+            const stage = e.stage as string;
+            if (stage === "context") {
+              setStreamStage((e.message as string) || "Preparing...");
+            } else if (stage === "provider") {
+              setStreamStage(`Generating via ${e.provider}...`);
+            } else if (stage === "token") {
+              fullText += e.content as string;
+              setStreamText(fullText);
+            } else if (stage === "complete") {
+              const result: GeneratedInsight = {
+                id: e.insight_id as string,
+                response: fullText,
+                provider_used: e.provider as string,
+                generated_at: new Date().toISOString(),
+                verification: null,
+              };
+              setNote(result);
+              setStreamStage("");
+              setShowSymptomInput(false);
+              onNoteReady(result);
+            } else if (stage === "error") {
+              toast.error((e.message as string) || "Generation failed");
+            }
+          },
+        }
+      );
+      cancelRef.current = cancel;
+      await promise;
     } catch (err) {
       if (err instanceof ApiError) {
         const detail = err.data?.message || err.data?.error || err.message || "Unknown";
-        console.error("Pre-consult API error:", err.status, err.data);
-        toast.error(`Failed to generate: ${detail} (${err.status})`);
+        setGenError(`Failed to generate: ${detail} (${err.status})`);
       } else {
-        console.error("Pre-consult error:", err);
-        toast.error(`Failed to generate: ${err instanceof Error ? err.message : "Unknown error"}`);
+        setGenError(err instanceof Error ? err.message : "Unknown error");
       }
     } finally {
       setLoading(false);
       setStreamStage("");
+      cancelRef.current = null;
     }
   }
 
   const currentNote = note || existingNote;
+  const verification = useVerificationPolling(memberId, currentNote, "preconsultation");
   const selectedProvider = providers.find((p) => p.id === selectedProviderId);
 
   // Streaming state
@@ -143,6 +152,14 @@ export const PreConsultationCard = memo(function PreConsultationCard({
                 for {selectedProvider.name}
               </span>
             )}
+            <Button
+              size="sm"
+              variant="ghost"
+              className="ml-auto text-xs text-muted-foreground"
+              onClick={() => cancelRef.current?.()}
+            >
+              Cancel
+            </Button>
           </CardTitle>
         </CardHeader>
         <CardContent className="space-y-3">
@@ -191,7 +208,7 @@ export const PreConsultationCard = memo(function PreConsultationCard({
               })}{" "}
               via <span className="font-bold">{currentNote.provider_used}</span>
             </p>
-            <VerificationBadge verification={currentNote.verification} />
+            <VerificationBadge verification={verification} />
           </div>
           <div className="flex flex-wrap gap-2">
             <Button
@@ -231,6 +248,15 @@ export const PreConsultationCard = memo(function PreConsultationCard({
         </CardTitle>
       </CardHeader>
       <CardContent className="space-y-3">
+        {genError && (
+          <div className="p-3 rounded-lg bg-destructive/10 border border-destructive/20 space-y-2">
+            <p className="text-sm text-destructive font-medium">{genError}</p>
+            <Button size="sm" variant="outline" onClick={handleGenerate}>
+              <Sparkles className="h-3.5 w-3.5 mr-1" />
+              Retry
+            </Button>
+          </div>
+        )}
         <p className="text-sm text-foreground/70">
           Select which doctor you're visiting and describe your symptoms. The AI will generate a
           structured note with your history, symptoms, lab anomalies, and targeted questions.

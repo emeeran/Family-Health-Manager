@@ -1,7 +1,7 @@
-import { useState, useMemo } from "react";
+import { useState, useMemo, useRef, useEffect } from "react";
 import { Plus, Trash2, MessageSquare, User, PanelLeftClose, PanelLeftOpen } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { deleteConversation } from "@/lib/api/conversations";
+import { deleteConversation, updateConversation } from "@/lib/api/conversations";
 import { ConfirmDialog } from "@/components/shared/confirm-dialog";
 import { useSWRConfig } from "swr";
 import { toast } from "sonner";
@@ -19,6 +19,7 @@ interface ConversationSidebarPanelProps {
   onSelectConversation: (id: string) => void;
   onNewChat: () => void;
   onActiveDeleted?: () => void;
+  onRefresh?: () => void;
   collapsed?: boolean;
   onToggleCollapse?: () => void;
 }
@@ -30,6 +31,7 @@ export function ConversationSidebarPanel({
   onSelectConversation,
   onNewChat,
   onActiveDeleted,
+  onRefresh,
   collapsed = false,
   onToggleCollapse,
 }: ConversationSidebarPanelProps) {
@@ -37,11 +39,34 @@ export function ConversationSidebarPanel({
   const [scopeFilter, setScopeFilter] = useState<ScopeFilter>("all");
   const [deleteOpen, setDeleteOpen] = useState(false);
   const [deleteId, setDeleteId] = useState("");
+  const [renamingId, setRenamingId] = useState<string | null>(null);
+  const [renameValue, setRenameValue] = useState("");
+  const renameInputRef = useRef<HTMLInputElement>(null);
+
+  useEffect(() => {
+    if (renamingId && renameInputRef.current) {
+      renameInputRef.current.focus();
+      renameInputRef.current.select();
+    }
+  }, [renamingId]);
 
   const memberMap = useMemo(
     () => new Map(members.map((m) => [m.id, `${m.first_name} ${m.last_name}`])),
     [members]
   );
+
+  async function handleRename(convId: string, newTitle: string) {
+    if (!newTitle.trim()) return;
+    try {
+      await updateConversation(convId, { title: newTitle.trim() });
+      onRefresh?.();
+    } catch {
+      /* ignore rename failure */
+    }
+    setRenamingId(null);
+  }
+
+  const [searchQuery, setSearchQuery] = useState("");
 
   const filteredConversations = useMemo(() => {
     return [...conversations]
@@ -49,9 +74,13 @@ export function ConversationSidebarPanel({
       .filter((conv) => {
         if (scopeFilter === "general" && conv.scope !== "general") return false;
         if (scopeFilter === "member" && conv.scope !== "member") return false;
+        if (searchQuery.trim()) {
+          const q = searchQuery.toLowerCase();
+          return (conv.title || "").toLowerCase().includes(q);
+        }
         return true;
       });
-  }, [conversations, scopeFilter]);
+  }, [conversations, scopeFilter, searchQuery]);
 
   async function handleDelete() {
     try {
@@ -196,6 +225,15 @@ export function ConversationSidebarPanel({
             </button>
           ))}
         </div>
+        {conversations.length > 5 && (
+          <input
+            type="text"
+            placeholder="Search conversations..."
+            value={searchQuery}
+            onChange={(e) => setSearchQuery(e.target.value)}
+            className="w-full h-7 px-2.5 text-xs rounded-md border border-border bg-background placeholder:text-muted-foreground/40 focus:outline-none focus:ring-1 focus:ring-ring"
+          />
+        )}
       </div>
 
       {/* Conversation list */}
@@ -220,7 +258,13 @@ export function ConversationSidebarPanel({
                     "group flex items-center gap-2 rounded-lg px-2.5 py-2 cursor-pointer transition-colors",
                     isActive ? "bg-muted" : "hover:bg-muted/50"
                   )}
-                  onClick={() => onSelectConversation(conv.id)}
+                  onClick={() => {
+                    if (renamingId !== conv.id) onSelectConversation(conv.id);
+                  }}
+                  onDoubleClick={() => {
+                    setRenamingId(conv.id);
+                    setRenameValue(conv.title || "");
+                  }}
                 >
                   <div
                     className={cn(
@@ -235,14 +279,29 @@ export function ConversationSidebarPanel({
                     )}
                   </div>
                   <div className="flex-1 min-w-0">
-                    <p
-                      className={cn(
-                        "text-[13px] truncate",
-                        isActive ? "font-medium text-foreground" : "text-foreground/75"
-                      )}
-                    >
-                      {conv.title || "Untitled"}
-                    </p>
+                    {renamingId === conv.id ? (
+                      <input
+                        ref={renameInputRef}
+                        value={renameValue}
+                        onChange={(e) => setRenameValue(e.target.value)}
+                        onBlur={() => handleRename(conv.id, renameValue)}
+                        onKeyDown={(e) => {
+                          if (e.key === "Enter") handleRename(conv.id, renameValue);
+                          if (e.key === "Escape") setRenamingId(null);
+                        }}
+                        onClick={(e) => e.stopPropagation()}
+                        className="w-full text-[13px] bg-background border border-border rounded px-1.5 py-0.5 outline-none focus:ring-1 focus:ring-ring"
+                      />
+                    ) : (
+                      <p
+                        className={cn(
+                          "text-[13px] truncate",
+                          isActive ? "font-medium text-foreground" : "text-foreground/75"
+                        )}
+                      >
+                        {conv.title || "Untitled"}
+                      </p>
+                    )}
                     <p className="text-[10px] text-muted-foreground/45 truncate">
                       {isMember && memberName ? memberName : "General"} ·{" "}
                       {formatRelativeTime(conv.updated_at)}

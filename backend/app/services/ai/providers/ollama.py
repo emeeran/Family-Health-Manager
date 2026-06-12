@@ -41,13 +41,14 @@ async def _retry_request(fn, retries: int = 2, base_delay: float = 0.5):
             await asyncio.sleep(delay)
 
 
-async def call_ollama_text(prompt: str) -> str | None:
+async def call_ollama_text(prompt: str, model: str | None = None) -> str | None:
     """Call local Ollama API for text generation — uses lighter model."""
     if not settings.OLLAMA_LOCAL_URL:
         return None
+    use_model = model or settings.OLLAMA_TEXT_MODEL
     url = f"{settings.OLLAMA_LOCAL_URL}/api/chat"
     payload = {
-        "model": settings.OLLAMA_TEXT_MODEL,
+        "model": use_model,
         "messages": [{"role": "user", "content": prompt}],
         "stream": False,
         "options": {"num_ctx": 16384, "num_predict": 2048, "temperature": 0.3},
@@ -63,7 +64,7 @@ async def call_ollama_text(prompt: str) -> str | None:
     data = await _retry_request(_do)
     content = data.get("message", {}).get("content", "")
     if not content or not content.strip():
-        logger.warning("Ollama text (%s) returned empty content", settings.OLLAMA_TEXT_MODEL)
+        logger.warning("Ollama text (%s) returned empty content", use_model)
         return None
     return content
 

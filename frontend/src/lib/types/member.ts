@@ -97,6 +97,7 @@ export interface DrugInteraction {
 export interface DrugInteractionResponse {
   interactions: DrugInteraction[];
   medications_checked: number;
+  cached_at: string | null;
 }
 
 export interface BmiHistoryEntry {

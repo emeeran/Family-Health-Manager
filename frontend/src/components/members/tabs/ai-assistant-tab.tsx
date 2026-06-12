@@ -3,6 +3,7 @@ import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { ShieldCheck, Bell } from "lucide-react";
+import { exportHTMLToPDF } from "@/lib/pdf-export";
 import { InsightCard } from "@/components/members/insight-card";
 import { PreConsultationCard } from "@/components/members/pre-consultation-card";
 import { DrugInteractionReport } from "@/components/members/drug-interaction-report";
@@ -172,7 +173,7 @@ export const AiAssistantTab = memo(function AiAssistantTab({ data }: AiAssistant
   const [showPreConsult, setShowPreConsult] = useState(false);
   const [showReport, setShowReport] = useState(false);
 
-  function handlePreConsultPDF() {
+  async function handlePreConsultPDF() {
     if (!preConsultNote) return;
     const esc = (s: string) =>
       s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
@@ -204,11 +205,15 @@ export const AiAssistantTab = memo(function AiAssistantTab({ data }: AiAssistant
 <body><div style="text-align:center;margin-bottom:16px;border-bottom:2px solid #14B8A6;padding-bottom:12px"><div style="font-size:14px;font-weight:bold">${esc(mn)} — Pre-Consultation Note</div><div style="font-size:10px;color:#6b7280;margin-top:4px">${dateStr} &middot; via ${esc(preConsultNote.provider_used)}</div><div style="font-size:9px;color:#9ca3af;margin-top:2px">Exported ${now}</div></div>
 ${sectionHtml}
 <div style="margin-top:16px;padding-top:6px;border-top:1px solid #d1d5db;font-size:9px;color:#9ca3af">AI-generated for informational purposes only. Review with your healthcare provider.</div></body></html>`;
-    const win = window.open("", "_blank");
-    if (!win) return;
-    win.document.write(html);
-    win.document.close();
-    setTimeout(() => win.print(), 200);
+    try {
+      await exportHTMLToPDF(html, `pre-consultation-${mn}-${dateStr}.pdf`);
+    } catch {
+      const win = window.open("", "_blank");
+      if (!win) return;
+      win.document.write(html);
+      win.document.close();
+      setTimeout(() => win.print(), 200);
+    }
   }
 
   function handleInsightReady(result: GeneratedInsight) {

@@ -45,7 +45,7 @@ async def generate_smart_report(
     await _verify_member(household.id, member_id, db)
     prompt = _build_smart_report_prompt(member_id)
 
-    ai_service = AIService(db)
+    ai_service = AIService(db, household_id=household.id)
     try:
         insight = await ai_service.generate_insight(
             prompt=prompt,
@@ -127,7 +127,7 @@ async def generate_smart_report_stream(
 
     prompt = _build_smart_report_prompt(member_id)
 
-    ai_service = AIService(db)
+    ai_service = AIService(db, household_id=household.id)
     return make_sse_stream(
         ai_service.generate_insight_stream(
             prompt=prompt,

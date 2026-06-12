@@ -1,4 +1,4 @@
-import { memo, useState, useCallback } from "react";
+import { memo, useCallback } from "react";
 import { Link } from "react-router-dom";
 import {
   FileText,
@@ -289,13 +289,18 @@ export const MemberCard = memo(function MemberCard({
           />
           <Tooltip>
             <TooltipTrigger>
-              <button
+              <span
+                role="button"
+                tabIndex={0}
                 onClick={() => onDelete(member.id)}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter" || e.key === " ") onDelete(member.id);
+                }}
                 className="ml-auto inline-flex items-center justify-center rounded-lg p-2 text-muted-foreground/50 hover:text-destructive hover:bg-destructive/10 transition-all duration-200 cursor-pointer"
                 aria-label={`Delete ${fullName}`}
               >
                 <Trash2 className="h-3.5 w-3.5" />
-              </button>
+              </span>
             </TooltipTrigger>
             <TooltipContent>Delete</TooltipContent>
           </Tooltip>
@@ -420,13 +425,18 @@ export const MemberRow = memo(function MemberRow({ member, scoreData, onDelete }
         />
         <Tooltip>
           <TooltipTrigger>
-            <button
+            <span
+              role="button"
+              tabIndex={0}
               onClick={() => onDelete(member.id)}
+              onKeyDown={(e) => {
+                if (e.key === "Enter" || e.key === " ") onDelete(member.id);
+              }}
               className="inline-flex items-center justify-center rounded-lg p-2 text-muted-foreground/40 hover:text-destructive hover:bg-destructive/10 transition-all duration-200 cursor-pointer"
               aria-label={`Delete ${fullName}`}
             >
               <Trash2 className="h-3.5 w-3.5" />
-            </button>
+            </span>
           </TooltipTrigger>
           <TooltipContent>Delete</TooltipContent>
         </Tooltip>

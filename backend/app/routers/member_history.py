@@ -102,7 +102,7 @@ async def get_lab_trends_interpretation(
     from app.services.ai_service import AIService
 
     member = await _verify_member(household.id, member_id, db)
-    ai_service = AIService(db)
+    ai_service = AIService(db, household_id=household.id)
 
     result = await db.execute(
         select(HealthRecord)

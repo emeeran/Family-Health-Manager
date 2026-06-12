@@ -184,6 +184,31 @@ async def delete_conversation(
     await db.flush()
 
 
+@router.patch("/{conversation_id}")
+async def update_conversation(
+    conversation_id: UUID,
+    body: dict | None = None,
+    household: Household = Depends(get_household_from_token),
+    db: AsyncSession = Depends(get_db),
+):
+    """Update conversation properties (e.g., rename title)."""
+    result = await db.execute(
+        select(Conversation).where(
+            Conversation.id == conversation_id,
+            Conversation.household_id == household.id,
+        )
+    )
+    conversation = result.scalar_one_or_none()
+    if not conversation:
+        raise HTTPException(status_code=404, detail="Conversation not found")
+
+    if body and "title" in body and body["title"]:
+        conversation.title = str(body["title"]).strip()[:200]
+        await db.flush()
+
+    return {"id": str(conversation.id), "title": conversation.title}
+
+
 @router.post("/{conversation_id}/messages/stream")
 async def send_message_stream(
     conversation_id: UUID,
@@ -203,7 +228,7 @@ async def send_message_stream(
     if not conversation:
         raise HTTPException(status_code=404, detail="Conversation not found")
 
-    service = AIService(db)
+    service = AIService(db, household_id=household.id)
     stream = service.chat_stream(
         conversation_id=conversation_id,
         user_message=request.content,
@@ -246,7 +271,7 @@ async def send_message_stream(
                 async def _run_verification():
                     verify_db = SessionLocal()
                     try:
-                        verify_service = AIService(verify_db)
+                        verify_service = AIService(verify_db, household_id=household.id)
                         verification_svc = VerificationService(verify_db, verify_service)
                         await verification_svc.verify(
                             question=request.content,
@@ -290,7 +315,7 @@ async def send_message(
     if not conversation:
         raise HTTPException(status_code=404, detail="Conversation not found")
 
-    service = AIService(db)
+    service = AIService(db, household_id=household.id)
 
     try:
         user_msg, assistant_msg, provider, health_context = await service.chat(

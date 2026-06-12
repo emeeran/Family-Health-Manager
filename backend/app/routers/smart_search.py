@@ -67,7 +67,7 @@ async def smart_search_records(
     if use_ai:
         try:
             member_list = ", ".join(f"{m.first_name} {m.last_name} ({m.relationship_type.value})" for m in members)
-            ai_service = AIService(db)
+            ai_service = AIService(db, household_id=household.id)
             parsed = await ai_service.parse_search_query(query, member_list)
             if parsed:
                 filters = parsed

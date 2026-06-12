@@ -68,7 +68,7 @@ async def parse_natural_language(
         for m in members
     )
 
-    ai_service = AIService(db)
+    ai_service = AIService(db, household_id=household.id)
     parsed = await ai_service.parse_natural_language(request.text, member_list)
 
     # Fuzzy match member from AI response

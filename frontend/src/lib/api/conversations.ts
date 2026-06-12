@@ -22,6 +22,13 @@ export function deleteConversation(conversationId: string) {
   return apiRequest<void>(`/conversations/${conversationId}`, { method: "DELETE" });
 }
 
+export function updateConversation(conversationId: string, data: { title: string }) {
+  return apiRequest<{ id: string; title: string }>(`/conversations/${conversationId}`, {
+    method: "PATCH",
+    body: data,
+  });
+}
+
 export function sendMessage(conversationId: string, data: MessageCreate) {
   return apiRequest<SendMessageResponse>(`/conversations/${conversationId}/messages`, {
     method: "POST",
@@ -38,7 +45,7 @@ export function sendMessageStream(
   conversationId: string,
   data: MessageCreate,
   onEvent: (event: StreamEvent) => void
-): Promise<void> {
+): { promise: Promise<void>; cancel: () => void } {
   return streamRequest(`/conversations/${conversationId}/messages/stream`, {
     body: data,
     onEvent: onEvent as (event: Record<string, unknown>) => void,

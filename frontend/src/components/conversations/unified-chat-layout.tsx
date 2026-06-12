@@ -155,6 +155,7 @@ export function UnifiedChatLayout({
       onSelectConversation={handleSelectConversation}
       onNewChat={handleNewChat}
       onActiveDeleted={clearChat}
+      onRefresh={() => mutatePageData()}
     />
   );
 
@@ -183,6 +184,7 @@ export function UnifiedChatLayout({
             onSelectConversation={handleSelectConversation}
             onNewChat={handleNewChat}
             onActiveDeleted={clearChat}
+            onRefresh={() => mutatePageData()}
             collapsed={sidebarCollapsed}
             onToggleCollapse={() => setSidebarCollapsed((c) => !c)}
           />

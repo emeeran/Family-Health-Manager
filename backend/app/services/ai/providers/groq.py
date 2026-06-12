@@ -2,19 +2,19 @@
 import logging
 
 from app.core.config import get_settings
-from app.services.ai.base import get_cloud_client
+from app.services.ai.base import get_cloud_client, retry_with_backoff
 
 settings = get_settings()
 logger = logging.getLogger(__name__)
 
 
-async def call_groq_text(prompt: str) -> str | None:
+async def call_groq_text(prompt: str, model: str = "meta-llama/llama-4-scout-17b-16e-instruct") -> str | None:
     """Call Groq API for text-based generation."""
     if not settings.GROQ_API_KEY:
         return None
     url = "https://api.groq.com/openai/v1/chat/completions"
     payload = {
-        "model": "meta-llama/llama-4-scout-17b-16e-instruct",
+        "model": model,
         "messages": [{"role": "user", "content": prompt}],
         "temperature": 0.3,
     }
@@ -22,10 +22,14 @@ async def call_groq_text(prompt: str) -> str | None:
         "Authorization": f"Bearer {settings.GROQ_API_KEY}",
         "Content-Type": "application/json",
     }
-    client = await get_cloud_client()
-    resp = await client.post(url, json=payload, headers=headers)
-    resp.raise_for_status()
-    data = resp.json()
+
+    async def _do_call():
+        client = await get_cloud_client()
+        resp = await client.post(url, json=payload, headers=headers)
+        resp.raise_for_status()
+        return resp.json()
+
+    data = await retry_with_backoff(_do_call)
     return data["choices"][0]["message"]["content"]
 
 
