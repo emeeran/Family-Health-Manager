@@ -1,6 +1,6 @@
 import { useState, useMemo, useEffect } from "react";
 import { Link, useNavigate } from "react-router-dom";
-import { Plus, FileText, Search, Upload, Trash2, X, Sparkles, Loader2 } from "lucide-react";
+import { Plus, Search, Upload, Trash2, X, Sparkles, Loader2 } from "lucide-react";
 import { Card, CardContent } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
@@ -12,7 +12,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { Label } from "@/components/ui/label";
-import { EmptyState } from "@/components/shared/empty-state";
+import { ContextualEmptyState } from "@/components/shared/contextual-empty-state";
 import { ConfirmDialog } from "@/components/shared/confirm-dialog";
 import { RecordsTable } from "@/components/records/records-table";
 import { RECORD_TYPE_LABELS } from "@/lib/constants";
@@ -218,14 +218,9 @@ export function RecordsListContent({ records, member, onRefresh }: RecordsListCo
 
       {/* Records table */}
       {filtered.length === 0 ? (
-        <EmptyState
-          icon={<FileText className="h-12 w-12" />}
-          title="No records found"
-          description={
-            records.length === 0
-              ? "Start by adding a health record."
-              : "Try adjusting your filters."
-          }
+        <ContextualEmptyState
+          variant={records.length === 0 ? "no-data" : "filtered"}
+          context="records"
           action={
             records.length === 0 ? (
               <Link to={`/people/${member.id}/records/new`}>

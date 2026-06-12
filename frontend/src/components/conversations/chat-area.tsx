@@ -55,9 +55,12 @@ export function ChatArea({
 
   // Track which conversation's messages are loaded to avoid SWR race conditions.
   // SWR revalidation during streaming would clobber the local messages state with
-  // stale server data (assistant message not yet committed). Only reset on
-  // actual conversation change, not on SWR prop updates.
+  // stale server data (assistant message not yet committed).
   const loadedConvIdRef = useRef<string | null>(conversationId);
+  // Tracks whether we're still waiting for the first SWR delivery after a
+  // conversation switch.  Once the initial messages arrive we clear this flag
+  // so that subsequent SWR revalidations during streaming are safely ignored.
+  const awaitingServerDataRef = useRef(false);
 
   const { endRef, scrollRef: mainScrollRef, scrollToBottom } = useScrollToBottom();
   const { scrollRef: visScrollRef, showScrollBtn } = useScrollVisibility(80);
@@ -75,11 +78,16 @@ export function ChatArea({
   );
 
   useEffect(() => {
-    // Only reset messages when the conversation ID actually changes.
-    // This prevents SWR revalidation from wiping in-flight streamed messages.
     if (loadedConvIdRef.current !== conversationId) {
+      // Conversation changed — reset local messages
       loadedConvIdRef.current = conversationId;
       setMessages(initialMessages ?? []);
+      // If initialMessages is empty/stale, mark that we need the real data
+      awaitingServerDataRef.current = !(initialMessages && initialMessages.length > 0);
+    } else if (awaitingServerDataRef.current && initialMessages) {
+      // SWR delivered messages for the newly-selected conversation
+      setMessages(initialMessages);
+      awaitingServerDataRef.current = false;
     }
   }, [conversationId, initialMessages]);
 

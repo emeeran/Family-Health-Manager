@@ -2,9 +2,8 @@ import { useState, useMemo, memo } from "react";
 import { Link } from "react-router-dom";
 import { Card, CardContent } from "@/components/ui/card";
 import { RecordTypeBadge } from "@/components/records/record-type-badge";
-import { EmptyState } from "@/components/shared/empty-state";
+import { ContextualEmptyState } from "@/components/shared/contextual-empty-state";
 import {
-  Clock,
   Filter,
   ChevronDown,
   Activity,
@@ -442,11 +441,7 @@ export function TimelineContent({
           <span>/</span>
           <span className="text-foreground">Timeline</span>
         </div>
-        <EmptyState
-          icon={<Clock className="h-12 w-12" />}
-          title="No timeline entries"
-          description="Health records will appear here in chronological order."
-        />
+        <ContextualEmptyState variant="no-data" context="timeline" />
       </div>
     );
   }

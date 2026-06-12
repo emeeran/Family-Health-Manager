@@ -1,6 +1,6 @@
 import { useState, useMemo, useEffect, useCallback } from "react";
 import { useNavigate, Link } from "react-router-dom";
-import { Users, Plus, Search, ArrowUpDown } from "lucide-react";
+import { Plus, Search, ArrowUpDown } from "lucide-react";
 import {
   Select,
   SelectContent,
@@ -9,7 +9,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { TooltipProvider } from "@/components/ui/tooltip";
-import { EmptyState } from "@/components/shared/empty-state";
+import { ContextualEmptyState } from "@/components/shared/contextual-empty-state";
 import { ConfirmDialog } from "@/components/shared/confirm-dialog";
 import { ViewToggle, useViewPreference } from "@/components/shared/view-toggle";
 import { deleteMember, getBatchScores } from "@/lib/api/members";
@@ -199,14 +199,9 @@ export function MembersContent({ members }: MembersContentProps) {
     return (
       <div className="space-y-6">
         <PageHeader count={0} />
-        <EmptyState
-          icon={
-            <div className="flex h-16 w-16 items-center justify-center rounded-2xl bg-primary/10">
-              <Users className="h-8 w-8 text-primary" />
-            </div>
-          }
-          title="No family members yet"
-          description="Add your first family member to start tracking their health records."
+        <ContextualEmptyState
+          variant="no-data"
+          context="members"
           action={
             <Link
               to="/people/new"

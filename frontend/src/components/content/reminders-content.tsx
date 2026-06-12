@@ -1,6 +1,6 @@
 import { useState, useMemo } from "react";
 import { Link } from "react-router-dom";
-import { Plus, CalendarClock, Trash2, Clock, Edit, AlertCircle, User } from "lucide-react";
+import { Plus, Trash2, Clock, Edit, AlertCircle, User } from "lucide-react";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -12,7 +12,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { Label } from "@/components/ui/label";
-import { EmptyState } from "@/components/shared/empty-state";
+import { ContextualEmptyState } from "@/components/shared/contextual-empty-state";
 import { ConfirmDialog } from "@/components/shared/confirm-dialog";
 import { REMINDER_TYPE_LABELS } from "@/lib/constants";
 import { deleteReminder } from "@/lib/api/reminders";
@@ -120,16 +120,9 @@ export function RemindersContent({ reminders, members }: RemindersContentProps) 
       </div>
 
       {filtered.length === 0 ? (
-        <EmptyState
-          icon={
-            <div className="flex h-16 w-16 items-center justify-center rounded-2xl bg-gradient-to-br from-amber-500/10 to-orange-500/10">
-              <CalendarClock className="h-8 w-8 text-amber-500" />
-            </div>
-          }
-          title="No reminders found"
-          description={
-            reminders.length === 0 ? "Create your first reminder." : "Try adjusting your filters."
-          }
+        <ContextualEmptyState
+          variant={reminders.length === 0 ? "no-data" : "filtered"}
+          context="reminders"
           action={
             reminders.length === 0 ? (
               <Link to="/reminders/new">

@@ -4,6 +4,9 @@ import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/com
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { Badge } from "@/components/ui/badge";
+import { Progress } from "@/components/ui/progress";
+import { Tooltip, TooltipContent, TooltipTrigger, TooltipProvider } from "@/components/ui/tooltip";
 import {
   Select,
   SelectContent,
@@ -11,6 +14,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import { Stepper } from "@/components/ui/stepper";
 import {
   Heart,
   Users,
@@ -33,7 +37,7 @@ interface OnboardingWizardProps {
 const STEPS = [
   { title: "Welcome", icon: Heart },
   { title: "Family Member", icon: Users },
-  { title: "Provider", icon: Stethoscope },
+  { title: "Provider", icon: Stethoscope, optional: true },
   { title: "Ready", icon: Sparkles },
 ];
 
@@ -114,35 +118,26 @@ export function OnboardingWizard({ householdName: initialName }: OnboardingWizar
 
   return (
     <div className="max-w-lg mx-auto space-y-6">
-      {/* Step indicator */}
-      <div className="flex items-center justify-center gap-2 pt-4">
-        {STEPS.map((s, i) => {
-          const Icon = s.icon;
-          const isActive = i === step;
-          const isDone = i < step;
-          return (
-            <div key={i} className="flex items-center gap-2">
-              {i > 0 && <div className={`h-px w-8 ${isDone ? "bg-primary" : "bg-border"}`} />}
-              <div
-                className={`flex h-9 w-9 items-center justify-center rounded-full transition-all ${
-                  isActive
-                    ? "bg-primary text-primary-foreground shadow-md"
-                    : isDone
-                      ? "bg-primary/10 text-primary"
-                      : "bg-muted text-muted-foreground"
-                }`}
-              >
-                {isDone ? <CheckCircle2 className="h-4 w-4" /> : <Icon className="h-4 w-4" />}
-              </div>
-            </div>
-          );
-        })}
-      </div>
+      {/* Stepper */}
+      <Stepper
+        steps={STEPS.map((s) => ({ label: s.title, icon: s.icon, optional: s.optional }))}
+        currentStep={step}
+      />
+
+      {/* Progress bar */}
+      <Progress value={(step / (STEPS.length - 1)) * 100} className="h-1" />
 
       {/* Step content */}
       <Card>
         <CardHeader className="text-center">
-          <CardTitle>{STEPS[step].title}</CardTitle>
+          <CardTitle className="flex items-center justify-center gap-2">
+            {STEPS[step].title}
+            {STEPS[step].optional && (
+              <Badge variant="outline" className="text-[10px]">
+                optional
+              </Badge>
+            )}
+          </CardTitle>
           <CardDescription>
             {step === 0 && "Let's set up your family health tracker"}
             {step === 1 && "Add your first family member to get started"}
@@ -151,142 +146,141 @@ export function OnboardingWizard({ householdName: initialName }: OnboardingWizar
           </CardDescription>
         </CardHeader>
         <CardContent className="space-y-4">
-          {step === 0 && (
-            <div className="space-y-2">
-              <Label htmlFor="household_name">Household Name</Label>
-              <Input
-                id="household_name"
-                value={name}
-                onChange={(e) => setName(e.target.value)}
-                placeholder="e.g., The Smith Family"
-              />
-              <p className="text-xs text-muted-foreground">
-                This will be displayed on your dashboard
-              </p>
-            </div>
-          )}
-
-          {step === 1 && (
-            <div className="space-y-3">
-              <div className="grid grid-cols-2 gap-3">
-                <div className="space-y-2">
-                  <Label htmlFor="first_name">First Name</Label>
-                  <Input
-                    id="first_name"
-                    value={firstName}
-                    onChange={(e) => setFirstName(e.target.value)}
-                    required
-                  />
-                </div>
-                <div className="space-y-2">
-                  <Label htmlFor="last_name">Last Name</Label>
-                  <Input
-                    id="last_name"
-                    value={lastName}
-                    onChange={(e) => setLastName(e.target.value)}
-                    required
-                  />
-                </div>
-              </div>
+          <div key={step} className="animate-fade-in-up">
+            {step === 0 && (
               <div className="space-y-2">
-                <Label htmlFor="dob">Date of Birth</Label>
+                <Label htmlFor="household_name">Household Name</Label>
                 <Input
-                  id="dob"
-                  type="date"
-                  value={dob}
-                  onChange={(e) => setDob(e.target.value)}
-                  required
+                  id="household_name"
+                  value={name}
+                  onChange={(e) => setName(e.target.value)}
+                  placeholder="e.g., The Smith Family"
                 />
-              </div>
-              <div className="grid grid-cols-2 gap-3">
-                <div className="space-y-2">
-                  <Label htmlFor="gender-select">Gender</Label>
-                  <Select value={gender} onValueChange={(v) => setGender(v as Gender)}>
-                    <SelectTrigger id="gender-select">
-                      <SelectValue />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="male">Male</SelectItem>
-                      <SelectItem value="female">Female</SelectItem>
-                      <SelectItem value="other">Other</SelectItem>
-                      <SelectItem value="prefer_not_to_say">Prefer not to say</SelectItem>
-                    </SelectContent>
-                  </Select>
-                </div>
-                <div className="space-y-2">
-                  <Label htmlFor="relationship-select">Relationship</Label>
-                  <Select
-                    value={relationship}
-                    onValueChange={(v) => setRelationship(v as Relationship)}
-                  >
-                    <SelectTrigger id="relationship-select">
-                      <SelectValue />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="self">Self</SelectItem>
-                      <SelectItem value="wife">Wife</SelectItem>
-                      <SelectItem value="son">Son</SelectItem>
-                      <SelectItem value="daughter">Daughter</SelectItem>
-                      <SelectItem value="others">Others</SelectItem>
-                    </SelectContent>
-                  </Select>
-                </div>
-              </div>
-            </div>
-          )}
-
-          {step === 2 && (
-            <div className="space-y-3">
-              <div className="space-y-2">
-                <Label htmlFor="provider_name">Provider Name</Label>
-                <Input
-                  id="provider_name"
-                  value={providerName}
-                  onChange={(e) => setProviderName(e.target.value)}
-                  placeholder="e.g., Dr. Smith"
-                />
-              </div>
-              <div className="space-y-2">
-                <Label htmlFor="provider_speciality">Specialty</Label>
-                <Input
-                  id="provider_speciality"
-                  value={providerSpeciality}
-                  onChange={(e) => setProviderSpeciality(e.target.value)}
-                  placeholder="e.g., General Physician"
-                />
-              </div>
-              <div className="space-y-2">
-                <Label htmlFor="provider_phone">Phone</Label>
-                <Input
-                  id="provider_phone"
-                  value={providerPhone}
-                  onChange={(e) => setProviderPhone(e.target.value)}
-                  placeholder="e.g., +1 234 567 8900"
-                />
-              </div>
-              <p className="text-xs text-muted-foreground">
-                You can skip this step and add providers later
-              </p>
-            </div>
-          )}
-
-          {step === 3 && (
-            <div className="text-center py-4 space-y-4">
-              <div className="flex h-16 w-16 mx-auto items-center justify-center rounded-2xl bg-gradient-to-br from-emerald-500/20 to-teal-500/20">
-                <CheckCircle2 className="h-8 w-8 text-emerald-500" />
-              </div>
-              <div className="space-y-1">
-                <p className="text-sm font-medium">Your health tracker is ready!</p>
                 <p className="text-xs text-muted-foreground">
-                  Start by adding health records for your family members, or chat with the AI
-                  assistant about any health questions.
+                  This will be displayed on your dashboard
                 </p>
               </div>
-            </div>
-          )}
+            )}
+
+            {step === 1 && (
+              <div className="space-y-3">
+                <div className="grid grid-cols-2 gap-3">
+                  <div className="space-y-2">
+                    <Label htmlFor="first_name">First Name</Label>
+                    <Input
+                      id="first_name"
+                      value={firstName}
+                      onChange={(e) => setFirstName(e.target.value)}
+                      required
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <Label htmlFor="last_name">Last Name</Label>
+                    <Input
+                      id="last_name"
+                      value={lastName}
+                      onChange={(e) => setLastName(e.target.value)}
+                      required
+                    />
+                  </div>
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="dob">Date of Birth</Label>
+                  <Input
+                    id="dob"
+                    type="date"
+                    value={dob}
+                    onChange={(e) => setDob(e.target.value)}
+                    required
+                  />
+                </div>
+                <div className="grid grid-cols-2 gap-3">
+                  <div className="space-y-2">
+                    <Label htmlFor="gender-select">Gender</Label>
+                    <Select value={gender} onValueChange={(v) => setGender(v as Gender)}>
+                      <SelectTrigger id="gender-select">
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="male">Male</SelectItem>
+                        <SelectItem value="female">Female</SelectItem>
+                        <SelectItem value="other">Other</SelectItem>
+                        <SelectItem value="prefer_not_to_say">Prefer not to say</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </div>
+                  <div className="space-y-2">
+                    <Label htmlFor="relationship-select">Relationship</Label>
+                    <Select
+                      value={relationship}
+                      onValueChange={(v) => setRelationship(v as Relationship)}
+                    >
+                      <SelectTrigger id="relationship-select">
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="self">Self</SelectItem>
+                        <SelectItem value="wife">Wife</SelectItem>
+                        <SelectItem value="son">Son</SelectItem>
+                        <SelectItem value="daughter">Daughter</SelectItem>
+                        <SelectItem value="others">Others</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {step === 2 && (
+              <div className="space-y-3">
+                <div className="space-y-2">
+                  <Label htmlFor="provider_name">Provider Name</Label>
+                  <Input
+                    id="provider_name"
+                    value={providerName}
+                    onChange={(e) => setProviderName(e.target.value)}
+                    placeholder="e.g., Dr. Smith"
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="provider_speciality">Specialty</Label>
+                  <Input
+                    id="provider_speciality"
+                    value={providerSpeciality}
+                    onChange={(e) => setProviderSpeciality(e.target.value)}
+                    placeholder="e.g., General Physician"
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="provider_phone">Phone</Label>
+                  <Input
+                    id="provider_phone"
+                    value={providerPhone}
+                    onChange={(e) => setProviderPhone(e.target.value)}
+                    placeholder="e.g., +1 234 567 8900"
+                  />
+                </div>
+              </div>
+            )}
+
+            {step === 3 && (
+              <div className="text-center py-4 space-y-4">
+                <div className="flex h-16 w-16 mx-auto items-center justify-center rounded-2xl bg-gradient-to-br from-emerald-500/20 to-teal-500/20">
+                  <CheckCircle2 className="h-8 w-8 text-emerald-500" />
+                </div>
+                <div className="space-y-1">
+                  <p className="text-sm font-medium">Your health tracker is ready!</p>
+                  <p className="text-xs text-muted-foreground">
+                    Start by adding health records for your family members, or chat with the AI
+                    assistant about any health questions.
+                  </p>
+                </div>
+              </div>
+            )}
+          </div>
 
           {/* Navigation buttons */}
-          <div className="flex justify-between pt-2">
+          <div className="flex justify-between items-center pt-2">
             {step > 0 ? (
               <Button variant="outline" onClick={() => setStep(step - 1)} disabled={saving}>
                 <ArrowLeft className="h-4 w-4 mr-1" />
@@ -295,20 +289,37 @@ export function OnboardingWizard({ householdName: initialName }: OnboardingWizar
             ) : (
               <div />
             )}
-            <Button onClick={handleNext} disabled={saving}>
-              {saving ? (
-                "Saving..."
-              ) : step === 3 ? (
-                "Go to Dashboard"
-              ) : step === 2 && !providerName.trim() ? (
-                "Skip for now"
-              ) : (
-                <>
-                  Continue
-                  <ArrowRight className="h-4 w-4 ml-1" />
-                </>
+            <div className="flex items-center gap-2">
+              {/* Explicit skip button on optional step */}
+              {step === 2 && (
+                <TooltipProvider>
+                  <Tooltip>
+                    <TooltipTrigger
+                      className="inline-flex items-center justify-center rounded-md px-3 py-1.5 text-sm font-medium text-muted-foreground hover:text-foreground hover:bg-muted transition-colors"
+                      onClick={() => setStep(3)}
+                      disabled={saving}
+                    >
+                      Skip for now
+                    </TooltipTrigger>
+                    <TooltipContent>
+                      You can add providers later from the Providers page
+                    </TooltipContent>
+                  </Tooltip>
+                </TooltipProvider>
               )}
-            </Button>
+              <Button onClick={handleNext} disabled={saving}>
+                {saving ? (
+                  "Saving..."
+                ) : step === 3 ? (
+                  "Go to Dashboard"
+                ) : (
+                  <>
+                    Continue
+                    <ArrowRight className="h-4 w-4 ml-1" />
+                  </>
+                )}
+              </Button>
+            </div>
           </div>
         </CardContent>
       </Card>

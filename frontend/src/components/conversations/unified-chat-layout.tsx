@@ -65,6 +65,8 @@ export function UnifiedChatLayout({
   useEffect(() => {
     if (convData) {
       setConvMessages(convData.messages);
+    } else {
+      setConvMessages([]);
     }
   }, [convData]);
 

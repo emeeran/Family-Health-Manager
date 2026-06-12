@@ -11,9 +11,9 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { EmptyState } from "@/components/shared/empty-state";
+import { ContextualEmptyState } from "@/components/shared/contextual-empty-state";
 import { ConfirmDialog } from "@/components/shared/confirm-dialog";
-import { Stethoscope, Plus } from "lucide-react";
+import { Plus } from "lucide-react";
 import { useSWRConfig } from "swr";
 import { createAssignment, deleteAssignment } from "@/lib/api/provider-assignments";
 import { formatDate } from "@/lib/utils";
@@ -139,11 +139,7 @@ export function MemberProvidersContent({
       )}
 
       {assignments.length === 0 && availableProviders.length === 0 ? (
-        <EmptyState
-          icon={<Stethoscope className="h-12 w-12" />}
-          title="No providers assigned"
-          description="Add providers first, then assign them to this member."
-        />
+        <ContextualEmptyState variant="no-data" context="provider-assignments" />
       ) : assignments.length === 0 ? null : (
         <div className="grid gap-4 md:grid-cols-2">
           {assignments.map((assignment) => (

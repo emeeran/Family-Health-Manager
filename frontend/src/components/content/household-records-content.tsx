@@ -1,5 +1,5 @@
 import { useState, useMemo, useCallback } from "react";
-import { FileText, Search } from "lucide-react";
+import { Search } from "lucide-react";
 import { Card, CardContent } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import {
@@ -10,7 +10,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { Skeleton } from "@/components/ui/skeleton";
-import { EmptyState } from "@/components/shared/empty-state";
+import { ContextualEmptyState } from "@/components/shared/contextual-empty-state";
 import { RecordsTable } from "@/components/records/records-table";
 import { RecordsCards } from "@/components/records/records-cards";
 import { ViewToggle, useViewPreference } from "@/components/shared/view-toggle";
@@ -109,14 +109,9 @@ export function HouseholdRecordsContent({
 
       {/* Results */}
       {filtered.length === 0 ? (
-        <EmptyState
-          icon={<FileText className="h-12 w-12" />}
-          title={records.length === 0 ? "No records yet" : "No matching records"}
-          description={
-            records.length === 0
-              ? "Health records will appear here as you add them."
-              : "Try adjusting your filters."
-          }
+        <ContextualEmptyState
+          variant={records.length === 0 ? "no-data" : "filtered"}
+          context="records"
         />
       ) : view === "list" ? (
         <RecordsTable records={filtered} memberNames={memberNames} onRowClick={handleRecordClick} />

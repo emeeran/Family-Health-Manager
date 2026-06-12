@@ -3,8 +3,6 @@ import { useNavigate } from "react-router-dom";
 import { getDashboardSummary } from "@/lib/api/dashboard";
 import { HomeContent, HomeSkeleton } from "@/components/content/home-content";
 import { useEffect } from "react";
-import type { FamilyMemberResponse } from "@/lib/types/member";
-import type { HealthRecordResponse } from "@/lib/types/health-record";
 
 export default function HomePage() {
   const navigate = useNavigate();
@@ -39,49 +37,16 @@ export default function HomePage() {
 
   if (!summary) return <HomeSkeleton />;
 
-  // Redirect to onboarding if no members
+  // Redirect to onboarding if no members (in useEffect to avoid render-time navigation)
+  useEffect(() => {
+    if (summary && (!summary.members || summary.members.length === 0)) {
+      navigate("/onboarding");
+    }
+  }, [summary, navigate]);
+
   if (!summary.members || summary.members.length === 0) {
-    navigate("/onboarding");
-    return null;
+    return <HomeSkeleton />;
   }
 
-  const members = summary.members.map(
-    (m): FamilyMemberResponse => ({
-      id: m.id,
-      household_id: "",
-      first_name: m.first_name,
-      last_name: m.last_name,
-      date_of_birth: m.date_of_birth,
-      gender: m.gender as FamilyMemberResponse["gender"],
-      relationship: m.relationship as FamilyMemberResponse["relationship"],
-      medical_history_summary: null,
-      blood_group: m.blood_group,
-      family_history: null,
-      height_cm: null,
-      weight_kg: null,
-      allergies: m.allergies ?? null,
-      emergency_contact_name: null,
-      emergency_contact_phone: null,
-      notes: null,
-      bmi: m.bmi,
-      bmi_category: null,
-      is_active: m.is_active,
-      created_at: "",
-    })
-  );
-  const records = (summary.recent_records || []) as unknown as HealthRecordResponse[];
-
-  return (
-    <HomeContent
-      members={members}
-      householdName={summary.household_name || "My Family"}
-      stats={{
-        providersCount: summary.providers_count || 0,
-        conversationsCount: summary.conversations_count || 0,
-        unreadNotifications: summary.unread_notifications || 0,
-        upcomingReminders: summary.upcoming_reminders || [],
-      }}
-      records={records}
-    />
-  );
+  return <HomeContent summary={summary} />;
 }

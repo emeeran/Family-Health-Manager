@@ -1,3 +1,4 @@
+import { useMemo } from "react";
 import { MessageSquare, PanelLeft, User } from "lucide-react";
 import {
   Select,
@@ -26,6 +27,12 @@ export function ChatHeader({
   members,
   onToggleSidebar,
 }: ChatHeaderProps) {
+  const selectedMemberDisplay = useMemo(() => {
+    if (!selectedMemberId) return undefined;
+    const m = members.find((member) => member.id === selectedMemberId);
+    return m ? `${m.first_name} ${m.last_name}` : "Loading…";
+  }, [selectedMemberId, members]);
+
   return (
     <div className="flex items-center gap-2 px-4 py-2.5 shrink-0 border-b border-border/30">
       {/* Mobile sidebar toggle */}
@@ -69,7 +76,7 @@ export function ChatHeader({
       {mode === "member" && (
         <Select value={selectedMemberId ?? ""} onValueChange={(v) => onMemberChange(v || null)}>
           <SelectTrigger className="w-36 h-8 text-xs rounded-full border-dashed">
-            <SelectValue placeholder="Pick member" />
+            <SelectValue placeholder="Pick member">{selectedMemberDisplay}</SelectValue>
           </SelectTrigger>
           <SelectContent>
             {members.map((m) => (

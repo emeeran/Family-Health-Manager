@@ -5,33 +5,17 @@ import { SmartEntryBar } from "@/components/records/smart-entry";
 import { AlertStrip } from "@/components/home/alert-strip";
 import { ActivityFeed } from "@/components/home/activity-feed";
 import { FamilyStrip } from "@/components/home/family-strip";
+import { QuickActionsGrid } from "@/components/home/quick-actions-grid";
+import { HealthOverviewCard } from "@/components/home/health-overview-card";
 import { useDashboardSummary } from "@/hooks/use-dashboard";
 import { dismissHealthAlert } from "@/lib/api/health-alerts";
 import { toast } from "sonner";
-import type { DashboardAlert } from "@/lib/types/dashboard";
+import type { DashboardAlert, DashboardSummary } from "@/lib/types/dashboard";
 import type { FamilyMemberResponse } from "@/lib/types/member";
 import type { HealthRecordResponse } from "@/lib/types/health-record";
 
-interface DashboardReminder {
-  id: string;
-  title: string;
-  start_datetime: string | null;
-  reminder_type: string;
-  family_member_id: string | null;
-}
-
-interface DashboardStats {
-  providersCount: number;
-  conversationsCount: number;
-  unreadNotifications: number;
-  upcomingReminders: DashboardReminder[];
-}
-
 interface HomeContentProps {
-  members: FamilyMemberResponse[];
-  householdName: string;
-  stats: DashboardStats;
-  records: HealthRecordResponse[];
+  summary: DashboardSummary;
 }
 
 function getGreeting() {
@@ -49,19 +33,51 @@ function getCurrentDate() {
   });
 }
 
-export const HomeContent = memo(function HomeContent({
-  members,
-  householdName,
-  stats,
-  records,
-}: HomeContentProps) {
-  const { summary, isLoading: summaryLoading, mutate: mutateSummary } = useDashboardSummary();
+export const HomeContent = memo(function HomeContent({ summary }: HomeContentProps) {
+  const { summary: liveSummary, mutate: mutateSummary } = useDashboardSummary();
+  const activeSummary = liveSummary || summary;
+
+  // Derive members from summary (match FamilyMemberResponse shape)
+  const members = useMemo<FamilyMemberResponse[]>(
+    () =>
+      activeSummary.members.map((m) => ({
+        id: m.id,
+        household_id: "",
+        first_name: m.first_name,
+        last_name: m.last_name,
+        date_of_birth: m.date_of_birth,
+        gender: m.gender as FamilyMemberResponse["gender"],
+        relationship: m.relationship as FamilyMemberResponse["relationship"],
+        medical_history_summary: null,
+        blood_group: m.blood_group,
+        family_history: null,
+        height_cm: null,
+        weight_kg: null,
+        allergies: m.allergies ?? null,
+        emergency_contact_name: null,
+        emergency_contact_phone: null,
+        notes: null,
+        bmi: m.bmi,
+        bmi_category: null,
+        is_active: m.is_active,
+        created_at: "",
+      })),
+    [activeSummary.members]
+  );
+
   const activeMembers = useMemo(() => members.filter((m) => m.is_active), [members]);
+  const householdName = activeSummary.household_name || "My Family";
+
+  const records = useMemo<HealthRecordResponse[]>(
+    () => (activeSummary.recent_records || []) as unknown as HealthRecordResponse[],
+    [activeSummary.recent_records]
+  );
+  const activeRecords = useMemo(() => records.filter((r) => !r.is_deleted), [records]);
 
   const [alerts, setAlerts] = useState<DashboardAlert[]>([]);
   useEffect(() => {
-    if (summary?.alerts) setAlerts(summary.alerts);
-  }, [summary]);
+    if (activeSummary?.alerts) setAlerts(activeSummary.alerts);
+  }, [activeSummary]);
 
   const handleDismissAlert = useCallback(
     async (alertId: string) => {
@@ -83,46 +99,50 @@ export const HomeContent = memo(function HomeContent({
     return names;
   }, [members]);
 
-  const activeRecords = useMemo(() => records.filter((r) => !r.is_deleted), [records]);
+  const upcomingReminders = useMemo(() => activeSummary.upcoming_reminders || [], [activeSummary]);
 
   return (
-    <div className="space-y-4 max-w-3xl mx-auto">
-      {/* Greeting */}
-      <div className="space-y-1">
-        <h1 className="text-lg font-semibold tracking-tight bg-gradient-to-r from-foreground to-foreground/70 bg-clip-text text-transparent">
-          {getGreeting()}, {householdName}
-        </h1>
-        <p className="text-xs text-muted-foreground">
-          {getCurrentDate()} &middot; {activeMembers.length} member
-          {activeMembers.length !== 1 ? "s" : ""} &middot; {activeRecords.length} record
-          {activeRecords.length !== 1 ? "s" : ""}
-        </p>
+    <div className="space-y-4">
+      {/* Zone A — Centered header + quick actions */}
+      <div className="max-w-5xl mx-auto space-y-4">
+        <div className="space-y-1">
+          <h1 className="text-lg font-semibold tracking-tight bg-gradient-to-r from-foreground to-foreground/70 bg-clip-text text-transparent">
+            {getGreeting()}, {householdName}
+          </h1>
+          <p className="text-xs text-muted-foreground">
+            {getCurrentDate()} &middot; {activeMembers.length} member
+            {activeMembers.length !== 1 ? "s" : ""} &middot; {activeRecords.length} record
+            {activeRecords.length !== 1 ? "s" : ""}
+          </p>
+        </div>
+
+        <QuickActionsGrid members={activeMembers} />
       </div>
 
-      {/* Smart Entry Bar */}
+      {/* Smart entry — full width to match AI Tools chat input */}
       <SmartEntryBar members={members} />
 
-      {/* Alert Strip */}
-      {alerts.length > 0 && <AlertStrip alerts={alerts} onDismiss={handleDismissAlert} />}
+      {/* Zone B — Two-column layout, centered */}
+      <div className="max-w-5xl mx-auto grid gap-6 lg:grid-cols-[1fr_320px]">
+        {/* Left column — Primary content */}
+        <div className="space-y-4 min-w-0">
+          {alerts.length > 0 && <AlertStrip alerts={alerts} onDismiss={handleDismissAlert} />}
+          <ActivityFeed
+            records={activeRecords.slice(0, 10)}
+            memberNames={memberNames}
+            upcomingReminders={upcomingReminders}
+          />
+          {activeSummary && <ContextualSection summary={activeSummary} />}
+        </div>
 
-      {/* Family Strip */}
-      {activeMembers.length > 0 && <FamilyStrip members={activeMembers} />}
-
-      {/* Activity Feed */}
-      <ActivityFeed
-        records={activeRecords.slice(0, 10)}
-        memberNames={memberNames}
-        upcomingReminders={stats.upcomingReminders}
-      />
-
-      {/* Contextual Section */}
-      {summary && (
-        <ContextualSection
-          summary={summary}
-          memberNames={memberNames}
-          activeRecords={activeRecords}
-        />
-      )}
+        {/* Right column — Insights sidebar */}
+        <div className="space-y-4">
+          {activeMembers.length > 0 && (
+            <FamilyStrip members={activeMembers} scores={activeSummary.scores} />
+          )}
+          <HealthOverviewCard summary={activeSummary} />
+        </div>
+      </div>
     </div>
   );
 });
@@ -130,12 +150,8 @@ export const HomeContent = memo(function HomeContent({
 /* ── Contextual Section: picks most relevant 2 cards ── */
 function ContextualSection({
   summary,
-  memberNames,
-  activeRecords,
 }: {
   summary: NonNullable<ReturnType<typeof useDashboardSummary>["summary"]>;
-  memberNames: Record<string, string>;
-  activeRecords: HealthRecordResponse[];
 }) {
   // Lazy-loaded chart components
   const FamilyComparisonChart = React.lazy(() =>
@@ -199,17 +215,28 @@ function ContextualSection({
 
 export function HomeSkeleton() {
   return (
-    <div className="space-y-4 max-w-3xl mx-auto">
+    <div className="space-y-4 max-w-5xl mx-auto">
       <div className="flex items-center justify-between">
         <div>
           <Skeleton className="h-5 w-36 mb-2" />
           <Skeleton className="h-4 w-52" />
         </div>
-        <Skeleton className="h-8 w-28 rounded-lg" />
+      </div>
+      <div className="grid grid-cols-2 md:grid-cols-4 gap-2">
+        {Array.from({ length: 4 }).map((_, i) => (
+          <Skeleton key={i} className="h-9 w-full rounded-lg" />
+        ))}
       </div>
       <Skeleton className="h-12 w-full rounded-lg" />
-      <Skeleton className="h-40 w-full rounded-lg" />
-      <Skeleton className="h-32 w-full rounded-lg" />
+      <div className="grid gap-6 lg:grid-cols-[1fr_320px]">
+        <div className="space-y-4">
+          <Skeleton className="h-48 w-full rounded-lg" />
+        </div>
+        <div className="space-y-4">
+          <Skeleton className="h-24 w-full rounded-lg" />
+          <Skeleton className="h-36 w-full rounded-lg" />
+        </div>
+      </div>
     </div>
   );
 }

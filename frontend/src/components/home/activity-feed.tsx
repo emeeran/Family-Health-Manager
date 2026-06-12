@@ -1,10 +1,12 @@
 import { memo, useMemo } from "react";
 import { Link } from "react-router-dom";
 import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
 import { RECORD_TYPE_LABELS } from "@/lib/constants";
 import { formatRelativeTime } from "@/lib/utils";
 import { useRecordQuickView } from "@/components/records/record-quick-view-provider";
-import { CalendarClock, FileText } from "lucide-react";
+import { EmptyState } from "@/components/shared/empty-state";
+import { CalendarClock, FileText, Activity } from "lucide-react";
 import type { HealthRecordResponse } from "@/lib/types/health-record";
 
 interface DashboardReminder {
@@ -111,10 +113,19 @@ export const ActivityFeed = memo(function ActivityFeed({
           <span className="inline-block h-1.5 w-1.5 rounded-full bg-[var(--brand-accent)] mr-2 align-middle" />
           Activity
         </p>
-        <div className="text-center py-8 text-sm text-muted-foreground">
-          <FileText className="h-6 w-6 mx-auto mb-2 text-muted-foreground/30" />
-          No recent activity
-        </div>
+        <EmptyState
+          variant="compact"
+          icon={<Activity className="h-8 w-8 text-muted-foreground/40" />}
+          title="No recent activity"
+          description="Health records and reminders will appear here as you add them."
+          action={
+            <Link to="/people">
+              <Button size="sm" variant="outline">
+                Add your first record
+              </Button>
+            </Link>
+          }
+        />
       </div>
     );
   }

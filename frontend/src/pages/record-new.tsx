@@ -1,12 +1,17 @@
+import { useState } from "react";
 import { useParams, useSearchParams } from "react-router-dom";
 import { listProviders } from "@/lib/api/providers";
 import { createRecord } from "@/lib/api/records";
 import { RecordForm } from "@/components/records/record-form";
+import { RecordFormWizard } from "@/components/records/wizard/record-form-wizard";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Button } from "@/components/ui/button";
 import { Link } from "react-router-dom";
 import useSWR from "swr";
 import type { HealthRecordCreate, HealthRecordResponse } from "@/lib/types/health-record";
 import type { RecordType } from "@/lib/types/enums";
+
+const FORM_MODE_KEY = "record-form-mode";
 
 interface ActionResult {
   error?: string;
@@ -21,6 +26,11 @@ export default function NewRecordPage() {
   const defaultType = (searchParams.get("type") as RecordType) || undefined;
   const defaultProviderId = searchParams.get("provider_id") || undefined;
   const defaultChiefComplaint = searchParams.get("chief_complaint") || undefined;
+
+  const [useWizard, setUseWizard] = useState(() => {
+    const saved = localStorage.getItem(FORM_MODE_KEY);
+    return saved !== "classic"; // default to wizard
+  });
 
   const { data: providers = [] } = useSWR("providers", async () => {
     return listProviders().catch(() => []);
@@ -70,6 +80,14 @@ export default function NewRecordPage() {
   if (!memberId) return null;
   const action = createAction(memberId);
 
+  function toggleMode() {
+    setUseWizard((prev) => {
+      const next = !prev;
+      localStorage.setItem(FORM_MODE_KEY, next ? "wizard" : "classic");
+      return next;
+    });
+  }
+
   return (
     <div className="space-y-6">
       <div className="flex items-center gap-2 text-sm text-muted-foreground">
@@ -84,19 +102,43 @@ export default function NewRecordPage() {
           <CardTitle>Add Health Record</CardTitle>
         </CardHeader>
         <CardContent>
-          <RecordForm
-            action={action}
-            providers={providers}
-            memberId={memberId}
-            defaultType={defaultType}
-            defaultProviderId={defaultProviderId}
-            defaultChiefComplaint={defaultChiefComplaint}
-            onSaveComplete={() => {
-              /* stay on page — form resets itself */
-            }}
-          />
+          {useWizard ? (
+            <RecordFormWizard
+              action={action}
+              providers={providers}
+              memberId={memberId}
+              defaultType={defaultType}
+              defaultProviderId={defaultProviderId}
+              defaultChiefComplaint={defaultChiefComplaint}
+              onSaveComplete={() => {
+                /* stay on page — form resets itself */
+              }}
+            />
+          ) : (
+            <RecordForm
+              action={action}
+              providers={providers}
+              memberId={memberId}
+              defaultType={defaultType}
+              defaultProviderId={defaultProviderId}
+              defaultChiefComplaint={defaultChiefComplaint}
+              onSaveComplete={() => {
+                /* stay on page — form resets itself */
+              }}
+            />
+          )}
         </CardContent>
       </Card>
+      <div className="flex justify-center">
+        <Button
+          variant="ghost"
+          size="sm"
+          className="text-xs text-muted-foreground"
+          onClick={toggleMode}
+        >
+          Switch to {useWizard ? "classic form" : "wizard"}
+        </Button>
+      </div>
     </div>
   );
 }

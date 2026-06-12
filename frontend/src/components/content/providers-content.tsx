@@ -1,10 +1,10 @@
 import { useState, useCallback } from "react";
 import { Link } from "react-router-dom";
-import { Plus, Stethoscope, Phone, MapPin, Clock, Trash2, User } from "lucide-react";
+import { Plus, Phone, MapPin, Clock, Trash2, User } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
-import { EmptyState } from "@/components/shared/empty-state";
+import { ContextualEmptyState } from "@/components/shared/contextual-empty-state";
 import { ConfirmDialog } from "@/components/shared/confirm-dialog";
 import { ViewToggle, useViewPreference } from "@/components/shared/view-toggle";
 import { deleteProvider } from "@/lib/api/providers";
@@ -103,14 +103,9 @@ export function ProvidersContent({ providers }: ProvidersContentProps) {
       </div>
 
       {providers.length === 0 ? (
-        <EmptyState
-          icon={
-            <div className="flex h-16 w-16 items-center justify-center rounded-2xl bg-gradient-to-br from-emerald-500/10 to-teal-500/10">
-              <Stethoscope className="h-8 w-8 text-emerald-500" />
-            </div>
-          }
-          title="No providers yet"
-          description="Add a healthcare provider to start managing their assignments."
+        <ContextualEmptyState
+          variant="no-data"
+          context="providers"
           action={
             <Link to="/providers/new">
               <Button className="shadow-sm">Add First Provider</Button>
