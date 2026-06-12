@@ -174,7 +174,7 @@ class AttachmentService:
             from app.core.thumbnails import generate_thumbnail
             thumbnail_path = await generate_thumbnail(dest_path, content_hash, mime_type)
         except Exception:
-            pass
+            pass  # Non-fatal — thumbnails are optional
 
         attachment = Attachment(
             health_record_id=record_id,

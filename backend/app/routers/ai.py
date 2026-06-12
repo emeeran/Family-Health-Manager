@@ -106,7 +106,7 @@ async def get_ai_status(
             fs = FeatureSettings(**json.loads(db_hh.settings_json))
             config = fs.ai_providers
     except Exception:
-        pass
+        pass  # Non-fatal — fall back to default provider config
     if config is None:
         config = default_provider_config()
 

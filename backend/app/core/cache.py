@@ -91,7 +91,7 @@ class TTLCache:
                 async for key in redis.scan_iter(f"cache:{prefix}*"):
                     await redis.delete(key)
         except Exception:
-            pass
+            pass  # Non-fatal — cache invalidation failure should not break callers
 
 
 # Shared cache instance — services can use this
