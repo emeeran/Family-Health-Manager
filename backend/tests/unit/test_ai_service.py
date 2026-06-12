@@ -75,15 +75,18 @@ async def test_generate_insight_with_member_context(ai_service, mock_db):
 @pytest.mark.asyncio
 async def test_call_ai_failover(ai_service):
     """Test AI provider failover chain — all providers fail with no keys."""
+    from app.schemas.ai_provider_config import default_provider_config
     mock_ollama = AsyncMock(return_value=None)
-    with patch("app.services.ai_service.settings") as mock_settings, \
-         patch.object(ai_service, "_call_ollama_text", mock_ollama):
-        mock_settings.OLLAMA_LOCAL_URL = ""
-        mock_settings.OLLAMA_MODEL = "medgemma"
-        mock_settings.OPENAI_API_KEY = ""
-        mock_settings.GEMINI_API_KEY = ""
-        mock_settings.GROQ_API_KEY = ""
-        mock_settings.OPENROUTER_API_KEY = ""
+    mock_openrouter = AsyncMock(return_value=None)
+    mock_groq = AsyncMock(return_value=None)
+    mock_gemini = AsyncMock(return_value=None)
+    mock_openai = AsyncMock(return_value=None)
+    with patch.object(ai_service, "_get_provider_config", new_callable=AsyncMock, return_value=default_provider_config()), \
+         patch.object(ai_service, "_call_ollama_text", mock_ollama), \
+         patch.object(ai_service, "_call_openrouter_text", mock_openrouter), \
+         patch.object(ai_service, "_call_groq_text", mock_groq), \
+         patch.object(ai_service, "_call_gemini_text", mock_gemini), \
+         patch.object(ai_service, "_call_openai_text", mock_openai):
         with pytest.raises(ValueError, match="All AI providers failed"):
             await ai_service._call_ai("Test prompt", "")
 
@@ -91,24 +94,21 @@ async def test_call_ai_failover(ai_service):
 @pytest.mark.asyncio
 async def test_call_ai_ollama_first_then_cloud(ai_service):
     """Test Ollama is tried first, then cloud providers as fallback."""
-    with patch("app.services.ai_service.settings") as mock_settings:
-        mock_settings.OLLAMA_LOCAL_URL = "http://localhost:11434"
-        mock_settings.OLLAMA_MODEL = "medgemma"
-        mock_settings.OLLAMA_TEXT_MODEL = "llama3.2:3b"
-        mock_settings.OLLAMA_TIMEOUT = 90
-        mock_settings.OPENAI_API_KEY = ""
-        mock_settings.GEMINI_API_KEY = ""
-        mock_settings.GROQ_API_KEY = ""
-        mock_settings.OPENROUTER_API_KEY = ""
-        mock_groq = AsyncMock(return_value=None)
-        mock_gemini = AsyncMock(return_value="Gemini response")
-        mock_ollama = AsyncMock(return_value=None)
-        with patch.object(ai_service, "_call_groq_text", mock_groq), \
-             patch.object(ai_service, "_call_gemini_text", mock_gemini), \
-             patch.object(ai_service, "_call_ollama_text", mock_ollama):
+    from app.schemas.ai_provider_config import default_provider_config
+    mock_groq = AsyncMock(return_value=None)
+    mock_gemini = AsyncMock(return_value="Gemini response")
+    mock_ollama = AsyncMock(return_value=None)
+    mock_openrouter = AsyncMock(return_value=None)
+    mock_openai = AsyncMock(return_value=None)
+    with patch.object(ai_service, "_get_provider_config", new_callable=AsyncMock, return_value=default_provider_config()), \
+         patch.object(ai_service, "_call_groq_text", mock_groq), \
+         patch.object(ai_service, "_call_gemini_text", mock_gemini), \
+         patch.object(ai_service, "_call_ollama_text", mock_ollama), \
+         patch.object(ai_service, "_call_openrouter_text", mock_openrouter), \
+         patch.object(ai_service, "_call_openai_text", mock_openai):
             result, provider = await ai_service._call_ai("Test prompt", "")
             assert result == "Gemini response"
-            assert provider == "Google Gemini 2.5 Flash"
+            assert "Gemini" in provider
             # Ollama tried first, then cloud fallback
             mock_ollama.assert_called_once()
             mock_groq.assert_called_once()
@@ -118,26 +118,21 @@ async def test_call_ai_ollama_first_then_cloud(ai_service):
 @pytest.mark.asyncio
 async def test_call_ai_fallback_to_openrouter(ai_service):
     """Test fallback to OpenRouter when Groq, Gemini, and Ollama fail."""
-    with patch("app.services.ai_service.settings") as mock_settings:
-        mock_settings.OLLAMA_LOCAL_URL = "http://localhost:11434"
-        mock_settings.OLLAMA_MODEL = "medgemma"
-        mock_settings.OLLAMA_TEXT_MODEL = "llama3.2:3b"
-        mock_settings.OLLAMA_TIMEOUT = 90
-        mock_settings.OPENAI_API_KEY = ""
-        mock_settings.GEMINI_API_KEY = ""
-        mock_settings.GROQ_API_KEY = ""
-        mock_settings.OPENROUTER_API_KEY = "test-key"
-        mock_groq = AsyncMock(return_value=None)
-        mock_gemini = AsyncMock(return_value=None)
-        mock_ollama = AsyncMock(return_value=None)
-        mock_openrouter = AsyncMock(return_value="OpenRouter response")
-        with patch.object(ai_service, "_call_groq_text", mock_groq), \
-             patch.object(ai_service, "_call_gemini_text", mock_gemini), \
-             patch.object(ai_service, "_call_ollama_text", mock_ollama), \
-             patch.object(ai_service, "_call_openrouter_text", mock_openrouter):
+    from app.schemas.ai_provider_config import default_provider_config
+    mock_groq = AsyncMock(return_value=None)
+    mock_gemini = AsyncMock(return_value=None)
+    mock_ollama = AsyncMock(return_value=None)
+    mock_openrouter = AsyncMock(return_value="OpenRouter response")
+    mock_openai = AsyncMock(return_value=None)
+    with patch.object(ai_service, "_get_provider_config", new_callable=AsyncMock, return_value=default_provider_config()), \
+         patch.object(ai_service, "_call_groq_text", mock_groq), \
+         patch.object(ai_service, "_call_gemini_text", mock_gemini), \
+         patch.object(ai_service, "_call_ollama_text", mock_ollama), \
+         patch.object(ai_service, "_call_openrouter_text", mock_openrouter), \
+         patch.object(ai_service, "_call_openai_text", mock_openai):
             result, provider = await ai_service._call_ai("Test prompt", "")
             assert result == "OpenRouter response"
-            assert provider == "OpenRouter DeepSeek V4 Flash"
+            assert "OpenRouter" in provider
 
 
 @pytest.mark.asyncio

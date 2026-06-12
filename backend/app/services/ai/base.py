@@ -105,7 +105,7 @@ async def retry_with_backoff(
     """
     import httpx
 
-    last_exc = None
+    last_exc: Exception = ValueError("No retries configured")  # type: ignore[assignment]
     for attempt in range(max_retries + 1):
         try:
             return await fn(*args, **kwargs)
