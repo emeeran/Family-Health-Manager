@@ -119,7 +119,8 @@ describe("apiRequest", () => {
 
     try {
       await apiRequest("/members");
-      expect.unreachable("Should have thrown");
+      // Should have thrown — if we reach here, the test fails
+      throw new Error("Should have thrown");
     } catch (err) {
       expect(err).toBeInstanceOf(ApiError);
       expect(mockLocation.href).toBe("/login");
