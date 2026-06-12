@@ -248,14 +248,11 @@ export const PreConsultationCard = memo(function PreConsultationCard({
               onValueChange={(v) => setSelectedProviderId(v === "__none__" ? "" : (v ?? ""))}
             >
               <SelectTrigger className="w-full">
-                {selectedProvider ? (
-                  <span className="truncate">
-                    {selectedProvider.name}
-                    {selectedProvider.speciality ? ` — ${selectedProvider.speciality}` : ""}
-                  </span>
-                ) : (
-                  <SelectValue placeholder="Select a doctor (optional)" />
-                )}
+                <SelectValue placeholder="Select a doctor (optional)">
+                  {selectedProvider
+                    ? `${selectedProvider.name}${selectedProvider.speciality ? ` — ${selectedProvider.speciality}` : ""}`
+                    : undefined}
+                </SelectValue>
               </SelectTrigger>
               <SelectContent>
                 <SelectItem value="__none__">General visit (no specific doctor)</SelectItem>

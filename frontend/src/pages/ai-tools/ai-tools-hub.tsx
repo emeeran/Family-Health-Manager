@@ -130,7 +130,12 @@ export default function AiToolsHubPage() {
           ) : (
             <Select value={selectedMemberId || "__none__"} onValueChange={handleMemberChange}>
               <SelectTrigger className="mt-1.5">
-                <SelectValue placeholder="Choose a family member to get started" />
+                <SelectValue placeholder="Choose a family member to get started">
+                  {(() => {
+                    const m = members.find((m) => m.id === selectedMemberId);
+                    return m ? `${m.first_name} ${m.last_name}` : undefined;
+                  })()}
+                </SelectValue>
               </SelectTrigger>
               <SelectContent>
                 <SelectItem value="__none__">Choose a family member...</SelectItem>
