@@ -46,6 +46,9 @@ export default function EditRecordPage() {
       const providerId = formData.get("provider_id") as string;
       if (providerId !== null) data.provider_id = providerId || null;
 
+      const recordTime = formData.get("record_time") as string;
+      if (recordTime !== null) data.record_time = recordTime || null;
+
       const nextReviewDate = formData.get("next_review_date") as string;
       if (nextReviewDate !== null) data.next_review_date = nextReviewDate || null;
 

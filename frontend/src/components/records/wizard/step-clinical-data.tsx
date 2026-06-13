@@ -22,6 +22,7 @@ interface StepClinicalDataProps {
   isDoctorVisit: boolean;
   clinicalDataRef: React.RefObject<HTMLInputElement | null>;
   register: any;
+  errors?: Record<string, string>;
 }
 
 export const StepClinicalData = memo(function StepClinicalData({
@@ -38,6 +39,7 @@ export const StepClinicalData = memo(function StepClinicalData({
   isDoctorVisit,
   clinicalDataRef,
   register,
+  errors,
 }: StepClinicalDataProps) {
   const tables = useMemo(() => (recordType ? getTables(getConfig(recordType)) : []), [recordType]);
 
@@ -76,6 +78,7 @@ export const StepClinicalData = memo(function StepClinicalData({
           onTableChange={onTableChange}
           onAutoFillBatch={onAutoFillBatch}
           autoFillBatches={autoFillBatches}
+          errors={errors}
         />
       )}
 

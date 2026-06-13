@@ -17,6 +17,8 @@ interface StepTypeSelectionProps {
   register: any;
   errors: Record<string, { message?: string }>;
   uploadSection?: React.ReactNode;
+  nlSection?: React.ReactNode;
+  showTime?: boolean;
 }
 
 export const StepTypeSelection = memo(function StepTypeSelection({
@@ -25,6 +27,8 @@ export const StepTypeSelection = memo(function StepTypeSelection({
   register,
   errors,
   uploadSection,
+  nlSection,
+  showTime,
 }: StepTypeSelectionProps) {
   return (
     <div className="space-y-4">
@@ -77,11 +81,28 @@ export const StepTypeSelection = memo(function StepTypeSelection({
               </p>
             )}
           </div>
+          {showTime && (
+            <div className="space-y-0.5">
+              <Label htmlFor="record_time" className="text-xs">
+                Time
+              </Label>
+              <Input
+                id="record_time"
+                type="time"
+                aria-label="Record time"
+                {...register("record_time")}
+                className="h-8"
+              />
+            </div>
+          )}
         </div>
       </div>
 
       {/* Upload & Extract section injected from wizard parent */}
       {uploadSection}
+
+      {/* Natural-language "describe in words" section injected from wizard parent */}
+      {nlSection}
     </div>
   );
 });

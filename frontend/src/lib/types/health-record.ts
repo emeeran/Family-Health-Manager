@@ -19,6 +19,7 @@ export interface HealthRecordUpdate {
   clinical_data?: string | null;
   diagnosis?: string | null;
   prescription_text?: string | null;
+  record_time?: string | null;
   next_review_date?: string | null;
   tags?: string[] | null;
   summary?: string | null;

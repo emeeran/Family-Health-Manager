@@ -414,8 +414,12 @@ INSTRUCTIONS:
 5. Today's date is {datetime.now().strftime('%Y-%m-%d')} -- use it to resolve relative dates like "yesterday", "last week".
 6. For glucose/blood sugar mentions, include glucose_value and meal_timing.
 7. For vitals mentions (weight, BP, heart rate, temperature), include individual fields.
+8. For HbA1c mentions, include hba1c_value (percentage).
+9. For prescriptions/medicines, populate the prescriptions array (one entry per medicine) AND a prescription_text summary.
+10. For lab/test results, populate the lab_tests array (one entry per test) and set record_type to lab_report.
+11. For consultations, include chief_complaint and provider_name (doctor name) when mentioned.
 
-RECORD TYPES: doctor_visit, lab_report, rx_eyeglass, blood_glucose, vitals, misc_record
+RECORD TYPES: doctor_visit, lab_report, rx_eyeglass, blood_glucose, hba1c, vitals, misc_record
 
 Return this JSON:
 {{
@@ -424,11 +428,22 @@ Return this JSON:
   "record_date": "YYYY-MM-DD" or null,
   "record_time": "HH:MM" or null,
   "diagnosis": "extracted diagnosis" or null,
+  "chief_complaint": "main reason for the visit" or null,
+  "existing_conditions": "chronic/underlying conditions mentioned" or null,
+  "investigations": "tests ordered or recommended" or null,
+  "provider_name": "doctor or provider name" or null,
   "prescription_text": "extracted prescriptions text" or null,
+  "prescriptions": [
+    {{"type": "Tab|Cap|Inj|Syp|Cream|Drops|Inhaler|Other", "medicine": "name", "dosage": "e.g. 1-1-1", "duration": "e.g. 5 days", "timing": "before_food|after_food|with_food|empty_stomach|bedtime|sos|stat", "note": "optional"}}
+  ] or null,
+  "lab_tests": [
+    {{"test_name": "e.g. HbA1c", "result": "e.g. 7.8 %", "ref_value": "e.g. <6.0 %", "note": "e.g. High"}}
+  ] or null,
   "clinical_notes": "any other relevant notes" or null,
   "next_review_date": "YYYY-MM-DD" or null,
   "glucose_value": "number" or null,
   "meal_timing": "before_food|after_food" or null,
+  "hba1c_value": "number" or null,
   "weight": "value" or null,
   "blood_pressure": "systolic/diastolic" or null,
   "heart_rate": "number" or null,

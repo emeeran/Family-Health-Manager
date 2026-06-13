@@ -122,9 +122,22 @@ export interface NLParseResponse {
   record_date: string | null;
   record_time: string | null;
   diagnosis: string | null;
+  chief_complaint: string | null;
+  existing_conditions: string | null;
+  investigations: string | null;
+  provider_name: string | null;
   prescription_text: string | null;
+  prescriptions: Record<string, string>[] | null;
+  lab_tests: Record<string, string>[] | null;
   clinical_notes: string | null;
   next_review_date: string | null;
+  glucose_value: string | null;
+  meal_timing: string | null;
+  hba1c_value: string | null;
+  weight: string | null;
+  blood_pressure: string | null;
+  heart_rate: string | null;
+  temperature: string | null;
   confidence: string;
   preview_fields: { label: string; value: string }[];
 }

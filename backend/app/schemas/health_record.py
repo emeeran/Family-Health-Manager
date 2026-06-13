@@ -29,6 +29,7 @@ class HealthRecordUpdate(BaseModel):
     clinical_data: str | None = Field(None, description="Clinical data", max_length=50000)
     diagnosis: str | None = Field(None, description="Diagnosis")
     prescription_text: str | None = Field(None, description="Prescription notes")
+    record_time: time | None = Field(None, description="Record time")
     next_review_date: date | None = Field(None, description="Next review date")
     tags: list[str] | None = Field(None, description="Record tags")
     summary: str | None = Field(None, description="AI-generated consultation summary")

@@ -14,6 +14,14 @@ router = APIRouter(prefix="/smart-entry", tags=["Smart Entry"])
 logger = logging.getLogger(__name__)
 
 
+def _scalar(val) -> str | None:
+    """Coerce an AI-parsed scalar (may be int/float/str) to a trimmed string, or None."""
+    if val is None:
+        return None
+    s = str(val).strip()
+    return s or None
+
+
 class NLParseRequest(BaseModel):
     text: str = Field(..., min_length=2, max_length=2000)
 
@@ -35,9 +43,23 @@ class NLParseResponse(BaseModel):
     record_date: str | None = None
     record_time: str | None = None
     diagnosis: str | None = None
+    chief_complaint: str | None = None
+    existing_conditions: str | None = None
+    investigations: str | None = None
+    provider_name: str | None = None
     prescription_text: str | None = None
+    prescriptions: list[dict] | None = None
+    lab_tests: list[dict] | None = None
     clinical_notes: str | None = None
     next_review_date: str | None = None
+    # Structured type-specific fields (persisted into clinical_data by the client)
+    glucose_value: str | None = None
+    meal_timing: str | None = None
+    hba1c_value: str | None = None
+    weight: str | None = None
+    blood_pressure: str | None = None
+    heart_rate: str | None = None
+    temperature: str | None = None
     confidence: str = "medium"  # high | medium | low
     preview_fields: list[NLFieldPreview] = []
 
@@ -137,6 +159,7 @@ async def parse_natural_language(
                 "lab_report": "Lab Report",
                 "rx_eyeglass": "Eyeglass Rx",
                 "blood_glucose": "Blood Glucose",
+                "hba1c": "HbA1c",
                 "vitals": "Vitals",
                 "misc_record": "Misc Record",
             }
@@ -156,8 +179,19 @@ async def parse_natural_language(
     if parsed.get("prescription_text"):
         preview_fields.append(NLFieldPreview(label="Rx", value=parsed["prescription_text"][:80]))
 
+    rx_list = parsed.get("prescriptions")
+    if isinstance(rx_list, list) and rx_list:
+        preview_fields.append(NLFieldPreview(label="Medicines", value=str(len(rx_list))))
+
+    lab_list = parsed.get("lab_tests")
+    if isinstance(lab_list, list) and lab_list:
+        preview_fields.append(NLFieldPreview(label="Lab Tests", value=str(len(lab_list))))
+
     if parsed.get("glucose_value"):
         preview_fields.append(NLFieldPreview(label="Glucose", value=f'{parsed["glucose_value"]} mg/dL'))
+
+    if parsed.get("hba1c_value"):
+        preview_fields.append(NLFieldPreview(label="HbA1c", value=f'{parsed["hba1c_value"]}%'))
 
     vitals_parts = []
     for key, label in [("weight", "Wt"), ("blood_pressure", "BP"), ("heart_rate", "HR"), ("temperature", "Temp")]:
@@ -179,9 +213,22 @@ async def parse_natural_language(
         record_date=parsed.get("record_date"),
         record_time=parsed.get("record_time"),
         diagnosis=parsed.get("diagnosis"),
+        chief_complaint=parsed.get("chief_complaint"),
+        existing_conditions=parsed.get("existing_conditions"),
+        investigations=parsed.get("investigations"),
+        provider_name=parsed.get("provider_name"),
         prescription_text=parsed.get("prescription_text"),
+        prescriptions=parsed.get("prescriptions") if isinstance(parsed.get("prescriptions"), list) else None,
+        lab_tests=parsed.get("lab_tests") if isinstance(parsed.get("lab_tests"), list) else None,
         clinical_notes=parsed.get("clinical_notes"),
         next_review_date=parsed.get("next_review_date"),
+        glucose_value=_scalar(parsed.get("glucose_value")),
+        meal_timing=parsed.get("meal_timing"),
+        hba1c_value=_scalar(parsed.get("hba1c_value")),
+        weight=_scalar(parsed.get("weight")),
+        blood_pressure=parsed.get("blood_pressure"),
+        heart_rate=_scalar(parsed.get("heart_rate")),
+        temperature=_scalar(parsed.get("temperature")),
         confidence=confidence,
         preview_fields=preview_fields,
     )

@@ -486,7 +486,9 @@ export function BatchUploadQueue({ memberId, onComplete, initialFiles }: BatchUp
         >
           <Upload className="h-10 w-10 mx-auto text-muted-foreground mb-3" />
           <p className="text-sm font-medium text-foreground">Drag & drop files here</p>
-          <p className="text-xs text-muted-foreground mt-1">PDF, JPEG, PNG — up to 25MB each</p>
+          <p className="text-xs text-muted-foreground mt-1">
+            PDF, JPEG, PNG, WebP — up to 25MB each
+          </p>
 
           <div className="flex items-center justify-center gap-3 mt-4">
             <Button
@@ -521,7 +523,7 @@ export function BatchUploadQueue({ memberId, onComplete, initialFiles }: BatchUp
         <input
           ref={fileInputRef}
           type="file"
-          accept=".pdf,image/jpeg,image/png"
+          accept=".pdf,image/jpeg,image/png,image/webp"
           multiple
           className="hidden"
           onChange={() => {
@@ -535,7 +537,7 @@ export function BatchUploadQueue({ memberId, onComplete, initialFiles }: BatchUp
         <input
           ref={dirInputRef}
           type="file"
-          accept=".pdf,image/jpeg,image/png"
+          accept=".pdf,image/jpeg,image/png,image/webp"
           multiple
           className="hidden"
           // @ts-expect-error webkitdirectory is non-standard but widely supported

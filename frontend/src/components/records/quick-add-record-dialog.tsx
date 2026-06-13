@@ -164,24 +164,22 @@ export function QuickAddRecordDialog({ open, onOpenChange, members }: QuickAddRe
 
           {step === "select-type" && (
             <div className="grid grid-cols-2 gap-2">
-              {(Object.keys(RECORD_TYPE_LABELS) as RecordType[])
-                .filter((t) => t !== "hba1c")
-                .map((type) => (
-                  <button
-                    key={type}
-                    onClick={() => handleSelectType(type)}
-                    className="flex flex-col items-center gap-2 rounded-lg border p-3 hover:bg-muted/50 transition-colors"
+              {(Object.keys(RECORD_TYPE_LABELS) as RecordType[]).map((type) => (
+                <button
+                  key={type}
+                  onClick={() => handleSelectType(type)}
+                  className="flex flex-col items-center gap-2 rounded-lg border p-3 hover:bg-muted/50 transition-colors"
+                >
+                  <div
+                    className={`flex h-10 w-10 items-center justify-center rounded-lg ${RECORD_TYPE_COLORS[type]}`}
                   >
-                    <div
-                      className={`flex h-10 w-10 items-center justify-center rounded-lg ${RECORD_TYPE_COLORS[type]}`}
-                    >
-                      {RECORD_TYPE_ICONS[type]}
-                    </div>
-                    <span className="text-xs font-medium text-center">
-                      {RECORD_TYPE_LABELS[type]}
-                    </span>
-                  </button>
-                ))}
+                    {RECORD_TYPE_ICONS[type]}
+                  </div>
+                  <span className="text-xs font-medium text-center">
+                    {RECORD_TYPE_LABELS[type]}
+                  </span>
+                </button>
+              ))}
             </div>
           )}
 

@@ -14,6 +14,7 @@ export const VALID_RECORD_TYPES = new Set<string>([
   "lab_report",
   "rx_eyeglass",
   "blood_glucose",
+  "hba1c",
   "misc_record",
   "vitals",
   "parkinsons_log",

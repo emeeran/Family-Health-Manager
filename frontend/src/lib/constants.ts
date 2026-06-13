@@ -10,7 +10,12 @@ import type {
 export const API_BASE_URL = import.meta.env.VITE_API_URL || "/api/v1";
 
 export const MAX_FILE_SIZE = 25 * 1024 * 1024; // 25MB
-export const ALLOWED_MIME_TYPES = ["application/pdf", "image/jpeg", "image/png"] as const;
+export const ALLOWED_MIME_TYPES = [
+  "application/pdf",
+  "image/jpeg",
+  "image/png",
+  "image/webp",
+] as const;
 
 export const RECORD_TYPE_LABELS: Record<RecordType, string> = {
   doctor_visit: "Doctor Visit",

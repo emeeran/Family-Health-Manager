@@ -17,9 +17,11 @@ import {
 } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { Textarea } from "@/components/ui/textarea";
 import { Label } from "@/components/ui/label";
 import { MedicationSyncDialog } from "@/components/records/medication-sync-dialog";
 import { useFileExtraction } from "@/components/records/use-file-extraction";
+import { useNLExtraction } from "@/components/records/use-nl-extraction";
 import {
   MEDICATION_SYNC_KEY,
   baseSchema,
@@ -41,7 +43,8 @@ import type { FormValues } from "@/components/records/record-form-utils";
 import type { RecordType } from "@/lib/types/enums";
 import type { ProviderResponse, ProviderCreate } from "@/lib/types/provider";
 import type { HealthRecordResponse } from "@/lib/types/health-record";
-import { Upload, FileText, CheckCircle2, Clock, X, AlertTriangle } from "lucide-react";
+import { Upload, FileText, CheckCircle2, Clock, X, AlertTriangle, PenLine } from "lucide-react";
+import { toast } from "sonner";
 
 interface RecordFormProps {
   action: (prevState: unknown, formData: FormData) => Promise<unknown>;
@@ -79,6 +82,7 @@ export function RecordFormWizard({
   const [customValues, setCustomValues] = useState<Record<string, string>>({});
   const [tableData, setTableData] = useState<Record<string, Record<string, string>[]>>({});
   const [notes, setNotes] = useState("");
+  const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({});
   const [_extractedFields, setExtractedFields] = useState<Set<string>>(new Set());
 
   const [showMedPrompt, setShowMedPrompt] = useState(false);
@@ -87,6 +91,7 @@ export function RecordFormWizard({
   const [newProviderName, setNewProviderName] = useState("");
   const [newProviderSpeciality, setNewProviderSpeciality] = useState("");
   const [addingProvider, setAddingProvider] = useState(false);
+  const [providerError, setProviderError] = useState("");
   const [showMedSyncDialog, setShowMedSyncDialog] = useState(false);
   const [medSyncDiff, setMedSyncDiff] = useState<
     import("@/lib/types/health-record").MedicationDiffResponse | null
@@ -167,10 +172,28 @@ export function RecordFormWizard({
     setExtractedFields,
   });
 
+  const {
+    nlText,
+    setNlText,
+    parsing: nlParsing,
+    nlError,
+    parsed: nlParsed,
+    handleParse: handleParseNL,
+    clearNL,
+  } = useNLExtraction({
+    recordType,
+    providerList,
+    form: { setValue, getValues },
+    setCustomValues,
+    setTableData,
+    setExtractedFields,
+  });
+
   const handleAddProvider = useCallback(async () => {
     const name = newProviderName.trim();
     if (!name) return;
     setAddingProvider(true);
+    setProviderError("");
     try {
       const data: ProviderCreate = { name, speciality: newProviderSpeciality.trim() || undefined };
       const created = await createProvider(data);
@@ -180,8 +203,10 @@ export function RecordFormWizard({
       setShowAddProvider(false);
       setNewProviderName("");
       setNewProviderSpeciality("");
-    } catch {
-      /* silently fail */
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : "Failed to add provider";
+      setProviderError(msg);
+      toast.error(msg);
     } finally {
       setAddingProvider(false);
     }
@@ -227,6 +252,7 @@ export function RecordFormWizard({
         });
       }
       setNotes("");
+      setFieldErrors({});
     }
     prevRecordTypeRef.current = recordType;
   }, [recordType, record, defaultChiefComplaint]);
@@ -235,6 +261,12 @@ export function RecordFormWizard({
 
   function handleCustomFieldChange(key: string, value: string) {
     setCustomValues((prev) => ({ ...prev, [key]: value }));
+    setFieldErrors((prev) => {
+      if (!prev[key]) return prev;
+      const next = { ...prev };
+      delete next[key];
+      return next;
+    });
   }
 
   function handleTableChange(tableKey: string, rows: Record<string, string>[]) {
@@ -278,12 +310,35 @@ export function RecordFormWizard({
     setNotes("");
     setTags([]);
     setTagInput("");
+    setFieldErrors({});
     setCurrentStep(defaultType ? 1 : 0);
   }, [reset, defaultType, defaultProviderId, clearExtractionState]);
+
+  function validateRequiredFields(): Record<string, string> {
+    const errs: Record<string, string> = {};
+    if (config) {
+      for (const f of config.customFields) {
+        if (f.required && !(customValues[f.key] || "").trim()) {
+          errs[f.key] = `${f.label} is required`;
+        }
+      }
+    }
+    return errs;
+  }
 
   function handleSubmit(e?: React.SyntheticEvent<HTMLFormElement>) {
     e?.preventDefault();
     if (isPending || !formRef.current) return;
+    const errs = validateRequiredFields();
+    if (Object.keys(errs).length > 0) {
+      setFieldErrors(errs);
+      toast.error("Please fill in the required fields.");
+      // Jump to the step that contains the first missing field
+      if (errs["chief_complaint"]) setCurrentStep(1);
+      else setCurrentStep(2);
+      return;
+    }
+    setFieldErrors({});
     serializeToHiddenField();
     if (!record && recordType === "doctor_visit" && hasPrescriptions) {
       setShowMedPrompt(true);
@@ -375,6 +430,63 @@ export function RecordFormWizard({
     return completed;
   }, [currentStep, recordType]);
 
+  // Natural-language "describe in words" section (injected into Step 1)
+  const nlSection = memberId && !record && (
+    <div className="space-y-2">
+      <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">
+        Or Describe in Words
+      </p>
+      <Textarea
+        placeholder='e.g., "Saw Dr. Sharma on 10 March for headache. BP 150/95. Started ibuprofen 400mg twice daily for 5 days."'
+        value={nlText}
+        onChange={(e) => setNlText(e.target.value)}
+        rows={3}
+        className="text-sm"
+        onKeyDown={(e) => {
+          if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) {
+            e.preventDefault();
+            handleParseNL();
+          }
+        }}
+      />
+      <div className="flex items-center gap-2">
+        <Button
+          type="button"
+          size="sm"
+          onClick={handleParseNL}
+          disabled={nlParsing || !nlText.trim()}
+        >
+          {nlParsing ? (
+            <Loader2 className="h-3.5 w-3.5 mr-1.5 animate-spin" />
+          ) : (
+            <PenLine className="h-3.5 w-3.5 mr-1.5" />
+          )}
+          {nlParsing ? "Parsing..." : "Parse & Fill"}
+        </Button>
+        {nlText && !nlParsing && (
+          <Button type="button" variant="ghost" size="sm" className="h-8 text-xs" onClick={clearNL}>
+            Clear
+          </Button>
+        )}
+      </div>
+      {nlParsed && !nlParsing && !nlError && (
+        <div className="flex items-start gap-2 rounded-lg border border-blue-200 bg-blue-50 px-3 py-2 dark:border-blue-800 dark:bg-blue-950">
+          <CheckCircle2 className="h-4 w-4 text-blue-600 dark:text-blue-400 mt-0.5 shrink-0" />
+          <p className="text-xs text-blue-700 dark:text-blue-300">
+            Filled the form from your description
+            {nlParsed.member ? ` (matched: ${nlParsed.member.name})` : ""}. Review and edit below.
+          </p>
+        </div>
+      )}
+      {nlError && (
+        <div className="flex items-start gap-2 rounded-lg border border-destructive/30 bg-destructive/5 px-3 py-2">
+          <AlertTriangle className="h-4 w-4 text-destructive mt-0.5 shrink-0" />
+          <p className="text-sm text-destructive">{nlError}</p>
+        </div>
+      )}
+    </div>
+  );
+
   // Upload section (injected into Step 1)
   const uploadSection = memberId && !record && (
     <div className="space-y-2">
@@ -397,7 +509,7 @@ export function RecordFormWizard({
       <input
         ref={fileInputRef}
         type="file"
-        accept=".pdf,image/jpeg,image/png"
+        accept=".pdf,image/jpeg,image/png,image/webp"
         capture="environment"
         multiple
         disabled={extracting}
@@ -439,7 +551,7 @@ export function RecordFormWizard({
         className={`flex items-center justify-center gap-2 rounded-md border border-dashed px-3 py-2 text-sm transition-all cursor-pointer ${isDragOver ? "border-primary bg-primary/10" : "border-muted-foreground/20 hover:border-primary/40 hover:bg-primary/5"}`}
       >
         <Upload className="h-4 w-4 text-muted-foreground/50" />
-        <span className="text-muted-foreground">Drop or click to upload PDF, JPEG, PNG</span>
+        <span className="text-muted-foreground">Drop or click to upload PDF, JPEG, PNG, WebP</span>
       </div>
 
       {extracting && (
@@ -627,7 +739,6 @@ export function RecordFormWizard({
         name="clinical_data"
         defaultValue={record?.clinical_data || ""}
       />
-      <input type="hidden" name="record_time" value="" />
       {stagingFileIds.length > 0 && (
         <input type="hidden" name="staging_file_ids" value={stagingFileIds.join(",")} />
       )}
@@ -657,6 +768,8 @@ export function RecordFormWizard({
             register={register}
             errors={errors}
             uploadSection={uploadSection}
+            nlSection={nlSection}
+            showTime={!!config?.schemaFields.record_time}
           />
         )}
 
@@ -669,6 +782,7 @@ export function RecordFormWizard({
             onAddProvider={() => setShowAddProvider(true)}
             chiefComplaint={customValues["chief_complaint"] || ""}
             onChiefComplaintChange={(v) => handleCustomFieldChange("chief_complaint", v)}
+            chiefComplaintError={fieldErrors["chief_complaint"]}
             diagnosis={getValues("diagnosis") ?? ""}
             nextReviewDate={getValues("next_review_date") ?? ""}
             notes={customValues["notes"] || ""}
@@ -696,6 +810,7 @@ export function RecordFormWizard({
             isDoctorVisit={isDoctorVisit}
             clinicalDataRef={clinicalDataRef}
             register={register}
+            errors={fieldErrors}
           />
         )}
 
@@ -751,7 +866,13 @@ export function RecordFormWizard({
       )}
 
       {/* Add Provider dialog */}
-      <Dialog open={showAddProvider} onOpenChange={setShowAddProvider}>
+      <Dialog
+        open={showAddProvider}
+        onOpenChange={(open) => {
+          setShowAddProvider(open);
+          if (!open) setProviderError("");
+        }}
+      >
         <DialogContent className="sm:max-w-sm">
           <DialogHeader>
             <DialogTitle>Add Provider</DialogTitle>
@@ -789,6 +910,11 @@ export function RecordFormWizard({
                 }}
               />
             </div>
+            {providerError && (
+              <p role="alert" className="text-xs text-destructive">
+                {providerError}
+              </p>
+            )}
           </div>
           <DialogFooter className="pt-2">
             <Button

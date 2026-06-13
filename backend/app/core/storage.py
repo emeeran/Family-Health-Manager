@@ -14,7 +14,7 @@ from app.core.config import get_settings
 settings = get_settings()
 logger = logging.getLogger(__name__)
 
-ALLOWED_MIME_TYPES = {"application/pdf", "image/jpeg", "image/png"}
+ALLOWED_MIME_TYPES = {"application/pdf", "image/jpeg", "image/png", "image/webp"}
 MAX_FILE_SIZE = 25 * 1024 * 1024  # 25 MB
 CHUNK_SIZE = 1024 * 1024  # 1 MB
 
@@ -23,7 +23,21 @@ MAGIC_SIGNATURES: dict[str, list[bytes]] = {
     "application/pdf": [b"%PDF"],
     "image/jpeg": [b"\xff\xd8\xff"],
     "image/png": [b"\x89PNG\r\n\x1a\n"],
+    # WebP uses a RIFF container: "RIFF" at offset 0, "WEBP" at offset 8.
+    "image/webp": [b"RIFF"],
 }
+
+
+def _magic_matches(chunk: bytes, mime: str) -> bool:
+    """Return True if the first chunk matches the expected magic bytes for mime.
+
+    WebP is a RIFF container, so its signature is split across two offsets
+    ("RIFF" at 0, "WEBP" at 8) and cannot be verified by a single prefix.
+    """
+    if mime == "image/webp":
+        return chunk[:4] == b"RIFF" and chunk[8:12] == b"WEBP"
+    signatures = MAGIC_SIGNATURES.get(mime)
+    return bool(signatures) and any(chunk.startswith(sig) for sig in signatures)
 
 
 def get_files_dir() -> Path:
@@ -111,7 +125,6 @@ async def save_file(file: UploadFile, prefix: str = "attachments") -> tuple[Path
     _validate_storage_path(file_path)
 
     declared_mime = file.content_type or "application/octet-stream"
-    signatures = MAGIC_SIGNATURES.get(declared_mime)
     magic_checked = False
 
     async with aiofiles.open(file_path, "wb") as f:
@@ -121,7 +134,7 @@ async def save_file(file: UploadFile, prefix: str = "attachments") -> tuple[Path
                 break
             # Validate magic bytes from first chunk
             if not magic_checked:
-                if signatures and not any(chunk.startswith(sig) for sig in signatures):
+                if not _magic_matches(chunk, declared_mime):
                     await aiofiles.os.remove(file_path)
                     raise ValueError(
                         f"File content does not match declared type {declared_mime}"
@@ -152,7 +165,6 @@ async def save_file_hashed(file: UploadFile) -> tuple[Path, str, str]:
     files_dir.mkdir(parents=True, exist_ok=True)
 
     declared_mime = file.content_type or "application/octet-stream"
-    signatures = MAGIC_SIGNATURES.get(declared_mime)
     magic_checked = False
 
     # Stream to temp file while hashing
@@ -166,7 +178,7 @@ async def save_file_hashed(file: UploadFile) -> tuple[Path, str, str]:
             if not chunk:
                 break
             if not magic_checked:
-                if signatures and not any(chunk.startswith(sig) for sig in signatures):
+                if not _magic_matches(chunk, declared_mime):
                     await aiofiles.os.remove(tmp_path)
                     raise ValueError(
                         f"File content does not match declared type {declared_mime}"

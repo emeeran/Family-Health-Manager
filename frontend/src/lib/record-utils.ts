@@ -49,9 +49,10 @@ export function extractSummary(record: HealthRecordResponse): string | null {
       if (e.sph_right || e.sph_left) parts.push(`SPH: ${e.sph_right || ""} / ${e.sph_left || ""}`);
     }
 
-    if (parsed.bp) parts.push(`BP: ${parsed.bp}`);
-    if (parsed.pulse) parts.push(`Pulse: ${parsed.pulse}`);
+    if (parsed.blood_pressure) parts.push(`BP: ${parsed.blood_pressure}`);
+    if (parsed.heart_rate) parts.push(`Pulse: ${parsed.heart_rate}`);
     if (parsed.temperature) parts.push(`Temp: ${parsed.temperature}`);
+    if (parsed.weight) parts.push(`Wt: ${parsed.weight}kg`);
 
     return parts.length > 0 ? parts.join("  |  ") : null;
   } catch {

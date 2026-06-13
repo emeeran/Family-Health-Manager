@@ -5,7 +5,6 @@ import {
   EXTRACT_TIMEOUT,
   VALID_RECORD_TYPES,
   normalizeDate,
-  normalizeTime,
   sanitizeText,
   validatePrescriptionRow,
   validateLabTestRow,
@@ -14,6 +13,7 @@ import type { FormValues } from "./record-form-utils";
 import { todayStr } from "./record-form-utils";
 import { toDisplayDate } from "@/lib/utils";
 import { getConfig, getTables } from "@/lib/record-type-configs";
+import { mergeExtractedFields } from "./merge-extracted";
 import {
   saveExtraction,
   consumeBatch,
@@ -183,134 +183,40 @@ export function useFileExtraction({
       original_file_name: fileName,
       transcription: rawText,
     } = response;
-    const populated = new Set<string>();
 
     // Store transcription
     if (rawText) {
       setTranscription(rawText);
     }
 
-    if (extracted.record_type && VALID_RECORD_TYPES.has(extracted.record_type)) {
-      setValue("record_type", extracted.record_type as RecordType);
-      populated.add("record_type");
-    }
+    const { populated, pendingCustom } = mergeExtractedFields(
+      {
+        providerList,
+        form: { setValue, getValues },
+        setCustomValues,
+        setTableData,
+        setExtractedFields,
+        tables,
+      },
+      extracted
+    );
+    pendingExtractedFields.current = pendingCustom;
 
-    const dateISO = normalizeDate(extracted.record_date);
-    if (dateISO) {
-      setValue("record_date", toDisplayDate(dateISO));
-      populated.add("record_date");
-    }
-
-    const timeStr = normalizeTime(extracted.record_time);
-    if (timeStr) {
-      setValue("record_time", timeStr);
-      populated.add("record_time");
-    }
-
-    const reviewISO = normalizeDate(extracted.next_review_date);
-    if (reviewISO) {
-      setValue("next_review_date", toDisplayDate(reviewISO));
-      populated.add("next_review_date");
-    }
-
-    const diag = sanitizeText(extracted.diagnosis);
-    if (diag) {
-      const existing = getValues("diagnosis") || "";
-      setValue("diagnosis", existing ? `${existing}; ${diag}` : diag);
-      populated.add("diagnosis");
-    }
-    const clinData = sanitizeText(extracted.clinical_data, 5000);
-    if (clinData) {
-      const existing = getValues("clinical_data") || "";
-      setValue("clinical_data", existing ? `${existing}\n\n${clinData}` : clinData);
-      populated.add("clinical_data");
-    }
-    const rxText = sanitizeText(extracted.prescription_text, 2000);
-    if (rxText) {
-      const existing = getValues("prescription_text") || "";
-      setValue("prescription_text", existing ? `${existing}\n\n${rxText}` : rxText);
-      populated.add("prescription_text");
-    }
-
-    const provName = sanitizeText(extracted.provider_name, 200);
-    if (provName && providerList.length > 0) {
-      const lower = provName.toLowerCase();
-      const match = providerList.find((p) => {
-        const pLower = p.name.toLowerCase();
-        return (
-          (pLower.length >= 3 && lower.includes(pLower.slice(0, Math.min(pLower.length, 8)))) ||
-          (lower.length >= 3 && pLower.includes(lower.slice(0, Math.min(lower.length, 8))))
-        );
+    if (populated.size > 0) {
+      setExtractedFieldsLocal((prev) => {
+        const next = new Set(prev);
+        populated.forEach((f) => next.add(f));
+        return next;
       });
-      if (match) {
-        setValue("provider_id", match.id);
-        populated.add("provider_id");
-      }
     }
 
-    const customFieldMap: Record<string, string | null> = {
-      chief_complaint: sanitizeText(extracted.chief_complaint),
-      existing_conditions: sanitizeText(extracted.existing_conditions),
-      investigations: sanitizeText(extracted.investigations),
-    };
-    const pendingCustom: Record<string, string> = {};
-    for (const [fieldKey, val] of Object.entries(customFieldMap)) {
-      if (val) {
-        pendingCustom[fieldKey] = val;
-        populated.add(fieldKey);
-      }
-    }
-    pendingExtractedFields.current = Object.keys(pendingCustom).length > 0 ? pendingCustom : null;
-    if (Object.keys(pendingCustom).length > 0)
-      setCustomValues((prev) => ({ ...prev, ...pendingCustom }));
-
-    if (Array.isArray(extracted.prescriptions) && extracted.prescriptions.length > 0) {
-      const validRows = extracted.prescriptions
-        .map(validatePrescriptionRow)
-        .filter(Boolean) as Record<string, string>[];
-      if (validRows.length > 0) {
-        setTableData((prev) => ({
-          ...prev,
-          prescriptions: [...(prev.prescriptions || []), ...validRows],
-        }));
-        populated.add("prescriptions");
-      }
-    }
-
-    if (Array.isArray(extracted.lab_tests) && extracted.lab_tests.length > 0) {
-      const validRows = extracted.lab_tests.map(validateLabTestRow).filter(Boolean) as Record<
-        string,
-        string
-      >[];
-      if (validRows.length > 0) {
-        setTableData((prev) => {
-          const labKey =
-            tables.find((t) => t.key === "tests" || t.key === "lab_results")?.key || "lab_results";
-          return { ...prev, [labKey]: [...(prev[labKey] || []), ...validRows] };
-        });
-        populated.add("lab_tests");
-      }
-    }
-
-    if (extracted.eyeglass && typeof extracted.eyeglass === "object") {
-      const validEntries = Object.entries(extracted.eyeglass).filter(
-        ([, v]) => typeof v === "string" && v.trim().length > 0
-      );
-      if (validEntries.length >= 2) {
-        const eyeglass: Record<string, string> = {};
-        for (const [k, v] of validEntries) eyeglass[k] = (v as string).trim();
-        setCustomValues((prev) => {
-          const merged = { ...prev };
-          for (const [k, v] of Object.entries(eyeglass)) {
-            if (v && !merged[k]) merged[k] = v;
-          }
-          return merged;
-        });
-        populated.add("eyeglass");
-      }
-    }
-
+    // Persist to the extraction store so recent batches can auto-fill later
+    // (file-upload path only — NL extraction does not stage files).
     if (memberId) {
+      const dateISO = normalizeDate(extracted.record_date);
+      const reviewISO = normalizeDate(extracted.next_review_date);
+      const diag = sanitizeText(extracted.diagnosis);
+      const provName = sanitizeText(extracted.provider_name, 200);
       saveExtraction(memberId, {
         fileName: fileName || "unknown",
         transcription: rawText || null,
@@ -336,26 +242,14 @@ export function useFileExtraction({
           provider_name: provName || undefined,
           diagnosis: diag || undefined,
           next_review_date: reviewISO || undefined,
-          chief_complaint: customFieldMap.chief_complaint || undefined,
-          existing_conditions: customFieldMap.existing_conditions || undefined,
-          investigations: customFieldMap.investigations || undefined,
+          chief_complaint: sanitizeText(extracted.chief_complaint) || undefined,
+          existing_conditions: sanitizeText(extracted.existing_conditions) || undefined,
+          investigations: sanitizeText(extracted.investigations) || undefined,
         },
       });
       refreshRecentBatches();
     }
 
-    if (populated.size > 0) {
-      setExtractedFields((prev) => {
-        const next = new Set(prev);
-        populated.forEach((f) => next.add(f));
-        return next;
-      });
-      setExtractedFieldsLocal((prev) => {
-        const next = new Set(prev);
-        populated.forEach((f) => next.add(f));
-        return next;
-      });
-    }
     setStagingFileIds((prev) => [...prev, stagingId]);
     setUploadedFiles((prev) => [...prev, { name: fileName || "unknown", stagingId }]);
     return populated.size > 0;
@@ -422,7 +316,7 @@ export function useFileExtraction({
     const files = Array.from(fileInputRef.current.files);
     for (const file of files) {
       if (!ALLOWED_MIME_TYPES.includes(file.type as (typeof ALLOWED_MIME_TYPES)[number])) {
-        setExtractError(`Invalid file type: ${file.name}. Accepted: PDF, JPEG, PNG.`);
+        setExtractError(`Invalid file type: ${file.name}. Accepted: PDF, JPEG, PNG, WebP.`);
         return;
       }
       if (file.size > MAX_FILE_SIZE) {
@@ -437,7 +331,7 @@ export function useFileExtraction({
     if (!memberId || !files.length) return;
     for (const file of files) {
       if (!ALLOWED_MIME_TYPES.includes(file.type as (typeof ALLOWED_MIME_TYPES)[number])) {
-        setExtractError(`Invalid file type: ${file.name}. Accepted: PDF, JPEG, PNG.`);
+        setExtractError(`Invalid file type: ${file.name}. Accepted: PDF, JPEG, PNG, WebP.`);
         return;
       }
       if (file.size > MAX_FILE_SIZE) {

@@ -15,6 +15,7 @@ interface StepVisitDetailsProps {
   onAddProvider: () => void;
   chiefComplaint: string;
   onChiefComplaintChange: (value: string) => void;
+  chiefComplaintError?: string;
   diagnosis: string;
   nextReviewDate: string;
   notes: string;
@@ -34,6 +35,7 @@ export const StepVisitDetails = memo(function StepVisitDetails({
   onAddProvider,
   chiefComplaint,
   onChiefComplaintChange,
+  chiefComplaintError,
   notes,
   onNotesChange,
   tags,
@@ -102,7 +104,10 @@ export const StepVisitDetails = memo(function StepVisitDetails({
       {/* Chief Complaint (doctor visit only) */}
       {isDoctorVisit && (
         <div className="space-y-0.5">
-          <Label className="text-xs">Chief Complaint</Label>
+          <Label className="text-xs">
+            Chief Complaint
+            <span className="text-destructive ml-0.5">*</span>
+          </Label>
           <Textarea
             rows={1}
             placeholder="Describe the main reason for the visit..."
@@ -110,6 +115,11 @@ export const StepVisitDetails = memo(function StepVisitDetails({
             value={chiefComplaint}
             onChange={(e) => onChiefComplaintChange(e.target.value)}
           />
+          {chiefComplaintError && (
+            <p role="alert" className="text-[11px] text-destructive">
+              {chiefComplaintError}
+            </p>
+          )}
         </div>
       )}
 

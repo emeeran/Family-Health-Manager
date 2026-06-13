@@ -58,6 +58,7 @@ import {
   AlertTriangle,
 } from "lucide-react";
 import { useDirtyWarn } from "@/hooks/use-dirty-warn";
+import { toast } from "sonner";
 
 interface RecordFormProps {
   action: (prevState: unknown, formData: FormData) => Promise<unknown>;
@@ -87,6 +88,7 @@ export function RecordForm({
   const [customValues, setCustomValues] = useState<Record<string, string>>({});
   const [tableData, setTableData] = useState<Record<string, Record<string, string>[]>>({});
   const [notes, setNotes] = useState("");
+  const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({});
   const [_extractedFields, setExtractedFields] = useState<Set<string>>(new Set());
 
   const [showMedPrompt, setShowMedPrompt] = useState(false);
@@ -95,6 +97,7 @@ export function RecordForm({
   const [newProviderName, setNewProviderName] = useState("");
   const [newProviderSpeciality, setNewProviderSpeciality] = useState("");
   const [addingProvider, setAddingProvider] = useState(false);
+  const [providerError, setProviderError] = useState("");
   const [showMedSyncDialog, setShowMedSyncDialog] = useState(false);
   const [medSyncDiff, setMedSyncDiff] = useState<
     import("@/lib/types/health-record").MedicationDiffResponse | null
@@ -180,6 +183,7 @@ export function RecordForm({
     const name = newProviderName.trim();
     if (!name) return;
     setAddingProvider(true);
+    setProviderError("");
     try {
       const data: ProviderCreate = { name, speciality: newProviderSpeciality.trim() || undefined };
       const created = await createProvider(data);
@@ -189,8 +193,10 @@ export function RecordForm({
       setShowAddProvider(false);
       setNewProviderName("");
       setNewProviderSpeciality("");
-    } catch {
-      /* silently fail */
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : "Failed to add provider";
+      setProviderError(msg);
+      toast.error(msg);
     } finally {
       setAddingProvider(false);
     }
@@ -236,6 +242,7 @@ export function RecordForm({
         });
       }
       setNotes("");
+      setFieldErrors({});
     }
     prevRecordTypeRef.current = recordType;
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -245,6 +252,12 @@ export function RecordForm({
 
   function handleCustomFieldChange(key: string, value: string) {
     setCustomValues((prev) => ({ ...prev, [key]: value }));
+    setFieldErrors((prev) => {
+      if (!prev[key]) return prev;
+      const next = { ...prev };
+      delete next[key];
+      return next;
+    });
   }
 
   function handleTableChange(tableKey: string, rows: Record<string, string>[]) {
@@ -287,11 +300,31 @@ export function RecordForm({
     setNotes("");
     setTags([]);
     setTagInput("");
+    setFieldErrors({});
   }, [reset, defaultType, defaultProviderId, clearExtractionState]);
+
+  function validateRequiredFields(): Record<string, string> {
+    const errs: Record<string, string> = {};
+    if (config) {
+      for (const f of config.customFields) {
+        if (f.required && !(customValues[f.key] || "").trim()) {
+          errs[f.key] = `${f.label} is required`;
+        }
+      }
+    }
+    return errs;
+  }
 
   function handleSubmit(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault();
     if (isPending || !formRef.current) return;
+    const errs = validateRequiredFields();
+    if (Object.keys(errs).length > 0) {
+      setFieldErrors(errs);
+      toast.error("Please fill in the required fields.");
+      return;
+    }
+    setFieldErrors({});
     serializeToHiddenField();
     if (!record && recordType === "doctor_visit" && hasPrescriptions) {
       setShowMedPrompt(true);
@@ -405,7 +438,6 @@ export function RecordForm({
         name="clinical_data"
         defaultValue={record?.clinical_data || ""}
       />
-      <input type="hidden" name="record_time" value="" />
       {stagingFileIds.length > 0 && (
         <input type="hidden" name="staging_file_ids" value={stagingFileIds.join(",")} />
       )}
@@ -439,7 +471,7 @@ export function RecordForm({
           <input
             ref={fileInputRef}
             type="file"
-            accept=".pdf,image/jpeg,image/png"
+            accept=".pdf,image/jpeg,image/png,image/webp"
             capture="environment"
             multiple
             disabled={extracting}
@@ -481,7 +513,9 @@ export function RecordForm({
             className={`flex items-center justify-center gap-2 rounded-md border border-dashed px-3 py-2 text-sm transition-all cursor-pointer ${isDragOver ? "border-primary bg-primary/10" : "border-muted-foreground/20 hover:border-primary/40 hover:bg-primary/5"}`}
           >
             <Upload className="h-4 w-4 text-muted-foreground/50" />
-            <span className="text-muted-foreground">Drop or click to upload PDF, JPEG, PNG</span>
+            <span className="text-muted-foreground">
+              Drop or click to upload PDF, JPEG, PNG, WebP
+            </span>
           </div>
 
           {extracting && (
@@ -698,6 +732,20 @@ export function RecordForm({
               </p>
             )}
           </div>
+          {config?.schemaFields.record_time && (
+            <div className="space-y-0.5">
+              <Label htmlFor="record_time" className="text-xs">
+                Time
+              </Label>
+              <Input
+                id="record_time"
+                type="time"
+                aria-label="Record time"
+                {...register("record_time")}
+                className="h-8"
+              />
+            </div>
+          )}
         </div>
 
         {config?.schemaFields.provider_id && (
@@ -750,7 +798,13 @@ export function RecordForm({
           </div>
         )}
 
-        <Dialog open={showAddProvider} onOpenChange={setShowAddProvider}>
+        <Dialog
+          open={showAddProvider}
+          onOpenChange={(open) => {
+            setShowAddProvider(open);
+            if (!open) setProviderError("");
+          }}
+        >
           <DialogContent className="sm:max-w-sm">
             <DialogHeader>
               <DialogTitle>Add Provider</DialogTitle>
@@ -788,6 +842,11 @@ export function RecordForm({
                   }}
                 />
               </div>
+              {providerError && (
+                <p role="alert" className="text-xs text-destructive">
+                  {providerError}
+                </p>
+              )}
             </div>
             <DialogFooter className="pt-2">
               <Button
@@ -813,7 +872,10 @@ export function RecordForm({
 
         {isDoctorVisit && (
           <div className="space-y-0.5">
-            <Label className="text-xs">Chief Complaint</Label>
+            <Label className="text-xs">
+              Chief Complaint
+              <span className="text-destructive ml-0.5">*</span>
+            </Label>
             <Textarea
               rows={1}
               placeholder="Describe the main reason for the visit..."
@@ -821,6 +883,11 @@ export function RecordForm({
               value={customValues["chief_complaint"] || ""}
               onChange={(e) => handleCustomFieldChange("chief_complaint", e.target.value)}
             />
+            {fieldErrors["chief_complaint"] && (
+              <p role="alert" className="text-[11px] text-destructive">
+                {fieldErrors["chief_complaint"]}
+              </p>
+            )}
           </div>
         )}
       </div>
@@ -835,6 +902,7 @@ export function RecordForm({
           onTableChange={handleTableChange}
           onAutoFillBatch={handleTableAutoFill}
           autoFillBatches={allAutoFillBatches}
+          errors={fieldErrors}
         />
       )}
 

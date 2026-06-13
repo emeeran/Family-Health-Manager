@@ -8,8 +8,34 @@ import { Badge } from "@/components/ui/badge";
 import { PenLine, Loader2, CheckCircle2, Lightbulb } from "lucide-react";
 import { parseNaturalLanguage, createRecord, type NLParseResponse } from "@/lib/api/records";
 import { RECORD_TYPE_LABELS } from "@/lib/constants";
+import { serializeClinicalData } from "@/lib/clinical-data";
 import type { RecordType } from "@/lib/types/enums";
 import { toast } from "sonner";
+
+/**
+ * Build clinical_data from the parsed NL result, routing type-specific vitals /
+ * glucose / HbA1c through the same structured serialization the record form uses
+ * (so nothing the AI extracted is dropped on save).
+ */
+function buildClinicalData(parsed: NLParseResponse): string {
+  const rt = (parsed.record_type || "misc_record") as RecordType;
+  const fields: Record<string, string> = {};
+  if (rt === "vitals") {
+    if (parsed.blood_pressure) fields.blood_pressure = parsed.blood_pressure;
+    if (parsed.heart_rate) fields.heart_rate = parsed.heart_rate;
+    if (parsed.temperature) fields.temperature = parsed.temperature;
+    if (parsed.weight) fields.weight = parsed.weight;
+  } else if (rt === "blood_glucose") {
+    if (parsed.glucose_value) fields.glucose_value = parsed.glucose_value;
+    if (parsed.meal_timing) fields.meal_timing = parsed.meal_timing;
+  } else if (rt === "hba1c") {
+    if (parsed.hba1c_value) fields.hba1c_value = parsed.hba1c_value;
+  }
+  if (Object.keys(fields).length > 0) {
+    return serializeClinicalData(rt, fields, {}, parsed.clinical_notes || undefined);
+  }
+  return parsed.clinical_notes || "{}";
+}
 
 const EXAMPLES = [
   {
@@ -67,9 +93,11 @@ export default function AiToolsSmartEntryPage() {
       await createRecord(memberIdToUse, {
         record_type: (parsed.record_type || "misc_record") as RecordType,
         record_date: parsed.record_date,
-        clinical_data: parsed.clinical_notes || "{}",
+        record_time: parsed.record_time || null,
+        clinical_data: buildClinicalData(parsed),
         diagnosis: parsed.diagnosis,
         prescription_text: parsed.prescription_text,
+        next_review_date: parsed.next_review_date,
       });
       toast.success("Record created!");
       setText("");

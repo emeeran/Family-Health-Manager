@@ -308,6 +308,56 @@ const MISC_RECORD: RecordTypeConfig = {
   description: "Record any other health-related information.",
 };
 
+const VITALS: RecordTypeConfig = {
+  recordType: "vitals",
+  schemaFields: {
+    diagnosis: false,
+    prescription_text: false,
+    next_review_date: false,
+    provider_id: false,
+    record_time: true,
+  },
+  customFields: [
+    {
+      key: "blood_pressure",
+      label: "Blood Pressure",
+      type: "text",
+      placeholder: "e.g. 120/80",
+      helpText: "mmHg",
+    },
+    {
+      key: "heart_rate",
+      label: "Heart Rate",
+      type: "number",
+      placeholder: "e.g. 72",
+      min: "30",
+      max: "250",
+      helpText: "bpm",
+    },
+    {
+      key: "temperature",
+      label: "Temperature",
+      type: "number",
+      placeholder: "e.g. 98.6",
+      min: "90",
+      max: "115",
+      step: "0.1",
+      helpText: "°F",
+    },
+    {
+      key: "weight",
+      label: "Weight",
+      type: "number",
+      placeholder: "e.g. 72.5",
+      min: "1",
+      max: "500",
+      step: "0.1",
+      helpText: "kg",
+    },
+  ],
+  description: "Record vital signs (BP, pulse, temperature, weight).",
+};
+
 const SEVERITY_OPTIONS = [
   { value: "none", label: "None" },
   { value: "mild", label: "Mild" },
@@ -406,7 +456,7 @@ export const RECORD_TYPE_CONFIGS: Record<RecordType, RecordTypeConfig> = {
   blood_glucose: BLOOD_GLUCOSE,
   hba1c: HBA1C,
   misc_record: MISC_RECORD,
-  vitals: MISC_RECORD,
+  vitals: VITALS,
   parkinsons_log: PARKINSONS_LOG,
 };
 
