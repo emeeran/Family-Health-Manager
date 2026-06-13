@@ -8,9 +8,13 @@ import { useEffect, useState } from "react";
 interface AiToolsSubPageProps {
   title: string;
   children: React.ReactNode;
+  /** When true (default), block rendering until a member is selected via ?memberId=.
+   *  Tools that don't require a pre-selected member (e.g. Smart Entry, which
+   *  detects the member from the text) set this to false. */
+  requireMember?: boolean;
 }
 
-export function AiToolsSubPage({ title, children }: AiToolsSubPageProps) {
+export function AiToolsSubPage({ title, children, requireMember = true }: AiToolsSubPageProps) {
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
   const memberId = searchParams.get("memberId") || "";
@@ -26,7 +30,7 @@ export function AiToolsSubPage({ title, children }: AiToolsSubPageProps) {
       .catch(() => {});
   }, [memberId]);
 
-  if (!memberId) {
+  if (requireMember && !memberId) {
     return (
       <div className="flex flex-col items-center justify-center py-16 text-center">
         <Users className="h-10 w-10 text-muted-foreground/30 mb-3" />

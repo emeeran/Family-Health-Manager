@@ -29,9 +29,16 @@ class AttachmentService:
         self.db = db
 
     async def upload_attachment(
-        self, record_id: UUID, file: UploadFile, household_id: UUID
+        self, record_id: UUID, file: UploadFile, household_id: UUID,
+        background_tasks: "object | None" = None,
     ) -> Attachment:
-        """Upload and validate attachment using content-addressable storage."""
+        """Upload and validate attachment using content-addressable storage.
+
+        Performance optimization: thumbnail generation is deferred to a
+        FastAPI BackgroundTask so it does not block the HTTP response.
+        The attachment is saved with thumbnail_path=None and updated
+        asynchronously once the thumbnail is ready.
+        """
         from app.models.base import FamilyMember
 
         # Validate MIME type
@@ -53,14 +60,9 @@ class AttachmentService:
         # Use content-addressable hashed storage
         file_path, content_hash, _ext = await save_file_hashed(file)
 
-        # Generate thumbnail
-        thumbnail_path = None
-        try:
-            from app.core.thumbnails import generate_thumbnail
-            thumbnail_path = await generate_thumbnail(file_path, content_hash, mime)
-        except Exception:
-            pass  # Non-fatal — thumbnails are optional
-
+        # Performance: defer thumbnail generation to background task
+        # instead of blocking the upload response. The attachment is
+        # created with thumbnail_path=None and updated asynchronously.
         attachment = Attachment(
             health_record_id=record_id,
             file_path=str(file_path),
@@ -69,11 +71,21 @@ class AttachmentService:
             file_size=file_path.stat().st_size,
             content_hash=content_hash,
             storage_backend="local",
-            thumbnail_path=str(thumbnail_path) if thumbnail_path else None,
+            thumbnail_path=None,
             encrypted=False,
         )
         self.db.add(attachment)
         await self.db.flush()
+
+        if background_tasks is not None:
+            from app.core.thumbnails import generate_thumbnail_background
+            from fastapi import BackgroundTasks
+            if isinstance(background_tasks, BackgroundTasks):
+                background_tasks.add_task(
+                    generate_thumbnail_background,
+                    self.db, attachment.id, file_path, content_hash, mime,
+                )
+
         return attachment
 
     async def get_attachment(self, attachment_id: UUID, household_id: UUID) -> Attachment:
@@ -140,9 +152,14 @@ class AttachmentService:
             await delete_file(Path(attachment.file_path))
 
     async def attach_staged_file(
-        self, record_id: UUID, staging_file_id: str, original_file_name: str | None = None
+        self, record_id: UUID, staging_file_id: str, original_file_name: str | None = None,
+        background_tasks: "object | None" = None,
     ) -> Attachment:
-        """Move a staged file to content-addressable storage and link to a health record."""
+        """Move a staged file to content-addressable storage and link to a health record.
+
+        Performance optimization: thumbnail generation is deferred to a
+        FastAPI BackgroundTask so it does not block the response.
+        """
         staging_root = get_staging_dir().resolve()
         staging_path = (staging_root / staging_file_id).resolve()
         if not staging_path.is_relative_to(staging_root):
@@ -168,14 +185,8 @@ class AttachmentService:
 
         file_size = dest_path.stat().st_size
 
-        # Generate thumbnail
-        thumbnail_path = None
-        try:
-            from app.core.thumbnails import generate_thumbnail
-            thumbnail_path = await generate_thumbnail(dest_path, content_hash, mime_type)
-        except Exception:
-            pass  # Non-fatal — thumbnails are optional
-
+        # Performance: defer thumbnail generation to background task
+        # instead of blocking the response.
         attachment = Attachment(
             health_record_id=record_id,
             file_path=str(dest_path),
@@ -184,9 +195,19 @@ class AttachmentService:
             file_size=file_size,
             content_hash=content_hash,
             storage_backend="local",
-            thumbnail_path=str(thumbnail_path) if thumbnail_path else None,
+            thumbnail_path=None,
             encrypted=False,
         )
         self.db.add(attachment)
         await self.db.flush()
+
+        if background_tasks is not None:
+            from app.core.thumbnails import generate_thumbnail_background
+            from fastapi import BackgroundTasks
+            if isinstance(background_tasks, BackgroundTasks):
+                background_tasks.add_task(
+                    generate_thumbnail_background,
+                    self.db, attachment.id, dest_path, content_hash, mime_type,
+                )
+
         return attachment

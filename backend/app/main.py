@@ -183,14 +183,34 @@ rate_limiter = RateLimiter(
 auth_rate_limiter = RateLimiter(limit=10, window_seconds=60)  # Stricter for auth
 
 
+# Performance optimization (#22): set of paths and prefixes that never need rate limiting.
+# Using a frozenset for O(1) membership checks and a tuple of prefixes for startswith checks.
+_RATE_LIMIT_SKIP_PATHS = frozenset({
+    "/health", "/health/detail", "/",
+    "/docs", "/openapi.json", "/redoc",
+})
+_RATE_LIMIT_SKIP_PREFIXES = ("/static/", "/assets/", "/favicon")
+
+
 @app.middleware("http")
 async def rate_limit_middleware(request: Request, call_next):
     """Rate limiting and request size middleware."""
+    # Performance: skip all header parsing and rate checks for non-API paths.
+    # This avoids unnecessary content-length parsing, IP resolution, and rate
+    # limit lookups for health checks, docs, and static assets.
+    path = request.url.path
+    if (
+        path in _RATE_LIMIT_SKIP_PATHS
+        or path.startswith(_RATE_LIMIT_SKIP_PREFIXES)
+        or not path.startswith("/api")
+    ):
+        return await call_next(request)
+
     # Reject oversized payloads (50MB for general, 500MB for backup)
     content_length = request.headers.get("content-length")
     if content_length:
         try:
-            limit = 500 * 1024 * 1024 if request.url.path.startswith("/api/v1/backup") else 50 * 1024 * 1024
+            limit = 500 * 1024 * 1024 if path.startswith("/api/v1/backup") else 50 * 1024 * 1024
             if int(content_length) > limit:
                 return JSONResponse(
                     status_code=413,
@@ -198,10 +218,6 @@ async def rate_limit_middleware(request: Request, call_next):
                 )
         except (ValueError, TypeError):
             pass
-
-    # Skip rate limiting for health checks and non-API routes
-    if request.url.path in ("/health", "/health/detail", "/") or not request.url.path.startswith("/api"):
-        return await call_next(request)
 
     # Resolve real client IP from proxy headers (Caddy sets X-Forwarded-For)
     forwarded = request.headers.get("x-forwarded-for")
@@ -212,8 +228,8 @@ async def rate_limit_middleware(request: Request, call_next):
     else:
         client_ip = request.client.host if request.client else "unknown"
 
-    # Stricter rate limit for auth endpoints
-    if request.url.path.startswith("/api/v1/auth/login") or request.url.path.startswith("/api/v1/auth/register"):
+    # Stricter rate limit for auth endpoints (use cached path for speed)
+    if path.startswith("/api/v1/auth/login") or path.startswith("/api/v1/auth/register"):
         allowed, retry_after = await auth_rate_limiter.check_limit_async(f"auth:{client_ip}")
         if not allowed:
             return JSONResponse(

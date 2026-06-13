@@ -20,6 +20,14 @@ export default function HomePage() {
     }
   }, [error, navigate]);
 
+  // Redirect to onboarding if no members (in useEffect to avoid render-time navigation)
+  // IMPORTANT: must be called before any early returns to satisfy React's rules of hooks
+  useEffect(() => {
+    if (summary && (!summary.members || summary.members.length === 0)) {
+      navigate("/onboarding");
+    }
+  }, [summary, navigate]);
+
   if (error) {
     return (
       <div className="flex flex-col items-center justify-center py-20 text-center">
@@ -36,13 +44,6 @@ export default function HomePage() {
   }
 
   if (!summary) return <HomeSkeleton />;
-
-  // Redirect to onboarding if no members (in useEffect to avoid render-time navigation)
-  useEffect(() => {
-    if (summary && (!summary.members || summary.members.length === 0)) {
-      navigate("/onboarding");
-    }
-  }, [summary, navigate]);
 
   if (!summary.members || summary.members.length === 0) {
     return <HomeSkeleton />;

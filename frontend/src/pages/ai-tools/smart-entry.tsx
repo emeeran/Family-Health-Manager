@@ -6,7 +6,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { PenLine, Loader2, CheckCircle2, Lightbulb } from "lucide-react";
-import { parseNaturalLanguage, createRecord } from "@/lib/api/records";
+import { parseNaturalLanguage, createRecord, type NLParseResponse } from "@/lib/api/records";
 import { RECORD_TYPE_LABELS } from "@/lib/constants";
 import type { RecordType } from "@/lib/types/enums";
 import { toast } from "sonner";
@@ -36,15 +36,7 @@ export default function AiToolsSmartEntryPage() {
 
   const [text, setText] = useState("");
   const [parsing, setParsing] = useState(false);
-  const [parsed, setParsed] = useState<{
-    record_type: string | null;
-    record_date: string | null;
-    diagnosis: string | null;
-    prescription_text: string | null;
-    clinical_notes: string | null;
-    confidence: string;
-    preview_fields: { label: string; value: string }[];
-  } | null>(null);
+  const [parsed, setParsed] = useState<NLParseResponse | null>(null);
   const [saving, setSaving] = useState(false);
   const [showExamples, setShowExamples] = useState(false);
 
@@ -64,9 +56,15 @@ export default function AiToolsSmartEntryPage() {
 
   async function handleSave() {
     if (!parsed || !parsed.record_date) return;
+    // Prefer AI-detected member, fall back to ?memberId= query param
+    const memberIdToUse = parsed.member?.id || memberId;
+    if (!memberIdToUse) {
+      toast.error("No member detected. Try mentioning a name in the text.");
+      return;
+    }
     setSaving(true);
     try {
-      await createRecord(memberId, {
+      await createRecord(memberIdToUse, {
         record_type: (parsed.record_type || "misc_record") as RecordType,
         record_date: parsed.record_date,
         clinical_data: parsed.clinical_notes || "{}",
@@ -84,7 +82,7 @@ export default function AiToolsSmartEntryPage() {
   }
 
   return (
-    <AiToolsSubPage title="Smart Entry">
+    <AiToolsSubPage title="Smart Entry" requireMember={false}>
       <div className="max-w-2xl space-y-4">
         <Card>
           <CardHeader>
@@ -152,6 +150,19 @@ export default function AiToolsSmartEntryPage() {
                   </Badge>
                 )}
               </div>
+
+              {/* Detected member */}
+              {parsed.member && (
+                <div className="flex items-center gap-2 text-sm">
+                  <span className="text-muted-foreground min-w-[120px]">Member:</span>
+                  <span className="font-medium">{parsed.member.name}</span>
+                  {parsed.member.matched_by === "default" && (
+                    <span className="text-[11px] text-amber-600">
+                      (no name matched — using default)
+                    </span>
+                  )}
+                </div>
+              )}
 
               {parsed.preview_fields.length > 0 && (
                 <div className="space-y-1">

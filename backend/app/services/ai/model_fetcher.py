@@ -1,0 +1,110 @@
+"""Fetch available models from each AI provider's API."""
+import asyncio
+import logging
+
+import httpx
+
+from app.core.config import get_settings
+
+logger = logging.getLogger(__name__)
+settings = get_settings()
+
+
+async def _fetch_openai(client: httpx.AsyncClient) -> list[str]:
+    """Fetch model list from OpenAI."""
+    if not settings.OPENAI_API_KEY:
+        return []
+    resp = await client.get(
+        "https://api.openai.com/v1/models",
+        headers={"Authorization": f"Bearer {settings.OPENAI_API_KEY}"},
+    )
+    resp.raise_for_status()
+    return sorted(m["id"] for m in resp.json().get("data", []))
+
+
+async def _fetch_groq(client: httpx.AsyncClient) -> list[str]:
+    """Fetch model list from Groq."""
+    if not settings.GROQ_API_KEY:
+        return []
+    resp = await client.get(
+        "https://api.groq.com/openai/v1/models",
+        headers={"Authorization": f"Bearer {settings.GROQ_API_KEY}"},
+    )
+    resp.raise_for_status()
+    return sorted(m["id"] for m in resp.json().get("data", []))
+
+
+async def _fetch_openrouter(client: httpx.AsyncClient) -> list[str]:
+    """Fetch model list from OpenRouter."""
+    if not settings.OPENROUTER_API_KEY:
+        return []
+    resp = await client.get(
+        "https://openrouter.ai/api/v1/models",
+        headers={"Authorization": f"Bearer {settings.OPENROUTER_API_KEY}"},
+    )
+    resp.raise_for_status()
+    return sorted(m["id"] for m in resp.json().get("data", []))
+
+
+async def _fetch_gemini(client: httpx.AsyncClient) -> list[str]:
+    """Fetch model list from Google Gemini."""
+    if not settings.GEMINI_API_KEY:
+        return []
+    resp = await client.get(
+        "https://generativelanguage.googleapis.com/v1beta/models",
+        headers={"x-goog-api-key": settings.GEMINI_API_KEY},
+    )
+    resp.raise_for_status()
+    models = []
+    for m in resp.json().get("models", []):
+        name = m.get("name", "")
+        # Strip "models/" prefix returned by the API
+        if name.startswith("models/"):
+            name = name[len("models/"):]
+        if name:
+            models.append(name)
+    return sorted(models)
+
+
+async def _fetch_ollama(client: httpx.AsyncClient) -> list[str]:
+    """Fetch locally available models from Ollama."""
+    try:
+        resp = await client.get(f"{settings.OLLAMA_LOCAL_URL}/api/tags")
+        resp.raise_for_status()
+        return sorted(m["name"] for m in resp.json().get("models", []))
+    except Exception:
+        # Ollama may not be running — return empty list silently
+        return []
+
+
+async def fetch_available_models() -> dict[str, list[str]]:
+    """Fetch available models from all configured providers in parallel.
+
+    Returns a dict mapping provider ID to sorted model name list.
+    Providers without API keys or that fail return an empty list.
+    """
+    provider_fetchers: dict[str, object] = {
+        "openai": _fetch_openai,
+        "groq": _fetch_groq,
+        "openrouter": _fetch_openrouter,
+        "gemini": _fetch_gemini,
+        "ollama": _fetch_ollama,
+    }
+
+    async with httpx.AsyncClient(timeout=10) as client:
+        tasks = {
+            pid: asyncio.create_task(fetcher(client))
+            for pid, fetcher in provider_fetchers.items()
+        }
+        results = await asyncio.gather(*tasks.values(), return_exceptions=True)
+
+    output: dict[str, list[str]] = {}
+    for (pid, _task), result in zip(tasks.items(), results):
+        if isinstance(result, Exception):
+            logger.warning("Failed to fetch models for %s: %s", pid, result)
+            output[pid] = []
+        else:
+            output[pid] = result
+            logger.debug("Fetched %d models for %s", len(result), pid)
+
+    return output

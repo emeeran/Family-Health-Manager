@@ -14,6 +14,10 @@ export interface AIProviderConfigResponse {
   provider_labels: Record<string, string>;
 }
 
+export interface FetchedModelsResponse {
+  models: Record<string, string[]>;
+}
+
 export interface FeatureSettings {
   ai_features: boolean;
   ai_verification: boolean;

@@ -1,4 +1,4 @@
-import { useState, useMemo, useEffect } from "react";
+import { useState, useMemo, useEffect, useCallback, memo } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import { Plus, Search, Upload, Trash2, X, Sparkles, Loader2 } from "lucide-react";
 import { Card, CardContent } from "@/components/ui/card";
@@ -27,7 +27,11 @@ interface RecordsListContentProps {
   onRefresh?: () => void;
 }
 
-export function RecordsListContent({ records, member, onRefresh }: RecordsListContentProps) {
+export const RecordsListContent = memo(function RecordsListContent({
+  records,
+  member,
+  onRefresh,
+}: RecordsListContentProps) {
   const navigate = useNavigate();
   const [typeFilter, setTypeFilter] = useState<string>("");
   const [searchText, setSearchText] = useState("");
@@ -40,6 +44,11 @@ export function RecordsListContent({ records, member, onRefresh }: RecordsListCo
   const [showBatchDelete, setShowBatchDelete] = useState(false);
   const [backfilling, setBackfilling] = useState(false);
   const [backfillMessage, setBackfillMessage] = useState<string | null>(null);
+
+  const handleRowClick = useCallback(
+    (r: HealthRecordResponse) => navigate(`/people/${member.id}/records/${r.id}`),
+    [navigate, member.id]
+  );
 
   const allTags = useMemo(() => {
     const set = new Set<string>();
@@ -232,7 +241,7 @@ export function RecordsListContent({ records, member, onRefresh }: RecordsListCo
       ) : (
         <RecordsTable
           records={filtered}
-          onRowClick={(r) => navigate(`/people/${member.id}/records/${r.id}`)}
+          onRowClick={handleRowClick}
           selectedIds={selectedIds}
           onSelectionChange={setSelectedIds}
         />
@@ -313,4 +322,4 @@ export function RecordsListContent({ records, member, onRefresh }: RecordsListCo
       )}
     </div>
   );
-}
+});

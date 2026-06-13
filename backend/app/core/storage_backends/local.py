@@ -1,5 +1,12 @@
-"""Local filesystem storage backend with content-addressable storage."""
+"""Local filesystem storage backend with content-addressable storage.
+
+Performance optimisation (#10):
+When ``decrypt=True``, ``stream()`` now decrypts on-the-fly using the chunked
+wire format defined in ``encryption.py`` instead of loading the entire file
+into memory before yielding the first byte.
+"""
 import logging
+import struct
 from pathlib import Path
 from collections.abc import AsyncGenerator
 
@@ -31,44 +38,99 @@ class LocalStorageBackend:
     async def put(
         self, content_hash: str, ext: str, data: bytes, encrypt: bool = False
     ) -> Path:
-        """Store data at a content-addressable path."""
-        if encrypt:
-            from app.core.encryption import encrypt_bytes
-            data = encrypt_bytes(data)
+        """Store data at a content-addressable path.
 
+        When *encrypt* is ``True`` the data is written in the chunked wire
+        format defined in ``encryption.py``:
+            ``[4-byte big-endian chunk-size][Fernet-encrypted-chunk]`` repeated,
+            terminated by a zero-length header.
+        """
         file_path = self._hash_to_path(content_hash, ext)
 
         if file_path.exists():
             return file_path
 
-        async with aiofiles.open(file_path, "wb") as f:
-            await f.write(data)
+        if encrypt:
+            # Performance: encrypt in chunks and write the chunked wire format
+            # so that stream() can later decrypt on-the-fly without loading
+            # the entire file into memory.
+            from app.core.encryption import ENCRYPTION_CHUNK_SIZE, get_fernet
+
+            fernet = get_fernet()
+            async with aiofiles.open(file_path, "wb") as f:
+                offset = 0
+                while offset < len(data):
+                    plaintext_chunk = data[offset : offset + ENCRYPTION_CHUNK_SIZE]
+                    encrypted_chunk = fernet.encrypt(plaintext_chunk)
+                    await f.write(struct.pack(">I", len(encrypted_chunk)))
+                    await f.write(encrypted_chunk)
+                    offset += ENCRYPTION_CHUNK_SIZE
+                # Terminating header
+                await f.write(struct.pack(">I", 0))
+        else:
+            async with aiofiles.open(file_path, "wb") as f:
+                await f.write(data)
 
         return file_path
 
     async def get(self, file_path: Path, decrypt: bool = False) -> bytes:
-        """Read file content from storage."""
+        """Read file content from storage.
+
+        When *decrypt* is ``True`` the file is expected to be in the chunked
+        wire format written by :meth:`put`.
+        """
         if not file_path.exists():
             raise FileNotFoundError(f"File not found: {file_path}")
 
-        async with aiofiles.open(file_path, "rb") as f:
-            data = await f.read()
-
         if decrypt:
-            from app.core.encryption import decrypt_bytes
-            data = decrypt_bytes(data)
+            from app.core.encryption import get_fernet
 
-        return data
+            fernet = get_fernet()
+            plaintext = bytearray()
+
+            async with aiofiles.open(file_path, "rb") as f:
+                while True:
+                    header = await f.read(4)
+                    if not header or len(header) < 4:
+                        break
+                    chunk_size = struct.unpack(">I", header)[0]
+                    if chunk_size == 0:
+                        break
+                    encrypted_chunk = await f.read(chunk_size)
+                    plaintext.extend(fernet.decrypt(encrypted_chunk))
+
+            return bytes(plaintext)
+
+        async with aiofiles.open(file_path, "rb") as f:
+            return await f.read()
 
     async def stream(
         self, file_path: Path, decrypt: bool = False
     ) -> AsyncGenerator[bytes, None]:
-        """Stream file content in chunks."""
+        """Stream file content in chunks.
+
+        #10 Performance: when *decrypt* is ``True``, each encrypted chunk is
+        decrypted and yielded immediately — no need to buffer the entire file.
+        """
         if decrypt:
-            # Must read full content for decryption
-            data = await self.get(file_path, decrypt=True)
-            for i in range(0, len(data), CHUNK_SIZE):
-                yield data[i : i + CHUNK_SIZE]
+            # Stream-decrypt: read chunk headers, decrypt each, yield plaintext
+            from app.core.encryption import get_fernet
+
+            fernet = get_fernet()
+
+            if not file_path.exists():
+                raise FileNotFoundError(f"File not found: {file_path}")
+
+            async with aiofiles.open(file_path, "rb") as f:
+                while True:
+                    header = await f.read(4)
+                    if not header or len(header) < 4:
+                        break
+                    chunk_size = struct.unpack(">I", header)[0]
+                    if chunk_size == 0:
+                        break
+                    encrypted_chunk = await f.read(chunk_size)
+                    yield fernet.decrypt(encrypted_chunk)
         else:
             if not file_path.exists():
                 raise FileNotFoundError(f"File not found: {file_path}")

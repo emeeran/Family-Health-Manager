@@ -406,7 +406,7 @@ interface TimelineContentProps {
 
 /* ── Main component ── */
 
-export function TimelineContent({
+export const TimelineContent = memo(function TimelineContent({
   items,
   member,
   hasMore = false,
@@ -526,7 +526,7 @@ export function TimelineContent({
       )}
     </div>
   );
-}
+});
 
 /* ── Timeline item ── */
 

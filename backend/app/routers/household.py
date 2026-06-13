@@ -24,6 +24,7 @@ from app.schemas.ai_provider_config import (
     AVAILABLE_MODELS,
     PROVIDER_LABELS,
 )
+from app.services.ai.model_fetcher import fetch_available_models
 from app.schemas.health_record import HealthRecordResponse
 from app.models.base import Household, FamilyMember, User
 from app.models.record import HealthRecord
@@ -139,6 +140,15 @@ async def update_ai_provider_config(
         available_models=AVAILABLE_MODELS,
         provider_labels=PROVIDER_LABELS,
     )
+
+
+@router.get("/ai-provider-config/fetch-models")
+async def fetch_provider_models(
+    household: Household = Depends(get_household_from_token),
+):
+    """Fetch available models from each provider's API dynamically."""
+    models = await fetch_available_models()
+    return {"models": models}
 
 
 @router.get("/records", response_model=list[HealthRecordResponse])

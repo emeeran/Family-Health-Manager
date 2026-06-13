@@ -1,7 +1,10 @@
 """Thumbnail generation for attachments."""
 import logging
 from pathlib import Path
+from uuid import UUID
 
+from sqlalchemy import update
+from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.storage import get_thumbnails_dir
 
@@ -75,3 +78,49 @@ async def generate_thumbnail(
             "Failed to generate thumbnail for %s", file_path, exc_info=True
         )
         return None
+
+
+async def generate_thumbnail_background(
+    db: AsyncSession,
+    attachment_id: UUID,
+    file_path: Path,
+    content_hash: str,
+    mime_type: str,
+) -> None:
+    """Generate a thumbnail in a background task and persist the path to the DB.
+
+    Performance optimization: designed to be used with FastAPI BackgroundTasks
+    so that thumbnail generation does not block the HTTP response. The attachment
+    is saved with thumbnail_path=None initially; this function updates it once
+    the thumbnail is ready.
+
+    If a client requests the thumbnail before it is generated, the existing
+    GET /{attachment_id}/thumbnail endpoint returns 404, which the frontend
+    can interpret as "pending" and retry.
+
+    Errors are logged but never propagated — thumbnails are non-critical.
+    """
+    try:
+        thumb_path = await generate_thumbnail(file_path, content_hash, mime_type)
+        if thumb_path is None:
+            return
+
+        # Update the attachment row with the generated thumbnail path
+        from app.models.attachment import Attachment
+
+        await db.execute(
+            update(Attachment)
+            .where(Attachment.id == attachment_id)
+            .values(thumbnail_path=str(thumb_path))
+        )
+        await db.commit()
+        logger.info(
+            "Background thumbnail saved for attachment %s", attachment_id
+        )
+    except Exception:
+        # Gracefully handle all errors — thumbnail generation is non-critical
+        logger.warning(
+            "Background thumbnail generation failed for attachment %s",
+            attachment_id,
+            exc_info=True,
+        )

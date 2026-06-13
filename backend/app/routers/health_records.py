@@ -3,7 +3,7 @@ import asyncio
 import logging
 from datetime import date, datetime, time
 from uuid import UUID
-from fastapi import APIRouter, Depends, HTTPException, Query, UploadFile, File, Response
+from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Query, UploadFile, File, Response
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, update
 from sqlalchemy.orm import joinedload
@@ -241,8 +241,13 @@ async def create_record(
     household: Household = Depends(get_household_from_token),
     _member: FamilyMember = Depends(require_member_in_household),
     db: AsyncSession = Depends(get_db),
+    background_tasks: BackgroundTasks = None,
 ):
-    """Create a health record, optionally attaching previously uploaded files."""
+    """Create a health record, optionally attaching previously uploaded files.
+
+    Performance optimization: thumbnail generation for attached files is
+    deferred to a FastAPI BackgroundTask so it does not block the response.
+    """
 
     record_service = HealthRecordService(db)
     tags_json = json.dumps(request.tags) if request.tags else None
@@ -309,7 +314,9 @@ async def create_record(
             if fid:
                 try:
                     orig_name = names[i].strip() if i < len(names) else None
-                    await attachment_service.attach_staged_file(record.id, fid, orig_name)
+                    await attachment_service.attach_staged_file(
+                        record.id, fid, orig_name, background_tasks=background_tasks,
+                    )
                 except ValueError:
                     logger.warning("Staging file %s not found, skipping", fid)
 
@@ -335,7 +342,9 @@ async def create_record(
         except (json.JSONDecodeError, ValueError, TypeError, AttributeError) as exc:
             logger.warning("Outdated prescription cleanup skipped: %s", exc)
 
-    # Sync medications and lab results into first-class tables
+    # Performance optimization: sync medications and lab results in parallel
+    # using asyncio.gather() instead of running them sequentially. Each sync
+    # is wrapped in its own try/except so one failure does not cancel the other.
     if request.clinical_data:
         try:
             from app.services.medication_service import MedicationService
@@ -344,16 +353,30 @@ async def create_record(
             if record.provider:
                 provider_name_val = record.provider.name
             med_svc = MedicationService(db)
-            await med_svc.sync_from_record(
-                member_id, record.id, request.clinical_data,
-                request.record_date, provider_name_val,
-            )
             lab_svc = LabResultService(db)
-            await lab_svc.sync_from_record(
-                member_id, record.id, request.clinical_data,
-                request.record_date,
-            )
-        except (json.JSONDecodeError, ValueError, TypeError, AttributeError) as exc:
+
+            async def _sync_medications() -> None:
+                """Sync medications with individual error handling."""
+                try:
+                    await med_svc.sync_from_record(
+                        member_id, record.id, request.clinical_data,
+                        request.record_date, provider_name_val,
+                    )
+                except (json.JSONDecodeError, ValueError, TypeError, AttributeError) as exc:
+                    logger.warning("Medication sync failed: %s", exc)
+
+            async def _sync_lab_results() -> None:
+                """Sync lab results with individual error handling."""
+                try:
+                    await lab_svc.sync_from_record(
+                        member_id, record.id, request.clinical_data,
+                        request.record_date,
+                    )
+                except (json.JSONDecodeError, ValueError, TypeError, AttributeError) as exc:
+                    logger.warning("Lab result sync failed: %s", exc)
+
+            await asyncio.gather(_sync_medications(), _sync_lab_results())
+        except Exception as exc:
             logger.warning("Medication/lab sync skipped: %s", exc)
 
     # Fire-and-forget AI insight generation
@@ -645,7 +668,8 @@ async def update_record(
     record = await record_service.update_record(record_id, **update_data)
     AIService.invalidate_member_cache(member_id)
 
-    # Sync medications and lab results if clinical_data was updated
+    # Performance optimization: sync medications and lab results in parallel
+    # using asyncio.gather() so one does not block the other.
     if "clinical_data" in update_data and update_data.get("clinical_data"):
         try:
             from app.services.medication_service import MedicationService
@@ -654,16 +678,28 @@ async def update_record(
             if record.provider:
                 provider_name_val = record.provider.name
             med_svc = MedicationService(db)
-            await med_svc.sync_from_record(
-                member_id, record.id, update_data["clinical_data"],
-                record.record_date, provider_name_val,
-            )
             lab_svc = LabResultService(db)
-            await lab_svc.sync_from_record(
-                member_id, record.id, update_data["clinical_data"],
-                record.record_date,
-            )
-        except (json.JSONDecodeError, ValueError, TypeError, AttributeError) as exc:
+
+            async def _sync_medications() -> None:
+                try:
+                    await med_svc.sync_from_record(
+                        member_id, record.id, update_data["clinical_data"],
+                        record.record_date, provider_name_val,
+                    )
+                except (json.JSONDecodeError, ValueError, TypeError, AttributeError) as exc:
+                    logger.warning("Medication sync on update failed: %s", exc)
+
+            async def _sync_lab_results() -> None:
+                try:
+                    await lab_svc.sync_from_record(
+                        member_id, record.id, update_data["clinical_data"],
+                        record.record_date,
+                    )
+                except (json.JSONDecodeError, ValueError, TypeError, AttributeError) as exc:
+                    logger.warning("Lab result sync on update failed: %s", exc)
+
+            await asyncio.gather(_sync_medications(), _sync_lab_results())
+        except Exception as exc:
             logger.warning("Medication/lab sync on update skipped: %s", exc)
 
     # Auto-create FOLLOW_UP reminder if next_review_date was just set (deduped)

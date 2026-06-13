@@ -5,7 +5,11 @@ import { ThemeProvider } from "next-themes";
 import { router } from "./router";
 import { ErrorBoundary } from "./components/shared/error-boundary";
 import { ServiceWorkerRegistrar } from "./components/shared/register-sw";
+import { initWebVitals } from "./lib/web-vitals";
 import "./globals.css";
+
+// Initialize Web Vitals tracking (logs to console in dev mode)
+initWebVitals();
 
 const root = document.getElementById("root");
 if (!root) throw new Error("Root element not found");

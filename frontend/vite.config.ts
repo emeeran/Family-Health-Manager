@@ -5,7 +5,11 @@ import path from "path";
 const API_URL = process.env.API_URL || "http://localhost:8000";
 
 export default defineConfig({
-  plugins: [react()],
+  plugins: [
+    react(),
+    // Bundle analyzer: run `npx vite-bundle-visualizer` to generate stats.
+    // Not included here by default to avoid ESM import issues.
+  ],
   resolve: {
     alias: {
       "@": path.resolve(__dirname, "src"),

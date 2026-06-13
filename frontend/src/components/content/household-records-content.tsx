@@ -1,4 +1,4 @@
-import { useState, useMemo, useCallback } from "react";
+import { useState, useMemo, useCallback, memo } from "react";
 import { Search } from "lucide-react";
 import { Card, CardContent } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
@@ -25,7 +25,7 @@ interface HouseholdRecordsContentProps {
   members: FamilyMemberResponse[];
 }
 
-export function HouseholdRecordsContent({
+export const HouseholdRecordsContent = memo(function HouseholdRecordsContent({
   records,
   memberNames,
   members,
@@ -124,7 +124,7 @@ export function HouseholdRecordsContent({
       )}
     </div>
   );
-}
+});
 
 export function HouseholdRecordsSkeleton() {
   return (

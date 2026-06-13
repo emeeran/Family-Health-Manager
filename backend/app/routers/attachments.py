@@ -3,7 +3,7 @@ import aiofiles
 from pathlib import Path
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, HTTPException, UploadFile, File
+from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, UploadFile, File
 from fastapi.responses import StreamingResponse
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -22,12 +22,19 @@ async def upload_attachment(
     file: UploadFile = File(...),
     household: Household = Depends(get_household_from_token),
     db: AsyncSession = Depends(get_db),
+    background_tasks: BackgroundTasks = None,
 ):
-    """Upload an attachment to a health record."""
+    """Upload an attachment to a health record.
+
+    Performance optimization: thumbnail generation runs as a background
+    task so the upload response is not delayed by image processing.
+    """
     service = AttachmentService(db)
 
     try:
-        attachment = await service.upload_attachment(record_id, file, household.id)
+        attachment = await service.upload_attachment(
+            record_id, file, household.id, background_tasks=background_tasks,
+        )
     except ValueError as e:
         raise HTTPException(status_code=404, detail=str(e))
     except Exception as e:

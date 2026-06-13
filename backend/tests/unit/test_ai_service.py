@@ -7,6 +7,17 @@ from app.services.ai_service import AIService
 from app.models.base import Message, MessageRole, Conversation
 
 
+@pytest.fixture(autouse=True)
+def _reset_circuit_breaker():
+    """Reset circuit breaker and AI response cache state between tests to prevent leakage."""
+    from app.services.ai.base import _circuit_state, _ai_response_cache
+    _circuit_state.clear()
+    _ai_response_cache.clear()
+    yield
+    _circuit_state.clear()
+    _ai_response_cache.clear()
+
+
 @pytest.fixture
 def mock_db():
     """Create mock database session."""

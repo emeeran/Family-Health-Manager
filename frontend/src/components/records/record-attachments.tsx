@@ -1,4 +1,4 @@
-import { useRef, useState, useEffect } from "react";
+import { useRef, useState, useEffect, useCallback } from "react";
 import { Button } from "@/components/ui/button";
 import {
   Paperclip,
@@ -152,30 +152,67 @@ export function RecordAttachments({
 
 function AttachmentRow({ attachment }: { attachment: AttachmentBrief }) {
   const isImage = attachment.mime_type.startsWith("image/");
-  const [blobUrl, setBlobUrl] = useState<string | null>(null);
+  const [thumbnailUrl, setThumbnailUrl] = useState<string | null>(null);
+  const blobUrlsRef = useRef<Set<string>>(new Set());
+
+  // Track all created blob URLs for cleanup on unmount
+  const trackBlobUrl = useCallback((url: string) => {
+    blobUrlsRef.current.add(url);
+    return url;
+  }, []);
+
+  // Revoke all tracked blob URLs on unmount
+  useEffect(() => {
+    const tracked = blobUrlsRef.current;
+    return () => {
+      for (const url of tracked) {
+        URL.revokeObjectURL(url);
+      }
+      tracked.clear();
+    };
+  }, []);
+
+  // Load image thumbnail lazily
+  useEffect(() => {
+    if (!isImage) return;
+    let cancelled = false;
+    getAttachmentBlob(attachment.id)
+      .then((url) => {
+        if (!cancelled) setThumbnailUrl(trackBlobUrl(url));
+      })
+      .catch(() => {
+        // Thumbnail load failed silently
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [isImage, attachment.id, trackBlobUrl]);
 
   async function openAttachment() {
     try {
       const url = await getAttachmentBlob(attachment.id);
-      setBlobUrl(url);
+      trackBlobUrl(url);
       window.open(url, "_blank");
     } catch {
       toast.error("Failed to open attachment");
     }
   }
 
-  useEffect(() => {
-    return () => {
-      if (blobUrl) URL.revokeObjectURL(blobUrl);
-    };
-  }, [blobUrl]);
-
   return (
     <div className="flex items-center gap-3 rounded-lg border border-gray-200 dark:border-gray-700 p-3">
       {isImage ? (
         <button type="button" onClick={openAttachment} className="shrink-0">
-          <div className="h-14 w-14 rounded bg-muted flex items-center justify-center">
-            <ImageIcon className="h-6 w-6 text-muted-foreground" />
+          <div className="h-14 w-14 rounded bg-muted flex items-center justify-center overflow-hidden">
+            {thumbnailUrl ? (
+              <img
+                src={thumbnailUrl}
+                alt={attachment.file_name}
+                loading="lazy"
+                className="h-14 w-14 object-cover rounded"
+              />
+            ) : (
+              <ImageIcon className="h-6 w-6 text-muted-foreground" />
+            )}
           </div>
         </button>
       ) : (
@@ -204,6 +241,7 @@ function AttachmentRow({ attachment }: { attachment: AttachmentBrief }) {
           onClick={async () => {
             try {
               const url = await getAttachmentBlob(attachment.id);
+              trackBlobUrl(url);
               const w = window.open(url, "_blank");
               if (w) w.onload = () => w.print();
             } catch {

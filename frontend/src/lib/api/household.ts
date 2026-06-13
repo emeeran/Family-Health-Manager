@@ -6,6 +6,7 @@ import type {
   HouseholdSettingsUpdate,
   AIProviderConfig,
   AIProviderConfigResponse,
+  FetchedModelsResponse,
 } from "../types/household";
 import type { HealthRecordResponse } from "../types/health-record";
 
@@ -56,4 +57,8 @@ export function updateAIProviderConfig(config: AIProviderConfig) {
     method: "PUT",
     body: config,
   });
+}
+
+export function fetchProviderModels() {
+  return apiRequest<FetchedModelsResponse>("/household/ai-provider-config/fetch-models");
 }

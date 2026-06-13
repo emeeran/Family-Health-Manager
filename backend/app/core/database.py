@@ -1,8 +1,14 @@
 """Database engine and session management."""
+import logging
+import time
 from collections.abc import AsyncGenerator
+
 from sqlalchemy import event
 from sqlalchemy.ext.asyncio import AsyncSession, create_async_engine, async_sessionmaker
+
 from app.core.config import get_settings
+
+logger = logging.getLogger(__name__)
 
 settings = get_settings()
 
@@ -18,8 +24,9 @@ connect_args = {"check_same_thread": False, "timeout": 30} if settings.DATABASE_
 pool_kwargs = {}
 if not settings.DATABASE_URL.startswith("sqlite"):
     pool_kwargs = {
-        "pool_size": 10,
-        "max_overflow": 20,
+        # Performance optimization (#9): increased pool for higher concurrency under load
+        "pool_size": 25,
+        "max_overflow": 50,
         "pool_pre_ping": True,
         "pool_recycle": 1800,
         "connect_args": {"options": "-c statement_timeout=30000"},
@@ -40,6 +47,35 @@ if settings.DATABASE_URL.startswith("sqlite"):
         cursor.execute("PRAGMA journal_mode=WAL")
         cursor.close()
 
+# ---------------------------------------------------------------------------
+# Performance optimization (#19): slow query logging
+# Logs any query that takes longer than 500ms at WARNING level.
+# Only enabled in non-test environments to avoid noise during test runs.
+# ---------------------------------------------------------------------------
+_SLOW_QUERY_THRESHOLD_MS = 500
+_is_test_env = settings.APP_ENV == "test"
+
+
+if not _is_test_env:
+
+    @event.listens_for(engine.sync_engine, "before_cursor_execute")
+    def _before_cursor_execute(conn, cursor, statement, parameters, context, executemany):
+        conn.info.setdefault("_query_start_time", []).append(time.perf_counter())
+
+    @event.listens_for(engine.sync_engine, "after_cursor_execute")
+    def _after_cursor_execute(conn, cursor, statement, parameters, context, executemany):
+        start_time = conn.info.get("_query_start_time", [None])
+        if start_time:
+            elapsed_ms = (time.perf_counter() - start_time.pop()) * 1000
+            if elapsed_ms > _SLOW_QUERY_THRESHOLD_MS:
+                # Truncate long statements to keep log lines readable
+                stmt_preview = statement[:300] + "..." if len(statement) > 300 else statement
+                logger.warning(
+                    "Slow query detected (%.0fms): %s",
+                    elapsed_ms,
+                    stmt_preview,
+                )
+
 SessionLocal = async_sessionmaker(
     bind=engine,
     class_=AsyncSession,
@@ -55,12 +91,12 @@ async def create_tables():
     For SQLite (dev): uses create_all() for fast startup.
     For PostgreSQL (prod): should run `alembic upgrade head` separately.
     """
-    import logging
+    import logging as _logging
     from sqlalchemy import create_engine
     from app.models.base import Base  # Import here to ensure models are registered
 
-    logger = logging.getLogger(__name__)
-    logger.info("Ensuring database tables exist...")
+    _logger = _logging.getLogger(__name__)
+    _logger.info("Ensuring database tables exist...")
 
     if settings.DATABASE_URL.startswith("sqlite"):
         # Fast path for SQLite dev: create_all handles missing tables
@@ -68,7 +104,23 @@ async def create_tables():
         sync_engine = create_engine(sync_db_url, echo=False)
         Base.metadata.create_all(sync_engine)
 
-        # Patch: add columns that may be missing from prior schema versions
+        # -----------------------------------------------------------------
+        # SQLite-only runtime schema patching (development convenience)
+        #
+        # These ALTER TABLE statements patch columns that may be missing from
+        # prior schema versions in the SQLite dev database. They exist solely
+        # so developers can run the app against an older SQLite file without
+        # manually running migrations.
+        #
+        # This block is NEVER executed against PostgreSQL — production uses
+        # Alembic migrations (`alembic upgrade head`) managed separately.
+        #
+        # TODO (#21): Convert each block below into a proper Alembic migration
+        # so that PostgreSQL production deployments are covered. Currently these
+        # patches are SQLite-only dev convenience methods. When adding new
+        # columns, prefer creating an Alembic migration first and only add a
+        # fallback patch here if needed for the SQLite dev workflow.
+        # -----------------------------------------------------------------
         import sqlalchemy.inspection as sa_inspect
         with sync_engine.connect() as conn:
             inspector = sa_inspect.inspect(sync_engine)
@@ -88,7 +140,7 @@ async def create_tables():
                         )
                     )
                     conn.commit()
-                    logger.info("Added 'role' column to users table")
+                    _logger.info("Added 'role' column to users table")
 
             # Attachment storage columns
             if "attachments" in inspector.get_table_names():
@@ -127,7 +179,7 @@ async def create_tables():
                     )
                 if "content_hash" not in att_cols or "storage_backend" not in att_cols:
                     conn.commit()
-                    logger.info("Added storage columns to attachments table")
+                    _logger.info("Added storage columns to attachments table")
 
             # Provider type column
             if "providers" in inspector.get_table_names():
@@ -140,7 +192,7 @@ async def create_tables():
                         )
                     )
                     conn.commit()
-                    logger.info("Added 'provider_type' column to providers table")
+                    _logger.info("Added 'provider_type' column to providers table")
 
             # Household settings column
             if "households" in inspector.get_table_names():
@@ -152,7 +204,7 @@ async def create_tables():
                         )
                     )
                     conn.commit()
-                    logger.info("Added 'settings_json' column to households table")
+                    _logger.info("Added 'settings_json' column to households table")
 
             # Health record summary column
             if "health_records" in inspector.get_table_names():
@@ -164,17 +216,17 @@ async def create_tables():
                         )
                     )
                     conn.commit()
-                    logger.info("Added 'summary' column to health_records table")
+                    _logger.info("Added 'summary' column to health_records table")
 
         sync_engine.dispose()
     else:
         # Production: migrations should be run separately
-        logger.info(
+        _logger.info(
             "PostgreSQL detected — ensure migrations are run before startup "
             "(use: alembic upgrade head)"
         )
 
-    logger.info("Database tables ready!")
+    _logger.info("Database tables ready!")
 
 
 async def get_db() -> AsyncGenerator[AsyncSession, None]:

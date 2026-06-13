@@ -26,7 +26,11 @@ import { getMe, changePassword } from "@/lib/api/auth";
 import { PasswordInput } from "@/components/shared/password-input";
 import { BackupRestoreSection } from "@/components/content/backup-restore";
 import { getAIStatus, type ProviderStatus } from "@/lib/api/ai";
-import { getAIProviderConfig, updateAIProviderConfig } from "@/lib/api/household";
+import {
+  getAIProviderConfig,
+  updateAIProviderConfig,
+  fetchProviderModels,
+} from "@/lib/api/household";
 import type { ProviderConfigItem, AIProviderConfigResponse } from "@/lib/types/household";
 import { toast } from "sonner";
 import {
@@ -521,6 +525,10 @@ function AIProvidersTab() {
   const [configLoading, setConfigLoading] = useState(true);
   const [saving, setSaving] = useState(false);
 
+  // Fetched models state
+  const [fetchedModels, setFetchedModels] = useState<Record<string, string[]> | null>(null);
+  const [fetchingModels, setFetchingModels] = useState(false);
+
   // Status state
   const [statusProviders, setStatusProviders] = useState<ProviderStatus[]>([]);
   const [refreshing, setRefreshing] = useState(false);
@@ -557,6 +565,19 @@ function AIProvidersTab() {
       toast.error("Failed to check provider status");
     } finally {
       setRefreshing(false);
+    }
+  }
+
+  async function fetchModels() {
+    setFetchingModels(true);
+    try {
+      const result = await fetchProviderModels();
+      setFetchedModels(result.models);
+      toast.success("Models refreshed");
+    } catch {
+      toast.error("Failed to fetch models");
+    } finally {
+      setFetchingModels(false);
     }
   }
 
@@ -629,29 +650,47 @@ function AIProvidersTab() {
               Reorder to set fallback priority. Top provider is tried first.
             </p>
           </div>
-          {saving && (
-            <span className="text-xs text-muted-foreground flex items-center gap-1">
-              <Loader2 className="h-3 w-3 animate-spin" /> Saving...
-            </span>
-          )}
+          <div className="flex items-center gap-2">
+            <Button
+              size="sm"
+              variant="outline"
+              className="h-7 gap-1.5 text-xs"
+              onClick={fetchModels}
+              disabled={fetchingModels}
+            >
+              <RefreshCw className={`h-3 w-3 ${fetchingModels ? "animate-spin" : ""}`} />
+              Refresh Models
+            </Button>
+            {saving && (
+              <span className="text-xs text-muted-foreground flex items-center gap-1">
+                <Loader2 className="h-3 w-3 animate-spin" /> Saving...
+              </span>
+            )}
+          </div>
         </div>
 
         <div className="space-y-2">
-          {providers.map((prov, i) => (
-            <ProviderConfigRow
-              key={prov.id}
-              provider={prov}
-              label={labels[prov.id] || prov.id}
-              availableModels={models[prov.id] || []}
-              isFirst={i === 0}
-              isLast={i === providers.length - 1}
-              status={statusMap.get(prov.id)}
-              onToggle={(enabled) => handleToggle(i, enabled)}
-              onModelChange={(model) => handleModelChange(i, model)}
-              onMoveUp={() => handleMoveUp(i)}
-              onMoveDown={() => handleMoveDown(i)}
-            />
-          ))}
+          {providers.map((prov, i) => {
+            // Prefer fetched models, fall back to static models
+            const providerModels = fetchedModels?.[prov.id]?.length
+              ? fetchedModels[prov.id]
+              : models[prov.id] || [];
+            return (
+              <ProviderConfigRow
+                key={prov.id}
+                provider={prov}
+                label={labels[prov.id] || prov.id}
+                availableModels={providerModels}
+                isFirst={i === 0}
+                isLast={i === providers.length - 1}
+                status={statusMap.get(prov.id)}
+                onToggle={(enabled) => handleToggle(i, enabled)}
+                onModelChange={(model) => handleModelChange(i, model)}
+                onMoveUp={() => handleMoveUp(i)}
+                onMoveDown={() => handleMoveDown(i)}
+              />
+            );
+          })}
         </div>
       </div>
 

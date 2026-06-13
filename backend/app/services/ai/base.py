@@ -1,5 +1,6 @@
-"""Shared httpx clients, cache, and lock management for AI service."""
+"""Shared httpx clients, cache, lock management, and circuit breaker for AI service."""
 import asyncio
+import hashlib
 import logging
 import time
 from collections import OrderedDict
@@ -8,11 +9,74 @@ import httpx
 
 logger = logging.getLogger(__name__)
 
+# ---------------------------------------------------------------------------
+# Circuit breaker — per-provider failure tracking
+# ---------------------------------------------------------------------------
+# Tracks consecutive failures per provider.  After MAX_FAILURES consecutive
+# failures the circuit opens and the provider is skipped for COOLDOWN_SECONDS.
+# Once the cooldown expires the circuit enters half-open state, allowing one
+# probe request.  A successful call resets the failure count and closes the
+# circuit; a failed probe re-opens it for another cooldown period.
+#
+# Performance optimization: avoids wasting time and resources on providers
+# that are known to be down, reducing tail latency on failover chains.
+# ---------------------------------------------------------------------------
+
+_MAX_FAILURES = 3
+_COOLDOWN_SECONDS = 60.0
+
+# {provider_name: {"failures": int, "opened_at": float | None}}
+_circuit_state: dict[str, dict] = {}
+
+
+def record_provider_success(provider_name: str) -> None:
+    """Reset failure count and close the circuit for *provider_name*."""
+    _circuit_state.pop(provider_name, None)
+
+
+def record_provider_failure(provider_name: str) -> None:
+    """Increment failure count; open circuit when threshold is reached."""
+    entry = _circuit_state.setdefault(provider_name, {"failures": 0, "opened_at": None})
+    entry["failures"] += 1
+    if entry["failures"] >= _MAX_FAILURES:
+        entry["opened_at"] = time.monotonic()
+        logger.info(
+            "Circuit OPEN for provider %s after %d failures (cooldown %ds)",
+            provider_name, entry["failures"], int(_COOLDOWN_SECONDS),
+        )
+
+
+def is_provider_available(provider_name: str) -> bool:
+    """Return True if the provider's circuit is closed or half-open (cooldown expired).
+
+    In half-open state the provider is given one chance to succeed; a subsequent
+    failure will immediately re-open the circuit.
+    """
+    entry = _circuit_state.get(provider_name)
+    if entry is None:
+        return True
+    if entry["opened_at"] is None:
+        return True
+    elapsed = time.monotonic() - entry["opened_at"]
+    if elapsed >= _COOLDOWN_SECONDS:
+        logger.debug("Circuit HALF-OPEN for provider %s — allowing probe", provider_name)
+        return True
+    return False
+
+
 # Proper LRU cache using OrderedDict — survives across per-request instances
 # Values are (content, timestamp) tuples for TTL support
 member_context_cache: OrderedDict[str, tuple[str, float]] = OrderedDict()
 MAX_CACHE_SIZE = 64
 CACHE_TTL_SECONDS = 600  # 10 minutes
+
+# Performance: AI response cache — avoids re-calling providers for identical
+# question+context combinations within a short TTL window.
+# Key: hash of (normalized_question + member_context_ids)
+# Value: (response_text, provider_label, timestamp)
+_ai_response_cache: OrderedDict[str, tuple[str, str, float]] = OrderedDict()
+AI_RESPONSE_MAX_CACHE_SIZE = 50
+AI_RESPONSE_CACHE_TTL = 1800  # 30 minutes
 
 # Shared httpx clients for connection pooling — reused across all instances
 cloud_client: httpx.AsyncClient | None = None
@@ -88,6 +152,49 @@ def get_cache(key: str) -> str | None:
         member_context_cache.move_to_end(key)
         return value
     return None
+
+
+# ---- Performance: AI response cache functions ----
+
+
+def _ai_response_cache_key(question: str, member_context_ids: str) -> str:
+    """Build a deterministic cache key from the normalized question and context IDs.
+
+    Normalizes whitespace and casing so that trivially different phrasings
+    of the same question hit the same cache entry.
+    """
+    normalized = " ".join(question.lower().split())
+    raw = f"{normalized}:{member_context_ids}"
+    return hashlib.sha256(raw.encode()).hexdigest()
+
+
+def get_ai_response(question: str, member_context_ids: str) -> tuple[str, str] | None:
+    """Look up a cached AI response for the given question + context.
+
+    Returns (response_text, provider_label) on hit, or None on miss / expiry.
+    """
+    key = _ai_response_cache_key(question, member_context_ids)
+    if key in _ai_response_cache:
+        response, provider, ts = _ai_response_cache[key]
+        if time.monotonic() - ts > AI_RESPONSE_CACHE_TTL:
+            _ai_response_cache.pop(key)
+            return None
+        _ai_response_cache.move_to_end(key)
+        logger.debug("AI response cache hit for question (provider=%s)", provider)
+        return response, provider
+    return None
+
+
+def put_ai_response(
+    question: str, member_context_ids: str, response: str, provider: str
+) -> None:
+    """Store an AI response in the response cache with LRU eviction."""
+    key = _ai_response_cache_key(question, member_context_ids)
+    if key in _ai_response_cache:
+        _ai_response_cache.move_to_end(key)
+    elif len(_ai_response_cache) >= AI_RESPONSE_MAX_CACHE_SIZE:
+        _ai_response_cache.popitem(last=False)
+    _ai_response_cache[key] = (response, provider, time.monotonic())
 
 
 async def retry_with_backoff(

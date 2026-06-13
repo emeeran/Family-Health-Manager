@@ -5,12 +5,28 @@ from threading import Lock
 
 
 class TTLCache:
-    """Thread-safe cache with time-to-live expiration and optional Redis backend."""
+    """Thread-safe cache with time-to-live expiration and optional Redis backend.
 
-    def __init__(self, default_ttl: int = 300):
+    Performance optimization: LRU-style eviction with a configurable max_entries
+    limit. When the cache exceeds max_entries, the oldest entries (by expiry
+    timestamp) are evicted to prevent unbounded memory growth.
+    """
+
+    def __init__(self, default_ttl: int = 300, max_entries: int = 1000):
         self._store: dict[str, tuple[float, object]] = {}
         self._lock = Lock()
         self._default_ttl = default_ttl
+        # Performance: cap in-memory entries to prevent unbounded growth
+        self._max_entries = max_entries
+
+    @property
+    def cache_size(self) -> int:
+        """Return the current number of entries (including potentially expired ones).
+
+        Useful for monitoring cache utilization and diagnosing memory pressure.
+        """
+        with self._lock:
+            return len(self._store)
 
     def get(self, key: str) -> object | None:
         with self._lock:
@@ -26,6 +42,8 @@ class TTLCache:
     def set(self, key: str, value: object, ttl: int | None = None) -> None:
         with self._lock:
             self._store[key] = (time.monotonic() + (ttl or self._default_ttl), value)
+            # Performance: evict oldest entries when cache exceeds capacity
+            self._evict_if_needed()
 
     def invalidate(self, prefix: str = "") -> None:
         """Remove entries matching a key prefix (empty = clear all)."""
@@ -36,6 +54,22 @@ class TTLCache:
                 keys_to_remove = [k for k in self._store if k.startswith(prefix)]
                 for k in keys_to_remove:
                     del self._store[k]
+
+    def _evict_if_needed(self) -> None:
+        """Evict oldest entries (by expiry timestamp) when cache exceeds max_entries.
+
+        Must be called while self._lock is held. Removes entries whose TTL is
+        closest to expiration first, which naturally clears stale data and keeps
+        fresher entries alive.
+        """
+        if len(self._store) <= self._max_entries:
+            return
+        # Sort by expiry time ascending — oldest/expiring-soonest first
+        sorted_keys = sorted(self._store, key=lambda k: self._store[k][0])
+        # Remove enough entries to get back under the limit
+        to_remove = len(self._store) - self._max_entries
+        for k in sorted_keys[:to_remove]:
+            del self._store[k]
 
     async def get_async(self, key: str) -> object | None:
         """Get from Redis when available, falling back to in-memory."""

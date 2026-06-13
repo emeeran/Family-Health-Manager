@@ -197,15 +197,21 @@ class AIService:
             context = await self._build_record_context(health_record_id)
 
         # Stage 2: Generate — Ollama first (streaming), cloud as fallback
+        from app.schemas.ai_provider_config import PROVIDER_LABELS
+
         system_note = _CLINICAL_SYSTEM_NOTE.format(today=self._fmt_date(date.today()))
         full_prompt = f"{system_note}{context}\n\nUser: {prompt}\n\nAssistant:" if context else prompt
 
         full_response = ""
         provider = ""
 
-        # Primary: Ollama models (local streaming)
-        ollama_models = [(settings.OLLAMA_MODEL, f"Ollama {settings.OLLAMA_MODEL}")]
-        if settings.OLLAMA_TEXT_MODEL != settings.OLLAMA_MODEL:
+        config = await self._get_provider_config()
+
+        # Primary: Ollama models (local streaming) — use configured model
+        ollama_cfg = next((p for p in config.providers if p.id == "ollama"), None)
+        ollama_model = ollama_cfg.model if ollama_cfg and ollama_cfg.model else settings.OLLAMA_MODEL
+        ollama_models = [(ollama_model, f"Ollama {ollama_model}")]
+        if settings.OLLAMA_TEXT_MODEL != ollama_model:
             ollama_models.append((settings.OLLAMA_TEXT_MODEL, f"Ollama {settings.OLLAMA_TEXT_MODEL}"))
         for model, label in ollama_models:
             try:
@@ -222,15 +228,17 @@ class AIService:
             except Exception as exc:
                 logger.warning("Ollama streaming model %s failed: %s", label, exc)
 
-        # Fallback: cloud providers (non-streaming)
+        # Fallback: cloud providers (non-streaming) — use household-configured models
         if not full_response:
             cloud_providers: list[tuple] = []
-            if settings.GEMINI_API_KEY:
-                cloud_providers.append((self._call_gemini_text, "Google Gemini 2.5 Flash"))
-            if settings.OPENROUTER_API_KEY:
-                cloud_providers.append((self._call_openrouter_text, "OpenRouter DeepSeek V4 Flash"))
-            if settings.GROQ_API_KEY:
-                cloud_providers.append((self._call_groq_text, "Groq Llama-4-Scout"))
+            for prov in config.providers:
+                if not prov.enabled or prov.id == "ollama":
+                    continue
+                provider_fn = self._get_provider_fn(prov.id)
+                if not provider_fn:
+                    continue
+                label = f"{PROVIDER_LABELS.get(prov.id, prov.id)} ({prov.model})"
+                cloud_providers.append((provider_fn, label, prov.model))
 
             if cloud_providers:
                 try:
@@ -314,9 +322,15 @@ class AIService:
         full_response = ""
         provider = ""
 
-        for model, label in [
-            (settings.OLLAMA_MODEL, f"Ollama {settings.OLLAMA_MODEL}"),
-        ]:
+        config = await self._get_provider_config()
+
+        # Primary: Ollama models (local streaming) — use configured model
+        ollama_cfg = next((p for p in config.providers if p.id == "ollama"), None)
+        ollama_model = ollama_cfg.model if ollama_cfg and ollama_cfg.model else settings.OLLAMA_MODEL
+        ollama_models = [(ollama_model, f"Ollama {ollama_model}")]
+        if settings.OLLAMA_TEXT_MODEL != ollama_model:
+            ollama_models.append((settings.OLLAMA_TEXT_MODEL, f"Ollama {settings.OLLAMA_TEXT_MODEL}"))
+        for model, label in ollama_models:
             try:
                 yield sse({"stage": "provider", "provider": label})
                 chunks = []
@@ -349,14 +363,19 @@ class AIService:
                 except Exception as exc:
                     logger.warning("Ollama streaming model %s failed: %s", label, exc)
 
+        # Fallback: cloud providers — use household-configured models
         if not full_response:
+            from app.schemas.ai_provider_config import PROVIDER_LABELS
+
             cloud_providers: list[tuple] = []
-            if settings.OPENROUTER_API_KEY:
-                cloud_providers.append((self._call_openrouter_text, "OpenRouter DeepSeek V4 Flash"))
-            if settings.GROQ_API_KEY:
-                cloud_providers.append((self._call_groq_text, "Groq Llama-4-Scout"))
-            if settings.GEMINI_API_KEY:
-                cloud_providers.append((self._call_gemini_text, "Google Gemini 2.5 Flash"))
+            for prov in config.providers:
+                if not prov.enabled or prov.id == "ollama":
+                    continue
+                provider_fn = self._get_provider_fn(prov.id)
+                if not provider_fn:
+                    continue
+                label = f"{PROVIDER_LABELS.get(prov.id, prov.id)} ({prov.model})"
+                cloud_providers.append((provider_fn, label, prov.model))
 
             if cloud_providers:
                 try:
@@ -716,8 +735,21 @@ class AIService:
     # ---- Internal AI call routing ----
 
     async def _call_ai(self, prompt: str, context: str) -> tuple[str, str]:
-        """Call AI provider with failover chain — order and models from household config."""
+        """Call AI provider with failover chain — order and models from household config.
+
+        Uses circuit breaker to skip providers that have recently failed, reducing
+        tail latency on failover chains.  Also checks AI response cache before
+        calling providers, and stores successful results for reuse within the TTL window.
+        """
         from app.schemas.ai_provider_config import PROVIDER_LABELS
+        from app.services.ai import base as _base
+        from app.services.ai.base import is_provider_available, record_provider_failure, record_provider_success
+
+        # Performance: check AI response cache before calling any provider
+        cached = _base.get_ai_response(prompt, context)
+        if cached is not None:
+            return cached
+
         system_note = _CLINICAL_SYSTEM_NOTE.format(today=self._fmt_date(date.today()))
         full_prompt = f"{system_note}{context}\n\nUser: {prompt}\n\nAssistant:" if context else prompt
 
@@ -729,12 +761,27 @@ class AIService:
             if not provider_fn:
                 continue
             label = f"{PROVIDER_LABELS.get(prov.id, prov.id)} ({prov.model})"
+
+            # Performance: skip providers whose circuit breaker is open
+            if not is_provider_available(prov.id):
+                logger.debug("Skipping provider %s — circuit breaker open", label)
+                continue
+
             try:
                 result = await provider_fn(full_prompt, model=prov.model)
                 if result:
+                    record_provider_success(prov.id)
+                    # Performance: log token-sized metrics at DEBUG for usage tracking
+                    logger.debug(
+                        "AI call: provider=%s prompt_chars=%d response_chars=%d",
+                        label, len(full_prompt), len(result),
+                    )
                     logger.info("AI text call succeeded via %s", label)
+                    # Performance: store successful response for cache reuse
+                    _base.put_ai_response(prompt, context, result, label)
                     return result, label
             except Exception as exc:
+                record_provider_failure(prov.id)
                 logger.warning("Provider %s failed: %s", label, exc)
                 continue
         raise ValueError("All AI providers failed")
@@ -766,29 +813,42 @@ class AIService:
 
     async def _call_ollama_insight(self, prompt: str, context: str) -> tuple[str, str]:
         """Generate insight — Ollama first, cloud providers as fallback."""
+        from app.schemas.ai_provider_config import PROVIDER_LABELS
+
         system_note = _CLINICAL_SYSTEM_NOTE.format(today=self._fmt_date(date.today()))
         full_prompt = f"{system_note}{context}\n\nUser: {prompt}\n\nAssistant:" if context else prompt
 
+        config = await self._get_provider_config()
+
         # Primary: Ollama models (local first for privacy and speed)
-        ollama_models = [(settings.OLLAMA_MODEL, f"Ollama {settings.OLLAMA_MODEL}")]
-        if settings.OLLAMA_TEXT_MODEL != settings.OLLAMA_MODEL:
+        ollama_cfg = next((p for p in config.providers if p.id == "ollama"), None)
+        ollama_model = ollama_cfg.model if ollama_cfg and ollama_cfg.model else settings.OLLAMA_MODEL
+        ollama_models = [(ollama_model, f"Ollama {ollama_model}")]
+        if settings.OLLAMA_TEXT_MODEL != ollama_model:
             ollama_models.append((settings.OLLAMA_TEXT_MODEL, f"Ollama {settings.OLLAMA_TEXT_MODEL}"))
         for model, label in ollama_models:
             try:
                 result = await self._ollama_chat(model, full_prompt)
                 if result:
+                    # Performance: log token-sized metrics at DEBUG for usage tracking
+                    logger.debug(
+                        "AI call: provider=%s prompt_chars=%d response_chars=%d",
+                        label, len(full_prompt), len(result),
+                    )
                     return result, label
             except Exception as exc:
                 logger.debug("Ollama model %s failed: %s", label, exc)
 
-        # Fallback: cloud providers
+        # Fallback: cloud providers — use household-configured models
         cloud_providers: list[tuple] = []
-        if settings.OPENROUTER_API_KEY:
-            cloud_providers.append((self._call_openrouter_text, "OpenRouter DeepSeek V4 Flash"))
-        if settings.GROQ_API_KEY:
-            cloud_providers.append((self._call_groq_text, "Groq Llama-4-Scout"))
-        if settings.GEMINI_API_KEY:
-            cloud_providers.append((self._call_gemini_text, "Google Gemini 2.5 Flash"))
+        for prov in config.providers:
+            if not prov.enabled or prov.id == "ollama":
+                continue
+            provider_fn = self._get_provider_fn(prov.id)
+            if not provider_fn:
+                continue
+            label = f"{PROVIDER_LABELS.get(prov.id, prov.id)} ({prov.model})"
+            cloud_providers.append((provider_fn, label, prov.model))
 
         if cloud_providers:
             try:
@@ -803,11 +863,31 @@ class AIService:
     async def _race_providers(
         self, prompt: str, providers: list[tuple]
     ) -> tuple[str, str]:
-        """Race multiple providers in parallel -- return the first successful result."""
+        """Race multiple providers in parallel -- return the first successful result.
+
+        Skips providers whose circuit breaker is open, avoiding wasted requests
+        to known-down providers.
+
+        Each provider tuple is (fn, label) or (fn, label, model).
+        """
+        from app.services.ai.base import is_provider_available, record_provider_failure, record_provider_success
+
         tasks: dict[asyncio.Task, str] = {}
-        for provider_fn, label in providers:
-            task = asyncio.create_task(provider_fn(prompt))
+        for entry in providers:
+            provider_fn, label = entry[0], entry[1]
+            model = entry[2] if len(entry) > 2 else None
+            # Performance: skip providers with open circuits
+            if not is_provider_available(label):
+                logger.debug("Skipping race provider %s — circuit breaker open", label)
+                continue
+            if model:
+                task = asyncio.create_task(provider_fn(prompt, model=model))
+            else:
+                task = asyncio.create_task(provider_fn(prompt))
             tasks[task] = label
+
+        if not tasks:
+            raise ValueError("All providers skipped — circuit breakers open")
 
         pending = set(tasks.keys())
         errors: list[Exception] = []
@@ -819,12 +899,19 @@ class AIService:
                 try:
                     result = task.result()
                     if result:
+                        record_provider_success(label)
+                        # Performance: log token-sized metrics at DEBUG for usage tracking
+                        logger.debug(
+                            "AI call: provider=%s prompt_chars=%d response_chars=%d",
+                            label, len(prompt), len(result),
+                        )
                         for t in pending:
                             t.cancel()
                         await asyncio.gather(*pending, return_exceptions=True)
                         logger.info("Insight race won by %s", label)
                         return result, label
                 except Exception as exc:
+                    record_provider_failure(label)
                     errors.append(exc)
                     logger.debug("Provider %s failed in race: %s", label, exc)
 
