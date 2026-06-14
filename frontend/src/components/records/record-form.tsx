@@ -112,6 +112,7 @@ export function RecordForm({
     handleAddProvider,
     userPickedTypeRef,
     extraction,
+    medicineSuggestions,
   } = useRecordFormState({
     action,
     providers: providersProp,
@@ -778,6 +779,9 @@ export function RecordForm({
               }
               autoFillBatches={allAutoFillBatches}
               autoFillDataType={autoFillDataType}
+              suggestions={
+                tableDef.key === "prescriptions" ? { medicine: medicineSuggestions } : undefined
+              }
             />
           );
         })}

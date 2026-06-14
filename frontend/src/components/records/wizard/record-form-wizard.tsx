@@ -1,4 +1,4 @@
-import { useState, useMemo } from "react";
+import { useState, useMemo, useRef } from "react";
 import { Stepper } from "@/components/ui/stepper";
 import { StepTypeSelection } from "./step-type-selection";
 import { StepVisitDetails } from "./step-visit-details";
@@ -34,6 +34,7 @@ import {
   X,
   AlertTriangle,
   PenLine,
+  Camera,
 } from "lucide-react";
 import { useDirtyWarn } from "@/hooks/use-dirty-warn";
 
@@ -72,6 +73,7 @@ export function RecordFormWizard({
 }: RecordFormProps) {
   const [currentStep, setCurrentStep] = useState(() => (defaultType ? 1 : 0));
   const [isDragOver, setIsDragOver] = useState(false);
+  const cameraInputRef = useRef<HTMLInputElement>(null);
 
   const {
     register,
@@ -122,6 +124,7 @@ export function RecordFormWizard({
     userPickedTypeRef,
     extraction,
     nl,
+    medicineSuggestions,
   } = useRecordFormState({
     action,
     providers: providersProp,
@@ -251,17 +254,45 @@ export function RecordFormWizard({
         <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">
           Upload & Extract
         </p>
-        <Button
-          type="button"
-          variant="ghost"
-          size="sm"
-          className="h-7 text-xs"
-          onClick={() => fileInputRef.current?.click()}
-          disabled={extracting}
-        >
-          <Plus className="h-3 w-3 mr-1" /> Add Files
-        </Button>
+        <div className="flex items-center gap-1">
+          <Button
+            type="button"
+            variant="ghost"
+            size="sm"
+            className="h-7 text-xs"
+            onClick={() => cameraInputRef.current?.click()}
+            disabled={extracting}
+            title="Take a photo with your camera"
+          >
+            <Camera className="h-3 w-3 mr-1" /> Scan
+          </Button>
+          <Button
+            type="button"
+            variant="ghost"
+            size="sm"
+            className="h-7 text-xs"
+            onClick={() => fileInputRef.current?.click()}
+            disabled={extracting}
+          >
+            <Plus className="h-3 w-3 mr-1" /> Add Files
+          </Button>
+        </div>
       </div>
+
+      {/* Dedicated camera input — image-only, rear camera, single shot */}
+      <input
+        ref={cameraInputRef}
+        type="file"
+        accept="image/*"
+        capture="environment"
+        disabled={extracting}
+        className="hidden"
+        onChange={() => {
+          const file = cameraInputRef.current?.files?.[0];
+          if (file) handleFileDrop([file]);
+          if (cameraInputRef.current) cameraInputRef.current.value = "";
+        }}
+      />
 
       <input
         ref={fileInputRef}
@@ -571,6 +602,7 @@ export function RecordFormWizard({
             clinicalDataRef={clinicalDataRef}
             register={register}
             errors={fieldErrors}
+            medicineSuggestions={medicineSuggestions}
           />
         )}
 

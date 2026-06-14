@@ -27,6 +27,7 @@ import type { RecordType } from "@/lib/types/enums";
 import type { ProviderResponse, ProviderCreate } from "@/lib/types/provider";
 import type { HealthRecordResponse, MedicationDiffResponse } from "@/lib/types/health-record";
 import { createProvider } from "@/lib/api/providers";
+import { getMemberDashboard } from "@/lib/api/members";
 import { consumePendingEntry } from "@/lib/pending-entry";
 import { toast } from "sonner";
 import { useNavigate } from "react-router-dom";
@@ -87,6 +88,29 @@ export function useRecordFormState({
   const [tags, setTags] = useState<string[]>(record?.tags ?? []);
 
   useEffect(() => setProviderList(providersProp), [providersProp]);
+
+  // Medicine-name suggestions from the member's active medications (autocomplete).
+  const [medicineSuggestions, setMedicineSuggestions] = useState<string[]>([]);
+  useEffect(() => {
+    if (!memberId || record) return;
+    let active = true;
+    getMemberDashboard(memberId)
+      .then((dash) => {
+        if (!active) return;
+        const names = new Set<string>();
+        for (const m of dash.active_medications ?? []) {
+          const n = m.medicine?.trim();
+          if (n) names.add(n);
+        }
+        setMedicineSuggestions([...names].sort());
+      })
+      .catch(() => {
+        /* suggestions are best-effort */
+      });
+    return () => {
+      active = false;
+    };
+  }, [memberId, record]);
 
   const form = useForm<FormValues>({
     resolver: zodResolver(baseSchema),
@@ -480,5 +504,7 @@ export function useRecordFormState({
     // extraction + NL
     extraction,
     nl,
+    // autocomplete
+    medicineSuggestions,
   };
 }
