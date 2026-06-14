@@ -69,8 +69,7 @@ export const StepTypeSelection = memo(function StepTypeSelection({
             </Label>
             <Input
               id="record_date"
-              type="text"
-              placeholder="DD-MM-YYYY"
+              type="date"
               aria-describedby="err-record_date"
               {...register("record_date")}
               className="h-8"

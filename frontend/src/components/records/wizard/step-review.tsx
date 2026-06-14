@@ -4,6 +4,7 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Loader2, RotateCcw, FileText } from "lucide-react";
 import { RECORD_TYPE_LABELS } from "@/lib/constants";
+import { toDisplayDate } from "@/lib/utils";
 import type { RecordType } from "@/lib/types/enums";
 import type { RecordTypeConfig } from "@/lib/record-type-configs";
 
@@ -79,7 +80,7 @@ export const StepReview = memo(function StepReview({
               </Badge>
             }
           />
-          <ReviewRow label="Date" value={recordDate || "—"} />
+          <ReviewRow label="Date" value={recordDate ? toDisplayDate(recordDate) : "—"} />
           {recordTime && <ReviewRow label="Time" value={recordTime} />}
           {providerName && <ReviewRow label="Provider" value={providerName} />}
           {isDoctorVisit && chiefComplaint && (

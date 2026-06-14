@@ -23,6 +23,7 @@ import {
 import { toast } from "sonner";
 import { Plus, Loader2, Pencil, Trash2, Download, Pill, Search, GripVertical } from "lucide-react";
 import type { ActiveMedication } from "@/lib/types/member";
+import { MED_TYPE_OPTIONS, TIMING_OPTIONS as RX_TIMING_OPTIONS } from "@/lib/record-type-configs";
 
 interface ActiveMedicationsTableProps {
   memberId: string;
@@ -59,17 +60,10 @@ function formatDose(raw: string): string {
   return slots.slice(0, 3).join(" - ");
 }
 
-const TYPE_OPTIONS = ["Tab", "Cap", "Inj", "Syp", "Cream", "Drops", "Inhaler", "Other"];
-const TIMING_OPTIONS = [
-  { value: "before_food", label: "Before Food" },
-  { value: "after_food", label: "After Food" },
-  { value: "with_food", label: "With Food" },
-  { value: "empty_stomach", label: "Empty Stomach" },
-  { value: "bedtime", label: "Bedtime" },
-  { value: "sos", label: "SOS" },
-  { value: "stat", label: "Stat" },
-  { value: "custom", label: "Custom" },
-];
+// Derived from the canonical option sets (record-type-configs). The medications
+// table additionally allows a free-text "Custom" timing.
+const TYPE_OPTIONS = MED_TYPE_OPTIONS.map((o) => o.value);
+const TIMING_OPTIONS = [...RX_TIMING_OPTIONS, { value: "custom", label: "Custom" }];
 
 interface RxFormData {
   type: string;

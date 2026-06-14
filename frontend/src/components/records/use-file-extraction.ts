@@ -10,8 +10,7 @@ import {
   validateLabTestRow,
 } from "./record-form-utils";
 import type { FormValues } from "./record-form-utils";
-import { todayStr } from "./record-form-utils";
-import { toDisplayDate } from "@/lib/utils";
+import { todayISO } from "@/lib/quick-record";
 import { getConfig, getTables } from "@/lib/record-type-configs";
 import { mergeExtractedFields } from "./merge-extracted";
 import {
@@ -154,8 +153,8 @@ export function useFileExtraction({
     const batch = stored.batches.find((b) => b.id === batchId);
     if (!batch) return;
     const bf = batch.baseFields;
-    if (bf.record_date && getValues("record_date") === todayStr())
-      setValue("record_date", toDisplayDate(bf.record_date));
+    if (bf.record_date && getValues("record_date") === todayISO())
+      setValue("record_date", bf.record_date);
     if (bf.diagnosis && !getValues("diagnosis")) setValue("diagnosis", bf.diagnosis);
     if (batch.prescriptions.length > 0) {
       const rxData = consumeBatch(memberId, batchId, "prescriptions");
@@ -436,11 +435,10 @@ export function useFileExtraction({
       const bf = stored.batches[0].baseFields;
       if (bf.record_type && !getValues("record_type"))
         setValue("record_type", bf.record_type as RecordType);
-      if (bf.record_date && !getValues("record_date"))
-        setValue("record_date", toDisplayDate(bf.record_date));
+      if (bf.record_date && !getValues("record_date")) setValue("record_date", bf.record_date);
       if (bf.diagnosis && !getValues("diagnosis")) setValue("diagnosis", bf.diagnosis);
       if (bf.next_review_date && !getValues("next_review_date"))
-        setValue("next_review_date", toDisplayDate(bf.next_review_date));
+        setValue("next_review_date", bf.next_review_date);
       const customFields = ["chief_complaint", "existing_conditions", "investigations"] as const;
       for (const key of customFields) {
         const val = bf[key];

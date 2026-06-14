@@ -47,43 +47,46 @@ export function getTables(config: RecordTypeConfig): TableRowDef[] {
   return [];
 }
 
+// ── Canonical medication / timing option sets (single source of truth) ──
+// Used by the prescription table, blood-glucose meal timing, the quick forms,
+// and the active-medications table. Validation Sets are derived from these.
+
+export const MED_TYPE_OPTIONS: { value: string; label: string }[] = [
+  { value: "Tab", label: "Tab" },
+  { value: "Cap", label: "Cap" },
+  { value: "Inj", label: "Inj" },
+  { value: "Syp", label: "Syp" },
+  { value: "Cream", label: "Cream" },
+  { value: "Drops", label: "Drops" },
+  { value: "Inhaler", label: "Inhaler" },
+  { value: "Other", label: "Other" },
+];
+
+export const TIMING_OPTIONS: { value: string; label: string }[] = [
+  { value: "before_food", label: "Before Food" },
+  { value: "after_food", label: "After Food" },
+  { value: "with_food", label: "With Food" },
+  { value: "empty_stomach", label: "Empty Stomach" },
+  { value: "bedtime", label: "Bedtime" },
+  { value: "sos", label: "SOS" },
+  { value: "stat", label: "Stat" },
+];
+
+export const MEAL_TIMING_OPTIONS: { value: string; label: string }[] = [
+  { value: "before_food", label: "Before Food" },
+  { value: "after_food", label: "After Food" },
+];
+
 const PRESCRIPTION_TABLE: TableRowDef = {
   key: "prescriptions",
   label: "Prescription",
   allowAddRemove: true,
   fields: [
-    {
-      key: "type",
-      label: "Type",
-      type: "select",
-      options: [
-        { value: "Tab", label: "Tab" },
-        { value: "Cap", label: "Cap" },
-        { value: "Inj", label: "Inj" },
-        { value: "Syp", label: "Syp" },
-        { value: "Cream", label: "Cream" },
-        { value: "Drops", label: "Drops" },
-        { value: "Inhaler", label: "Inhaler" },
-        { value: "Other", label: "Other" },
-      ],
-    },
+    { key: "type", label: "Type", type: "select", options: MED_TYPE_OPTIONS },
     { key: "medicine", label: "Medicine", type: "text", placeholder: "e.g. Syndopa 110" },
     { key: "dosage", label: "Dosage", type: "text", placeholder: "e.g. 1-1-1" },
     { key: "duration", label: "Duration", type: "text", placeholder: "e.g. 30 days" },
-    {
-      key: "timing",
-      label: "Timing",
-      type: "select",
-      options: [
-        { value: "before_food", label: "Before Food" },
-        { value: "after_food", label: "After Food" },
-        { value: "with_food", label: "With Food" },
-        { value: "empty_stomach", label: "Empty Stomach" },
-        { value: "bedtime", label: "Bedtime" },
-        { value: "sos", label: "SOS" },
-        { value: "stat", label: "Stat" },
-      ],
-    },
+    { key: "timing", label: "Timing", type: "select", options: TIMING_OPTIONS },
     { key: "note", label: "Note", type: "text", placeholder: "Optional note" },
   ],
 };
@@ -214,10 +217,7 @@ const BLOOD_GLUCOSE: RecordTypeConfig = {
       label: "Meal Timing",
       type: "select",
       required: true,
-      options: [
-        { value: "before_food", label: "Before Food" },
-        { value: "after_food", label: "After Food" },
-      ],
+      options: MEAL_TIMING_OPTIONS,
     },
     {
       key: "insulin_dose",

@@ -2,6 +2,7 @@ import { useState, useCallback } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { useQuickRecord } from "@/lib/quick-record";
+import { MEAL_TIMING_OPTIONS } from "@/lib/record-type-configs";
 import { ChevronDown, ChevronUp } from "lucide-react";
 
 interface QuickBloodGlucoseFormProps {
@@ -105,18 +106,18 @@ export function QuickBloodGlucoseForm({
         <div>
           <label className="text-sm font-medium block mb-1">Meal Timing</label>
           <div className="flex gap-2">
-            {(["before_food", "after_food"] as const).map((option) => (
+            {MEAL_TIMING_OPTIONS.map((option) => (
               <button
-                key={option}
+                key={option.value}
                 type="button"
-                onClick={() => setMealTiming(option)}
+                onClick={() => setMealTiming(option.value as "before_food" | "after_food")}
                 className={`flex-1 rounded-lg border px-3 py-2 text-sm font-medium transition-colors ${
-                  mealTiming === option
+                  mealTiming === option.value
                     ? "border-primary bg-primary/10 text-primary"
                     : "border-border hover:bg-muted/50"
                 }`}
               >
-                {option === "before_food" ? "Before Food" : "After Food"}
+                {option.label}
               </button>
             ))}
           </div>

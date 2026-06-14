@@ -13,7 +13,6 @@ import {
   validateLabTestRow,
 } from "./record-form-utils";
 import type { FormValues } from "./record-form-utils";
-import { toDisplayDate } from "@/lib/utils";
 import type { TableRowDef } from "@/lib/record-type-configs";
 import type { ProviderResponse } from "@/lib/types/provider";
 import type { ExtractedFields } from "@/lib/types/health-record";
@@ -58,7 +57,7 @@ export function mergeExtractedFields(
 
   const dateISO = normalizeDate(extracted.record_date);
   if (dateISO) {
-    setValue("record_date", toDisplayDate(dateISO));
+    setValue("record_date", dateISO);
     populated.add("record_date");
   }
 
@@ -70,7 +69,7 @@ export function mergeExtractedFields(
 
   const reviewISO = normalizeDate(extracted.next_review_date);
   if (reviewISO) {
-    setValue("next_review_date", toDisplayDate(reviewISO));
+    setValue("next_review_date", reviewISO);
     populated.add("next_review_date");
   }
 

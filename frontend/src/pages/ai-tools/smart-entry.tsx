@@ -1,41 +1,15 @@
 import { useState } from "react";
-import { useSearchParams } from "react-router-dom";
+import { useSearchParams, useNavigate } from "react-router-dom";
 import { AiToolsSubPage } from "@/components/ai-tools/ai-tools-layout";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import { PenLine, Loader2, CheckCircle2, Lightbulb } from "lucide-react";
-import { parseNaturalLanguage, createRecord, type NLParseResponse } from "@/lib/api/records";
+import { PenLine, Loader2, Lightbulb, PencilLine } from "lucide-react";
+import { parseNaturalLanguage, type NLParseResponse } from "@/lib/api/records";
 import { RECORD_TYPE_LABELS } from "@/lib/constants";
-import { serializeClinicalData } from "@/lib/clinical-data";
 import type { RecordType } from "@/lib/types/enums";
 import { toast } from "sonner";
-
-/**
- * Build clinical_data from the parsed NL result, routing type-specific vitals /
- * glucose / HbA1c through the same structured serialization the record form uses
- * (so nothing the AI extracted is dropped on save).
- */
-function buildClinicalData(parsed: NLParseResponse): string {
-  const rt = (parsed.record_type || "misc_record") as RecordType;
-  const fields: Record<string, string> = {};
-  if (rt === "vitals") {
-    if (parsed.blood_pressure) fields.blood_pressure = parsed.blood_pressure;
-    if (parsed.heart_rate) fields.heart_rate = parsed.heart_rate;
-    if (parsed.temperature) fields.temperature = parsed.temperature;
-    if (parsed.weight) fields.weight = parsed.weight;
-  } else if (rt === "blood_glucose") {
-    if (parsed.glucose_value) fields.glucose_value = parsed.glucose_value;
-    if (parsed.meal_timing) fields.meal_timing = parsed.meal_timing;
-  } else if (rt === "hba1c") {
-    if (parsed.hba1c_value) fields.hba1c_value = parsed.hba1c_value;
-  }
-  if (Object.keys(fields).length > 0) {
-    return serializeClinicalData(rt, fields, {}, parsed.clinical_notes || undefined);
-  }
-  return parsed.clinical_notes || "{}";
-}
 
 const EXAMPLES = [
   {
@@ -57,13 +31,13 @@ const EXAMPLES = [
 ];
 
 export default function AiToolsSmartEntryPage() {
+  const navigate = useNavigate();
   const [searchParams] = useSearchParams();
   const memberId = searchParams.get("memberId") || "";
 
   const [text, setText] = useState("");
   const [parsing, setParsing] = useState(false);
   const [parsed, setParsed] = useState<NLParseResponse | null>(null);
-  const [saving, setSaving] = useState(false);
   const [showExamples, setShowExamples] = useState(false);
 
   async function handleParse() {
@@ -80,33 +54,17 @@ export default function AiToolsSmartEntryPage() {
     }
   }
 
-  async function handleSave() {
-    if (!parsed || !parsed.record_date) return;
-    // Prefer AI-detected member, fall back to ?memberId= query param
+  // Route into the record wizard (the single save surface) with the text pre-loaded.
+  // The wizard parses it, lets the user review/edit everything, and handles save +
+  // medication sync — so this page no longer has its own (lossy) save path.
+  function handleEditInForm() {
+    if (!parsed) return;
     const memberIdToUse = parsed.member?.id || memberId;
     if (!memberIdToUse) {
       toast.error("No member detected. Try mentioning a name in the text.");
       return;
     }
-    setSaving(true);
-    try {
-      await createRecord(memberIdToUse, {
-        record_type: (parsed.record_type || "misc_record") as RecordType,
-        record_date: parsed.record_date,
-        record_time: parsed.record_time || null,
-        clinical_data: buildClinicalData(parsed),
-        diagnosis: parsed.diagnosis,
-        prescription_text: parsed.prescription_text,
-        next_review_date: parsed.next_review_date,
-      });
-      toast.success("Record created!");
-      setText("");
-      setParsed(null);
-    } catch {
-      toast.error("Failed to save record");
-    } finally {
-      setSaving(false);
-    }
+    navigate(`/people/${memberIdToUse}/records/new?nl=${encodeURIComponent(text)}`);
   }
 
   return (
@@ -204,18 +162,15 @@ export default function AiToolsSmartEntryPage() {
               )}
 
               <div className="flex items-center gap-2 pt-2">
-                <Button
-                  onClick={handleSave}
-                  disabled={saving || !parsed.record_date}
-                  className="bg-emerald-600 hover:bg-emerald-700 text-white"
-                >
-                  {saving ? (
-                    <Loader2 className="h-3.5 w-3.5 mr-1.5 animate-spin" />
-                  ) : (
-                    <CheckCircle2 className="h-3.5 w-3.5 mr-1.5" />
-                  )}
-                  {saving ? "Saving..." : "Save as Record"}
+                <Button onClick={handleEditInForm} disabled={!parsed.member}>
+                  <PencilLine className="h-3.5 w-3.5 mr-1.5" />
+                  Edit in Form
                 </Button>
+                {!parsed.member && (
+                  <span className="text-xs text-muted-foreground">
+                    No member detected — mention a name to continue.
+                  </span>
+                )}
               </div>
             </CardContent>
           </Card>

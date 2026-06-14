@@ -36,29 +36,37 @@ export function useNLExtraction({
 
   const tables = useMemo(() => (recordType ? getTables(getConfig(recordType)) : []), [recordType]);
 
-  const handleParse = useCallback(async () => {
-    const text = nlText.trim();
-    if (!text) return;
-    setParsing(true);
-    setNlError(null);
-    try {
-      const result = await parseNaturalLanguage(text);
-      setParsed(result);
-      const { populated } = mergeExtractedFields(
-        { providerList, form, setCustomValues, setTableData, setExtractedFields, tables },
-        extractedFromNL(result),
-        typeSpecificFieldsFromNL(result)
-      );
-      if (populated.size === 0) {
-        setNlError("Couldn't extract any fields from that text — try rephrasing with more detail.");
+  const parseText = useCallback(
+    async (text: string) => {
+      const trimmed = text.trim();
+      if (!trimmed) return;
+      setNlText(text);
+      setParsing(true);
+      setNlError(null);
+      try {
+        const result = await parseNaturalLanguage(trimmed);
+        setParsed(result);
+        const { populated } = mergeExtractedFields(
+          { providerList, form, setCustomValues, setTableData, setExtractedFields, tables },
+          extractedFromNL(result),
+          typeSpecificFieldsFromNL(result)
+        );
+        if (populated.size === 0) {
+          setNlError(
+            "Couldn't extract any fields from that text — try rephrasing with more detail."
+          );
+        }
+      } catch (e) {
+        setParsed(null);
+        setNlError(e instanceof Error ? e.message : "Failed to parse text");
+      } finally {
+        setParsing(false);
       }
-    } catch (e) {
-      setParsed(null);
-      setNlError(e instanceof Error ? e.message : "Failed to parse text");
-    } finally {
-      setParsing(false);
-    }
-  }, [nlText, providerList, form, setCustomValues, setTableData, setExtractedFields, tables]);
+    },
+    [providerList, form, setCustomValues, setTableData, setExtractedFields, tables]
+  );
+
+  const handleParse = useCallback(() => parseText(nlText), [parseText, nlText]);
 
   const clearNL = useCallback(() => {
     setNlText("");
@@ -74,6 +82,7 @@ export function useNLExtraction({
     setNlError,
     parsed,
     handleParse,
+    parseText,
     clearNL,
   };
 }

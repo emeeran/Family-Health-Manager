@@ -1,7 +1,4 @@
-import { useState, useRef, useEffect, useMemo, useCallback, startTransition } from "react";
-import { useActionState } from "react";
-import { useForm } from "react-hook-form";
-import { zodResolver } from "@hookform/resolvers/zod";
+import { useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -14,14 +11,6 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { Badge } from "@/components/ui/badge";
-import { toDisplayDate, toISODate } from "@/lib/utils";
-import { getConfig, getTables } from "@/lib/record-type-configs";
-import {
-  serializeClinicalData,
-  deserializeClinicalData,
-  getDefaultCustomFields,
-  getDefaultTableData,
-} from "@/lib/clinical-data";
 import {
   Dialog,
   DialogContent,
@@ -33,19 +22,11 @@ import {
 import { TypeSpecificFields } from "./type-specific-fields";
 import { DynamicTable } from "./dynamic-table";
 import { MedicationSyncDialog } from "./medication-sync-dialog";
-import { useFileExtraction } from "./use-file-extraction";
-import {
-  RECORD_TYPE_OPTIONS,
-  MEDICATION_SYNC_KEY,
-  baseSchema,
-  todayStr,
-  timeAgo,
-} from "./record-form-utils";
-import type { FormValues } from "./record-form-utils";
+import { useRecordFormState } from "./use-record-form-state";
+import { RECORD_TYPE_OPTIONS, timeAgo } from "./record-form-utils";
 import type { RecordType } from "@/lib/types/enums";
-import type { ProviderResponse, ProviderCreate } from "@/lib/types/provider";
+import type { ProviderResponse } from "@/lib/types/provider";
 import type { HealthRecordResponse } from "@/lib/types/health-record";
-import { createProvider } from "@/lib/api/providers";
 import {
   Loader2,
   Upload,
@@ -58,7 +39,6 @@ import {
   AlertTriangle,
 } from "lucide-react";
 import { useDirtyWarn } from "@/hooks/use-dirty-warn";
-import { toast } from "sonner";
 
 interface RecordFormProps {
   action: (prevState: unknown, formData: FormData) => Promise<unknown>;
@@ -83,68 +63,67 @@ export function RecordForm({
   defaultProviderId,
   defaultChiefComplaint,
 }: RecordFormProps) {
-  const [state, formAction, isPending] = useActionState<unknown, FormData>(action, null);
-  const [isDragOver, setIsDragOver] = useState(false);
-  const [customValues, setCustomValues] = useState<Record<string, string>>({});
-  const [tableData, setTableData] = useState<Record<string, Record<string, string>[]>>({});
-  const [notes, setNotes] = useState("");
-  const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({});
-  const [_extractedFields, setExtractedFields] = useState<Set<string>>(new Set());
-
-  const [showMedPrompt, setShowMedPrompt] = useState(false);
-  const [providerList, setProviderList] = useState<ProviderResponse[]>(providersProp);
-  const [showAddProvider, setShowAddProvider] = useState(false);
-  const [newProviderName, setNewProviderName] = useState("");
-  const [newProviderSpeciality, setNewProviderSpeciality] = useState("");
-  const [addingProvider, setAddingProvider] = useState(false);
-  const [providerError, setProviderError] = useState("");
-  const [showMedSyncDialog, setShowMedSyncDialog] = useState(false);
-  const [medSyncDiff, setMedSyncDiff] = useState<
-    import("@/lib/types/health-record").MedicationDiffResponse | null
-  >(null);
-  const formRef = useRef<HTMLFormElement>(null);
-  const [tagInput, setTagInput] = useState("");
-  const [tags, setTags] = useState<string[]>(record?.tags ?? []);
-
-  useEffect(() => setProviderList(providersProp), [providersProp]);
-
   const {
     register,
     setValue,
-    watch,
-    getValues,
-    reset,
-    formState: { errors, isDirty },
-  } = useForm<FormValues>({
-    resolver: zodResolver(baseSchema),
-    defaultValues: record
-      ? {
-          record_type: record.record_type,
-          record_date: toDisplayDate(record.record_date),
-          record_time: record.record_time ?? "",
-          clinical_data: record.clinical_data,
-          diagnosis: record.diagnosis ?? "",
-          prescription_text: record.prescription_text ?? "",
-          provider_id: record.provider_id ?? "",
-          next_review_date: record.next_review_date ? toDisplayDate(record.next_review_date) : "",
-        }
-      : {
-          record_type: defaultType || undefined,
-          record_date: todayStr(),
-          record_time: "",
-          clinical_data: "",
-          diagnosis: "",
-          prescription_text: "",
-          provider_id: defaultProviderId || "",
-          next_review_date: "",
-        },
+    errors,
+    isDirty,
+    formAction,
+    formRef,
+    clinicalDataRef,
+    state,
+    isPending,
+    recordType,
+    config,
+    tables,
+    isDoctorVisit,
+    hasStructuredContent,
+    typeSpecificConfig,
+    customValues,
+    tableData,
+    notes,
+    setNotes,
+    fieldErrors,
+    tags,
+    setTags,
+    tagInput,
+    setTagInput,
+    handleCustomFieldChange,
+    handleTableChange,
+    handleSubmit,
+    submitViaAction,
+    resetForm,
+    showMedPrompt,
+    setShowMedPrompt,
+    prescriptionRows,
+    medSyncDiff,
+    showMedSyncDialog,
+    setShowMedSyncDialog,
+    providerList,
+    showAddProvider,
+    setShowAddProvider,
+    newProviderName,
+    setNewProviderName,
+    newProviderSpeciality,
+    setNewProviderSpeciality,
+    addingProvider,
+    providerError,
+    setProviderError,
+    handleAddProvider,
+    userPickedTypeRef,
+    extraction,
+  } = useRecordFormState({
+    action,
+    providers: providersProp,
+    onProviderCreated,
+    onSaveComplete,
+    record,
+    memberId,
+    defaultType,
+    defaultProviderId,
+    defaultChiefComplaint,
   });
 
-  const recordType = watch("record_type");
-  const config = recordType ? getConfig(recordType) : null;
-  const tables = useMemo(() => (recordType ? getTables(getConfig(recordType)) : []), [recordType]);
-
-  // File extraction hook
   const {
     extracting,
     extractError,
@@ -159,264 +138,17 @@ export function RecordForm({
     handleFileDrop,
     handleTableAutoFill,
     handleRecentBatchClick,
-    clearExtractionState,
     clearExtraction,
     removeBatch,
     refreshRecentBatches,
     transcription,
     setTranscription,
-  } = useFileExtraction({
-    memberId,
-    record: record ?? null,
-    recordType,
-    providerList,
-    form: { setValue, getValues, register, watch, reset, formState: { errors, isDirty } } as any,
-    customValues,
-    setCustomValues,
-    tableData,
-    setTableData,
-    setNotes,
-    setExtractedFields,
-  });
+  } = extraction;
 
-  const handleAddProvider = useCallback(async () => {
-    const name = newProviderName.trim();
-    if (!name) return;
-    setAddingProvider(true);
-    setProviderError("");
-    try {
-      const data: ProviderCreate = { name, speciality: newProviderSpeciality.trim() || undefined };
-      const created = await createProvider(data);
-      setProviderList((prev) => [...prev, created]);
-      setValue("provider_id", created.id);
-      onProviderCreated?.(created);
-      setShowAddProvider(false);
-      setNewProviderName("");
-      setNewProviderSpeciality("");
-    } catch (e) {
-      const msg = e instanceof Error ? e.message : "Failed to add provider";
-      setProviderError(msg);
-      toast.error(msg);
-    } finally {
-      setAddingProvider(false);
-    }
-  }, [newProviderName, newProviderSpeciality, setValue, onProviderCreated]);
-
-  // When editing, deserialize clinical_data
-  useEffect(() => {
-    if (record && record.clinical_data) {
-      const deserialized = deserializeClinicalData(record.clinical_data);
-      if (deserialized.isStructured) {
-        setCustomValues(deserialized.fields);
-        setTableData(deserialized.tableData);
-        setNotes(deserialized.notes);
-        setValue("clinical_data", "");
-      } else if (deserialized.fields.clinical_data) {
-        setNotes(deserialized.fields.clinical_data);
-        setCustomValues({});
-        setTableData({});
-      }
-    }
-  }, [record, setValue]);
-
-  // Reset custom fields when record type changes
-  const prevRecordTypeRef = useRef<string | undefined>(undefined);
-  useEffect(() => {
-    if (!record && recordType) {
-      const cfg = getConfig(recordType);
-      const defaults = getDefaultCustomFields(cfg);
-      if (defaultChiefComplaint && "chief_complaint" in defaults) {
-        defaults["chief_complaint"] = defaultChiefComplaint;
-      }
-      setCustomValues(defaults);
-      if (prevRecordTypeRef.current !== undefined) {
-        setTableData(getDefaultTableData(cfg));
-      } else {
-        setTableData((prev) => {
-          const defaults = getDefaultTableData(cfg);
-          const merged = { ...defaults };
-          for (const key of Object.keys(defaults)) {
-            if (prev[key] && prev[key].length > 0) merged[key] = prev[key];
-          }
-          return merged;
-        });
-      }
-      setNotes("");
-      setFieldErrors({});
-    }
-    prevRecordTypeRef.current = recordType;
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [recordType, record]);
-
-  const clinicalDataRef = useRef<HTMLInputElement>(null);
-
-  function handleCustomFieldChange(key: string, value: string) {
-    setCustomValues((prev) => ({ ...prev, [key]: value }));
-    setFieldErrors((prev) => {
-      if (!prev[key]) return prev;
-      const next = { ...prev };
-      delete next[key];
-      return next;
-    });
-  }
-
-  function handleTableChange(tableKey: string, rows: Record<string, string>[]) {
-    setTableData((prev) => ({ ...prev, [tableKey]: rows }));
-  }
-
-  const prescriptionRows = (tableData["prescriptions"] || []).filter((row) => row.medicine?.trim());
-  const hasPrescriptions = prescriptionRows.length > 0;
-
-  function serializeToHiddenField() {
-    if (clinicalDataRef.current && config && recordType) {
-      const serialized = serializeClinicalData(
-        recordType,
-        customValues,
-        tableData,
-        notes || undefined
-      );
-      clinicalDataRef.current.value = serialized;
-    }
-    const dateVal = getValues("record_date");
-    if (dateVal) setValue("record_date", toISODate(dateVal));
-    const reviewVal = getValues("next_review_date");
-    if (reviewVal) setValue("next_review_date", toISODate(reviewVal));
-  }
-
-  const resetForm = useCallback(() => {
-    reset({
-      record_type: defaultType || undefined,
-      record_date: todayStr(),
-      record_time: "",
-      clinical_data: "",
-      diagnosis: "",
-      prescription_text: "",
-      provider_id: defaultProviderId || "",
-      next_review_date: "",
-    });
-    clearExtractionState();
-    setCustomValues({});
-    setTableData({});
-    setNotes("");
-    setTags([]);
-    setTagInput("");
-    setFieldErrors({});
-  }, [reset, defaultType, defaultProviderId, clearExtractionState]);
-
-  function validateRequiredFields(): Record<string, string> {
-    const errs: Record<string, string> = {};
-    if (config) {
-      for (const f of config.customFields) {
-        if (f.required && !(customValues[f.key] || "").trim()) {
-          errs[f.key] = `${f.label} is required`;
-        }
-      }
-    }
-    return errs;
-  }
-
-  function handleSubmit(e: React.FormEvent<HTMLFormElement>) {
-    e.preventDefault();
-    if (isPending || !formRef.current) return;
-    const errs = validateRequiredFields();
-    if (Object.keys(errs).length > 0) {
-      setFieldErrors(errs);
-      toast.error("Please fill in the required fields.");
-      return;
-    }
-    setFieldErrors({});
-    serializeToHiddenField();
-    if (!record && recordType === "doctor_visit" && hasPrescriptions) {
-      setShowMedPrompt(true);
-      return;
-    }
-    const formData = new FormData(formRef.current);
-    startTransition(() => {
-      formAction(formData);
-    });
-  }
-
-  function submitViaAction(updateMedications = true) {
-    if (!formRef.current || isPending) return;
-    serializeToHiddenField();
-    const formData = new FormData(formRef.current);
-    if (!updateMedications) {
-      const clinicalStr = formData.get("clinical_data") as string;
-      if (clinicalStr) {
-        try {
-          const parsed = JSON.parse(clinicalStr);
-          if (parsed._type === "structured") {
-            parsed[MEDICATION_SYNC_KEY] = false;
-            formData.set("clinical_data", JSON.stringify(parsed));
-          }
-        } catch {
-          /* not JSON */
-        }
-      }
-    }
-    startTransition(() => {
-      formAction(formData);
-    });
-    setShowMedPrompt(false);
-  }
-
-  const hasCustomFields = config && config.customFields.length > 0;
-  const hasTables = tables.length > 0;
-  const hasStructuredContent = hasCustomFields || hasTables;
-  const isDoctorVisit = recordType === "doctor_visit";
-
-  const typeSpecificConfig = useMemo(() => {
-    if (!config) return null;
-    if (isDoctorVisit) {
-      const hiddenKeys = new Set(["chief_complaint", "notes"]);
-      return {
-        ...config,
-        customFields: config.customFields.filter((f) => !hiddenKeys.has(f.key)),
-        tables: undefined,
-        tableRows: undefined,
-      };
-    }
-    return config;
-  }, [config, isDoctorVisit]);
+  const [isDragOver, setIsDragOver] = useState(false);
 
   const tagsChanged = JSON.stringify(tags) !== JSON.stringify(record?.tags ?? []);
   useDirtyWarn(isDirty || tagsChanged || !!recordType, isPending);
-
-  // After successful save, check for medication sync
-  const prevPendingRef = useRef(false);
-  useEffect(() => {
-    if (prevPendingRef.current && !isPending && state) {
-      const result = state as Record<string, unknown>;
-      if (result.success && result.prescriptions && memberId) {
-        const rx = result.prescriptions as Record<string, string>[];
-        import("@/lib/api/members").then(({ computeMedicationDiff }) => {
-          computeMedicationDiff(
-            memberId,
-            rx,
-            (result.record as Record<string, unknown>)?.id as string
-          )
-            .then((diff) => {
-              const total = diff.added.length + diff.updated.length + diff.removed.length;
-              if (total > 0) {
-                setMedSyncDiff(diff);
-                setShowMedSyncDialog(true);
-              } else {
-                resetForm();
-                onSaveComplete?.();
-              }
-            })
-            .catch(() => {
-              resetForm();
-              onSaveComplete?.();
-            });
-        });
-      } else if (result.success) {
-        resetForm();
-        onSaveComplete?.();
-      }
-    }
-    prevPendingRef.current = isPending;
-  }, [isPending, state, memberId, onSaveComplete, resetForm]);
 
   return (
     <form ref={formRef} action={formAction} onSubmit={handleSubmit} className="space-y-2 max-w-3xl">
@@ -694,7 +426,10 @@ export function RecordForm({
             <Select
               value={recordType ?? ""}
               onValueChange={(v) => {
-                if (v) setValue("record_type", v as RecordType);
+                if (v) {
+                  userPickedTypeRef.current = true;
+                  setValue("record_type", v as RecordType);
+                }
               }}
             >
               <SelectTrigger className="h-8">
@@ -720,8 +455,7 @@ export function RecordForm({
             </Label>
             <Input
               id="record_date"
-              type="text"
-              placeholder="DD-MM-YYYY"
+              type="date"
               aria-describedby="err-record_date"
               {...register("record_date")}
               className="h-8"
@@ -975,8 +709,7 @@ export function RecordForm({
           </Label>
           <Input
             id="next_review_date"
-            type="text"
-            placeholder="DD-MM-YYYY"
+            type="date"
             {...register("next_review_date")}
             className="h-8"
           />

@@ -37,7 +37,9 @@ def _magic_matches(chunk: bytes, mime: str) -> bool:
     if mime == "image/webp":
         return chunk[:4] == b"RIFF" and chunk[8:12] == b"WEBP"
     signatures = MAGIC_SIGNATURES.get(mime)
-    return bool(signatures) and any(chunk.startswith(sig) for sig in signatures)
+    if not signatures:
+        return False
+    return any(chunk.startswith(sig) for sig in signatures)
 
 
 def get_files_dir() -> Path:

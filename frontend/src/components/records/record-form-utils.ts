@@ -1,6 +1,7 @@
 /** Pure utilities and constants for RecordForm — no React dependencies. */
 import { z } from "zod";
 import { RECORD_TYPE_LABELS } from "@/lib/constants";
+import { MED_TYPE_OPTIONS, TIMING_OPTIONS } from "@/lib/record-type-configs";
 import type { RecordType } from "@/lib/types/enums";
 
 export const API_BASE = import.meta.env.VITE_API_URL
@@ -22,25 +23,10 @@ export const VALID_RECORD_TYPES = new Set<string>([
 
 export const EXTRACT_TIMEOUT = 300_000; // 5 min
 export const MEDICATION_SYNC_KEY = "_medication_sync";
-export const VALID_MED_TYPES = new Set([
-  "Tab",
-  "Cap",
-  "Inj",
-  "Syp",
-  "Cream",
-  "Drops",
-  "Inhaler",
-  "Other",
-]);
-export const VALID_TIMINGS = new Set([
-  "before_food",
-  "after_food",
-  "with_food",
-  "empty_stomach",
-  "bedtime",
-  "sos",
-  "stat",
-]);
+
+// Derived from the canonical option sets in record-type-configs (single source of truth).
+export const VALID_MED_TYPES = new Set(MED_TYPE_OPTIONS.map((o) => o.value));
+export const VALID_TIMINGS = new Set(TIMING_OPTIONS.map((o) => o.value));
 
 /** Normalize various date formats to YYYY-MM-DD, or return null */
 export function normalizeDate(val: unknown): string | null {
@@ -99,13 +85,6 @@ export function validateLabTestRow(row: unknown): Record<string, string> | null 
     ref_value: sanitizeText(r.ref_value, 100) || "",
     note: sanitizeText(r.note, 200) || "",
   };
-}
-
-export function todayStr() {
-  const d = new Date();
-  const dd = String(d.getDate()).padStart(2, "0");
-  const mm = String(d.getMonth() + 1).padStart(2, "0");
-  return `${dd}-${mm}-${d.getFullYear()}`;
 }
 
 export function timeAgo(ts: number): string {

@@ -143,8 +143,7 @@ export const StepVisitDetails = memo(function StepVisitDetails({
         </Label>
         <Input
           id="next_review_date"
-          type="text"
-          placeholder="DD-MM-YYYY"
+          type="date"
           {...register("next_review_date")}
           className="h-8"
         />

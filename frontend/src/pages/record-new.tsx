@@ -26,6 +26,7 @@ export default function NewRecordPage() {
   const defaultType = (searchParams.get("type") as RecordType) || undefined;
   const defaultProviderId = searchParams.get("provider_id") || undefined;
   const defaultChiefComplaint = searchParams.get("chief_complaint") || undefined;
+  const initialNLText = searchParams.get("nl") || undefined;
 
   const [useWizard, setUseWizard] = useState(() => {
     const saved = localStorage.getItem(FORM_MODE_KEY);
@@ -110,6 +111,7 @@ export default function NewRecordPage() {
               defaultType={defaultType}
               defaultProviderId={defaultProviderId}
               defaultChiefComplaint={defaultChiefComplaint}
+              initialNLText={initialNLText}
               onSaveComplete={() => {
                 /* stay on page — form resets itself */
               }}
