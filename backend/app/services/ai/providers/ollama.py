@@ -13,10 +13,37 @@ settings = get_settings()
 logger = logging.getLogger(__name__)
 
 
-def _ollama_timeout(prompt_len: int) -> httpx.Timeout:
-    """Adaptive timeout: shorter for small prompts, longer for complex ones."""
-    read = min(30 + prompt_len // 500, 240)
+def _ollama_timeout(prompt_len: int, streaming: bool = False) -> httpx.Timeout:
+    """Adaptive timeout: shorter for small prompts, longer for complex ones.
+
+    ``streaming=True`` uses a generous read timeout sized to the prompt so
+    CPU-only inference has headroom for model load + prompt evaluation that
+    must complete before the first token streams. Measured CPU prompt-eval on
+    medgemma is ~19.5 tok/s (~1 token per 2.2 chars), i.e. roughly 1 second
+    per 43 prompt chars, so ``prompt_len // 40`` leaves margin. Once tokens
+    flow, inter-chunk reads are fast — the read timeout only gates
+    time-to-first-token, so a large cap is safe.
+    """
+    if streaming:
+        read = min(settings.OLLAMA_TIMEOUT + prompt_len // 40, 1800)
+    else:
+        read = min(30 + prompt_len // 500, 240)
     return httpx.Timeout(connect=10, read=read, write=10, pool=10)
+
+
+async def _reset_ollama_client() -> None:
+    """Close and clear the shared Ollama client so the next call rebuilds it.
+
+    Used after a terminal transport failure to discard a possibly-dead
+    connection (mirrors the reset embedded in :func:`_retry_request`).
+    """
+    from app.services.ai import base as _base
+    if _base.ollama_client:
+        try:
+            await _base.ollama_client.aclose()
+        except Exception:
+            pass
+        _base.ollama_client = None
 
 
 async def _retry_request(fn, retries: int = 2, base_delay: float = 0.5):
@@ -27,13 +54,7 @@ async def _retry_request(fn, retries: int = 2, base_delay: float = 0.5):
         except (httpx.TimeoutException, httpx.ConnectError, httpx.ReadError) as exc:
             if attempt == retries:
                 # Final failure — reset shared client
-                from app.services.ai import base as _base
-                if _base.ollama_client:
-                    try:
-                        await _base.ollama_client.aclose()
-                    except Exception:
-                        pass
-                    _base.ollama_client = None
+                await _reset_ollama_client()
                 raise
             delay = base_delay * (2 ** attempt)
             logger.debug("Ollama request failed (attempt %d/%d), retrying in %.1fs: %s",
@@ -96,7 +117,15 @@ async def ollama_chat(model: str, prompt: str) -> str | None:
 
 
 async def ollama_chat_stream(model: str, prompt: str) -> AsyncGenerator[str, None]:
-    """Stream tokens from local Ollama model."""
+    """Stream tokens from local Ollama model.
+
+    Uses a generous read timeout so CPU-only inference has headroom to load the
+    model and evaluate the prompt before the first token streams. Retries once
+    on transient connection errors (``ConnectError``/``ReadError``) that occur
+    before any output; a ``TimeoutException`` is surfaced directly, since a
+    generous timeout that still fires means the model cannot keep up and
+    retrying would only double the wait.
+    """
     if not settings.OLLAMA_LOCAL_URL:
         return
     url = f"{settings.OLLAMA_LOCAL_URL}/api/chat"
@@ -106,24 +135,40 @@ async def ollama_chat_stream(model: str, prompt: str) -> AsyncGenerator[str, Non
         "stream": True,
         "options": {"num_ctx": 32768, "num_predict": 4096, "temperature": 0.3},
     }
-    client = await get_ollama_client()
-    async with client.stream(
-        "POST", url, json=payload,
-        timeout=_ollama_timeout(len(prompt)),
-    ) as resp:
-        resp.raise_for_status()
-        async for line in resp.aiter_lines():
-            if not line.strip():
-                continue
-            try:
-                chunk = json.loads(line)
-                content = chunk.get("message", {}).get("content", "")
-                if content:
-                    yield content
-                if chunk.get("done"):
-                    return
-            except json.JSONDecodeError:
-                continue
+    timeout = _ollama_timeout(len(prompt), streaming=True)
+
+    produced = False
+    for attempt in range(2):  # initial attempt + 1 retry on transient errors
+        try:
+            client = await get_ollama_client()
+            async with client.stream("POST", url, json=payload, timeout=timeout) as resp:
+                resp.raise_for_status()
+                async for line in resp.aiter_lines():
+                    if not line.strip():
+                        continue
+                    try:
+                        chunk = json.loads(line)
+                    except json.JSONDecodeError:
+                        continue
+                    content = chunk.get("message", {}).get("content", "")
+                    if content:
+                        produced = True
+                        yield content
+                    if chunk.get("done"):
+                        return
+            return
+        except httpx.TimeoutException:
+            # Timeout already exhausted — retrying wastes another long wait.
+            raise
+        except (httpx.ConnectError, httpx.ReadError) as exc:
+            if attempt == 1 or produced:
+                # Final attempt, or partial output already streamed — do not
+                # retry. Reset the shared client to clear a dead connection.
+                await _reset_ollama_client()
+                raise
+            logger.debug("Ollama stream error (attempt 1/2), retrying: %s", exc)
+            await asyncio.sleep(0.5)
+            continue
 
 
 async def call_ollama_vision(

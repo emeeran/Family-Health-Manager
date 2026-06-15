@@ -170,8 +170,11 @@ export function streamRequest(
   if (body) headers["Content-Type"] = "application/json";
 
   const controller = new AbortController();
-  // AI streaming can take minutes — use 5 min timeout
-  const STREAM_TIMEOUT = 300_000;
+  // Local CPU inference (e.g. medgemma) can take many minutes to evaluate a
+  // large clinical prompt before the first token streams; the backend caps the
+  // streaming read timeout at 1800s, so allow the request to live that long.
+  // Heartbeat ("ping") SSE events keep the connection alive during the wait.
+  const STREAM_TIMEOUT = 1_800_000;
   const timeoutId = setTimeout(() => controller.abort(), STREAM_TIMEOUT);
 
   const promise = (async () => {

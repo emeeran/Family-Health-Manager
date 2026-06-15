@@ -135,7 +135,7 @@ async def chat_stream(
             async for chunk in ollama_chat_stream(model, full_prompt):
                 await queue.put((label, chunk))
         except Exception as exc:
-            logger.warning("Ollama streaming model %s failed: %s", label, exc)
+            logger.warning("Ollama streaming model %s failed: %s", label, _base.exc_description(exc))
         finally:
             await queue.put(None)
 

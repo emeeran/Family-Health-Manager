@@ -175,6 +175,8 @@ class AIService:
         comprehensive: bool = False,
     ) -> AsyncGenerator[str, None]:
         """Generate AI insight with SSE progress events."""
+        from app.services.ai import base as _base
+
         def sse(data: dict) -> str:
             return json.dumps(data)
 
@@ -217,16 +219,23 @@ class AIService:
             try:
                 yield sse({"stage": "provider", "provider": label})
                 chunks = []
-                async for chunk in self._ollama_chat_stream(model, full_prompt):
-                    chunks.append(chunk)
-                    yield sse({"stage": "token", "content": chunk})
+                async for kind, payload in _base.stream_with_heartbeat(
+                    self._ollama_chat_stream(model, full_prompt)
+                ):
+                    if kind == "beat":
+                        yield sse({"stage": "ping"})
+                    elif kind == "chunk" and isinstance(payload, str):
+                        chunks.append(payload)
+                        yield sse({"stage": "token", "content": payload})
+                    elif kind == "error" and isinstance(payload, BaseException):
+                        raise payload
                 result = "".join(chunks)
                 if result:
                     full_response = result
                     provider = label
                     break
             except Exception as exc:
-                logger.warning("Ollama streaming model %s failed: %s", label, exc)
+                logger.warning("Ollama streaming model %s failed: %s", label, _base.exc_description(exc))
 
         # Fallback: cloud providers (non-streaming) — use household-configured models
         if not full_response:
@@ -277,6 +286,8 @@ class AIService:
         household_id: UUID | None = None,
     ) -> AsyncGenerator[str, None]:
         """Stream AI chat response with SSE progress events."""
+        from app.services.ai import base as _base
+
         def sse(data: dict) -> str:
             return json.dumps(data)
 
@@ -334,36 +345,24 @@ class AIService:
             try:
                 yield sse({"stage": "provider", "provider": label})
                 chunks = []
-                async for chunk in self._ollama_chat_stream(model, full_prompt):
-                    chunks.append(chunk)
-                    yield sse({"stage": "token", "content": chunk})
+                async for kind, payload in _base.stream_with_heartbeat(
+                    self._ollama_chat_stream(model, full_prompt)
+                ):
+                    if kind == "beat":
+                        yield sse({"stage": "ping"})
+                    elif kind == "chunk" and isinstance(payload, str):
+                        chunks.append(payload)
+                        yield sse({"stage": "token", "content": payload})
+                    elif kind == "error" and isinstance(payload, BaseException):
+                        raise payload
                 result = "".join(chunks)
                 if result:
                     full_response = result
                     provider = label
                     break
             except Exception as exc:
-                logger.warning("Ollama streaming model %s failed: %s", label, exc)
+                logger.warning("Ollama streaming model %s failed: %s", label, _base.exc_description(exc))
 
-        if not full_response:
-            for model, label in [
-                (settings.OLLAMA_TEXT_MODEL, f"Ollama {settings.OLLAMA_TEXT_MODEL}"),
-            ]:
-                try:
-                    yield sse({"stage": "provider", "provider": label})
-                    chunks = []
-                    async for chunk in self._ollama_chat_stream(model, full_prompt):
-                        chunks.append(chunk)
-                        yield sse({"stage": "token", "content": chunk})
-                    result = "".join(chunks)
-                    if result:
-                        full_response = result
-                        provider = label
-                        break
-                except Exception as exc:
-                    logger.warning("Ollama streaming model %s failed: %s", label, exc)
-
-        # Fallback: cloud providers — use household-configured models
         if not full_response:
             from app.schemas.ai_provider_config import PROVIDER_LABELS
 
@@ -782,7 +781,7 @@ class AIService:
                     return result, label
             except Exception as exc:
                 record_provider_failure(prov.id)
-                logger.warning("Provider %s failed: %s", label, exc)
+                logger.warning("Provider %s failed: %s", label, _base.exc_description(exc))
                 continue
         raise ValueError("All AI providers failed")
 
@@ -791,6 +790,7 @@ class AIService:
     ) -> tuple[str, str]:
         """Call AI provider with failover, skipping the excluded provider."""
         from app.schemas.ai_provider_config import PROVIDER_LABELS
+        from app.services.ai import base as _base
         config = await self._get_provider_config()
         for prov in config.providers:
             if not prov.enabled:
@@ -807,7 +807,7 @@ class AIService:
                     logger.info("Verification AI call succeeded via %s", label)
                     return result, label
             except Exception as exc:
-                logger.warning("Verification provider %s failed: %s", label, exc)
+                logger.warning("Verification provider %s failed: %s", label, _base.exc_description(exc))
                 continue
         raise ValueError("All verification providers failed")
 

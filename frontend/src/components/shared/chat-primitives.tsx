@@ -18,6 +18,45 @@ export function TypingIndicator() {
 }
 
 /* ------------------------------------------------------------------ */
+/*  ThinkingIndicator                                                   */
+/* ------------------------------------------------------------------ */
+
+/**
+ * "Thinking…" indicator shown while the model evaluates the prompt before the
+ * first token streams. On local CPU inference this can take minutes, so a bare
+ * spinner reads as frozen — the live elapsed timer reassures the user the
+ * request is alive (the backend emits "ping" SSE heartbeats to keep the
+ * connection open during the same window).
+ */
+export function ThinkingIndicator() {
+  const [elapsed, setElapsed] = useState(0);
+
+  useEffect(() => {
+    const start = Date.now();
+    setElapsed(0);
+    const id = setInterval(() => {
+      setElapsed(Math.floor((Date.now() - start) / 1000));
+    }, 1000);
+    return () => clearInterval(id);
+  }, []);
+
+  const display =
+    elapsed < 60
+      ? `${elapsed}s`
+      : `${Math.floor(elapsed / 60)}:${String(elapsed % 60).padStart(2, "0")}`;
+
+  return (
+    <div className="flex items-center gap-2 py-0.5">
+      <TypingIndicator />
+      <span className="text-[13px] text-muted-foreground/60">
+        Thinking<span className="animate-pulse">…</span>
+        <span className="tabular-nums text-muted-foreground/40 ml-1.5">{display}</span>
+      </span>
+    </div>
+  );
+}
+
+/* ------------------------------------------------------------------ */
 /*  ChatMessage                                                         */
 /* ------------------------------------------------------------------ */
 
@@ -135,7 +174,7 @@ export function StreamingMessage({
               </Suspense>
             </div>
           ) : (
-            <TypingIndicator />
+            <ThinkingIndicator />
           )}
         </div>
       </div>
@@ -157,7 +196,7 @@ export function StreamingMessage({
             </Suspense>
           </div>
         ) : (
-          <TypingIndicator />
+          <ThinkingIndicator />
         )}
       </div>
     </div>

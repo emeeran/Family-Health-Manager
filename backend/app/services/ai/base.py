@@ -4,6 +4,7 @@ import hashlib
 import logging
 import time
 from collections import OrderedDict
+from collections.abc import AsyncGenerator
 
 import httpx
 
@@ -94,6 +95,64 @@ def get_lock() -> asyncio.Lock:
     if _client_lock is None:
         _client_lock = asyncio.Lock()
     return _client_lock
+
+
+def exc_description(exc: BaseException) -> str:
+    """Human-readable exception description that is never blank.
+
+    httpx transport errors (e.g. ``ReadTimeout``, ``ConnectError``) stringify
+    to an empty string, which makes log lines like ``"... failed: "`` useless.
+    This always includes the exception type so failures stay diagnosable.
+    """
+    msg = str(exc).strip()
+    return f"{type(exc).__name__}: {msg}" if msg else type(exc).__name__
+
+
+async def stream_with_heartbeat(
+    chunk_agen: AsyncGenerator[str, None],
+    *,
+    interval: float = 15.0,
+) -> AsyncGenerator[tuple[str, object], None]:
+    """Yield model chunks while emitting periodic heartbeats during silent waits.
+
+    Local CPU inference (e.g. medgemma) can spend minutes evaluating the prompt
+    before the first token streams, leaving the SSE connection idle long enough
+    for proxies/browsers to drop it. This races the chunk generator against a
+    timer, yielding ``("beat", None)`` every ``interval`` seconds while waiting
+    so callers can emit keep-alive events.
+
+    Yields:
+        ``("chunk", str)``  — a streamed token chunk from ``chunk_agen``
+        ``("beat", None)``  — heartbeat (no model output yet)
+        ``("error", exc)``  — the generator raised; caller should re-raise
+        ``("done", None)``  — generator finished cleanly
+    """
+    queue: asyncio.Queue[tuple[str, object]] = asyncio.Queue()
+
+    async def _pump() -> None:
+        try:
+            async for c in chunk_agen:
+                await queue.put(("chunk", c))
+        except BaseException as exc:  # noqa: BLE001 — surface to caller
+            await queue.put(("error", exc))
+        else:
+            await queue.put(("done", None))
+
+    pump_task = asyncio.create_task(_pump())
+    try:
+        while True:
+            try:
+                item = await asyncio.wait_for(queue.get(), timeout=interval)
+            except asyncio.TimeoutError:
+                yield ("beat", None)
+                continue
+            yield item
+            if item[0] in ("done", "error"):
+                break
+    finally:
+        if not pump_task.done():
+            pump_task.cancel()
+        await asyncio.gather(pump_task, return_exceptions=True)
 
 
 async def get_cloud_client() -> httpx.AsyncClient:
