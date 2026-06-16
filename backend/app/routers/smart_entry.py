@@ -57,6 +57,7 @@ class NLParseResponse(BaseModel):
     meal_timing: str | None = None
     hba1c_value: str | None = None
     weight: str | None = None
+    height: str | None = None
     blood_pressure: str | None = None
     heart_rate: str | None = None
     temperature: str | None = None
@@ -194,7 +195,13 @@ async def parse_natural_language(
         preview_fields.append(NLFieldPreview(label="HbA1c", value=f'{parsed["hba1c_value"]}%'))
 
     vitals_parts = []
-    for key, label in [("weight", "Wt"), ("blood_pressure", "BP"), ("heart_rate", "HR"), ("temperature", "Temp")]:
+    for key, label in [
+        ("weight", "Wt"),
+        ("height", "Ht"),
+        ("blood_pressure", "BP"),
+        ("heart_rate", "HR"),
+        ("temperature", "Temp"),
+    ]:
         if parsed.get(key):
             vitals_parts.append(f"{label}: {parsed[key]}")
     if vitals_parts:
@@ -226,6 +233,7 @@ async def parse_natural_language(
         meal_timing=parsed.get("meal_timing"),
         hba1c_value=_scalar(parsed.get("hba1c_value")),
         weight=_scalar(parsed.get("weight")),
+        height=_scalar(parsed.get("height")),
         blood_pressure=parsed.get("blood_pressure"),
         heart_rate=_scalar(parsed.get("heart_rate")),
         temperature=_scalar(parsed.get("temperature")),

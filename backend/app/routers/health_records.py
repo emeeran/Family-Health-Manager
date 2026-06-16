@@ -379,6 +379,30 @@ async def create_record(
         except Exception as exc:
             logger.warning("Medication/lab sync skipped: %s", exc)
 
+    # Sync vitals (weight/height/BP/HR/temp) from a doctor visit into the member
+    # profile + a VITALS record so BMI/vitals history includes the visit.
+    if request.record_type == RecordType.DOCTOR_VISIT and request.clinical_data:
+        try:
+            from app.services.member_service import MemberService
+            parsed_cd = (
+                json.loads(request.clinical_data)
+                if isinstance(request.clinical_data, str)
+                else request.clinical_data
+            )
+            if isinstance(parsed_cd, dict):
+                vitals = {
+                    k: parsed_cd.get(k)
+                    for k in ("weight", "height", "blood_pressure", "heart_rate", "temperature")
+                    if parsed_cd.get(k) not in (None, "")
+                }
+                if vitals:
+                    member_svc = MemberService(db)
+                    await member_svc.sync_vitals_from_visit(
+                        member_id, record.record_date, vitals, record.id
+                    )
+        except (json.JSONDecodeError, ValueError, TypeError, AttributeError) as exc:
+            logger.warning("Vitals sync skipped: %s", exc)
+
     # Fire-and-forget AI insight generation
     try:
         from app.services.insight_service import spawn_insight_task
@@ -701,6 +725,35 @@ async def update_record(
             await asyncio.gather(_sync_medications(), _sync_lab_results())
         except Exception as exc:
             logger.warning("Medication/lab sync on update skipped: %s", exc)
+
+    # Sync vitals from an updated doctor visit into the member profile + the
+    # visit's VITALS record (update-or-create via the _source_visit tag, so
+    # editing a visit updates the same VITALS row instead of duplicating it).
+    if (
+        record.record_type == RecordType.DOCTOR_VISIT
+        and "clinical_data" in update_data
+        and update_data.get("clinical_data")
+    ):
+        try:
+            from app.services.member_service import MemberService
+            parsed_cd = (
+                json.loads(update_data["clinical_data"])
+                if isinstance(update_data["clinical_data"], str)
+                else update_data["clinical_data"]
+            )
+            if isinstance(parsed_cd, dict):
+                vitals = {
+                    k: parsed_cd.get(k)
+                    for k in ("weight", "height", "blood_pressure", "heart_rate", "temperature")
+                    if parsed_cd.get(k) not in (None, "")
+                }
+                if vitals:
+                    member_svc = MemberService(db)
+                    await member_svc.sync_vitals_from_visit(
+                        member_id, record.record_date, vitals, record.id
+                    )
+        except (json.JSONDecodeError, ValueError, TypeError, AttributeError) as exc:
+            logger.warning("Vitals sync on update skipped: %s", exc)
 
     # Auto-create FOLLOW_UP reminder if next_review_date was just set (deduped)
     if "next_review_date" in update_data and record.next_review_date:

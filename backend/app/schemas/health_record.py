@@ -1,6 +1,6 @@
 """Health record schemas."""
 import json
-from pydantic import BaseModel, Field, ConfigDict, model_validator
+from pydantic import BaseModel, Field, ConfigDict, model_validator, field_validator
 from datetime import datetime, date, time
 from uuid import UUID
 from app.models.base import RecordType
@@ -106,6 +106,25 @@ class ExtractedFields(BaseModel):
     prescriptions: list[dict] | None = Field(None, description="Structured prescription rows")
     lab_tests: list[dict] | None = Field(None, description="Structured lab test rows")
     eyeglass: dict | None = Field(None, description="Structured eyeglass prescription")
+    # Vitals — keys mirror the VITALS_FIELDS config so they map straight onto the
+    # doctor-visit / vitals custom fields. Coerced to trimmed strings because the
+    # model may emit numbers (e.g. 72.5) for weight/height.
+    weight: str | None = Field(None, description="Weight (kg)")
+    height: str | None = Field(None, description="Height (cm)")
+    blood_pressure: str | None = Field(None, description="Blood pressure, e.g. '120/80' (mmHg)")
+    heart_rate: str | None = Field(None, description="Heart rate (bpm)")
+    temperature: str | None = Field(None, description="Temperature (°F)")
+
+    @field_validator(
+        "weight", "height", "blood_pressure", "heart_rate", "temperature", mode="before"
+    )
+    @classmethod
+    def _coerce_vital_scalar(cls, v: object) -> str | None:
+        """Coerce a vital value (model may return int/float) to a trimmed string."""
+        if v is None:
+            return None
+        s = str(v).strip()
+        return s or None
 
     def has_any_data(self) -> bool:
         """Check if at least one field has data."""
@@ -123,6 +142,11 @@ class ExtractedFields(BaseModel):
             or self.prescriptions
             or self.lab_tests
             or self.eyeglass
+            or self.weight
+            or self.height
+            or self.blood_pressure
+            or self.heart_rate
+            or self.temperature
         )
 
 

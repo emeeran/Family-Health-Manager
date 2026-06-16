@@ -105,6 +105,59 @@ const LAB_RESULTS_TABLE: TableRowDef = {
   fields: LAB_TEST_FIELDS,
 };
 
+// ── Vitals field set (shared by the `vitals` record type and doctor visits) ──
+// Stored under these exact keys in the structured clinical_data JSON so that
+// AI/NL extraction (merge-extracted.ts) can populate them and the backend
+// vitals-sync can read them back out.
+const VITALS_FIELDS: FieldDef[] = [
+  {
+    key: "blood_pressure",
+    label: "Blood Pressure",
+    type: "text",
+    placeholder: "e.g. 120/80",
+    helpText: "mmHg",
+  },
+  {
+    key: "heart_rate",
+    label: "Heart Rate",
+    type: "number",
+    placeholder: "e.g. 72",
+    min: "30",
+    max: "250",
+    helpText: "bpm",
+  },
+  {
+    key: "temperature",
+    label: "Temperature",
+    type: "number",
+    placeholder: "e.g. 98.6",
+    min: "90",
+    max: "115",
+    step: "0.1",
+    helpText: "°F",
+  },
+  {
+    key: "weight",
+    label: "Weight",
+    type: "number",
+    placeholder: "e.g. 72.5",
+    min: "1",
+    max: "500",
+    step: "0.1",
+    helpText: "kg",
+  },
+  {
+    key: "height",
+    label: "Height",
+    type: "number",
+    placeholder: "e.g. 170",
+    min: "30",
+    max: "250",
+    step: "0.1",
+    helpText: "cm",
+  },
+];
+
 const DOCTOR_VISIT: RecordTypeConfig = {
   recordType: "doctor_visit",
   schemaFields: {
@@ -137,6 +190,9 @@ const DOCTOR_VISIT: RecordTypeConfig = {
       placeholder: "Tests ordered or recommended...",
       span: 2,
     },
+    // Vitals captured during the visit (also surfaced to the member profile /
+    // BMI history on save by the backend vitals-sync).
+    ...VITALS_FIELDS,
     {
       key: "notes",
       label: "Notes",
@@ -317,44 +373,7 @@ const VITALS: RecordTypeConfig = {
     provider_id: false,
     record_time: true,
   },
-  customFields: [
-    {
-      key: "blood_pressure",
-      label: "Blood Pressure",
-      type: "text",
-      placeholder: "e.g. 120/80",
-      helpText: "mmHg",
-    },
-    {
-      key: "heart_rate",
-      label: "Heart Rate",
-      type: "number",
-      placeholder: "e.g. 72",
-      min: "30",
-      max: "250",
-      helpText: "bpm",
-    },
-    {
-      key: "temperature",
-      label: "Temperature",
-      type: "number",
-      placeholder: "e.g. 98.6",
-      min: "90",
-      max: "115",
-      step: "0.1",
-      helpText: "°F",
-    },
-    {
-      key: "weight",
-      label: "Weight",
-      type: "number",
-      placeholder: "e.g. 72.5",
-      min: "1",
-      max: "500",
-      step: "0.1",
-      helpText: "kg",
-    },
-  ],
+  customFields: VITALS_FIELDS,
   description: "Record vital signs (BP, pulse, temperature, weight).",
 };
 

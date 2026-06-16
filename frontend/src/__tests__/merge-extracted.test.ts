@@ -36,6 +36,11 @@ const nilFields: ExtractedFields = {
   prescriptions: null,
   lab_tests: null,
   eyeglass: null,
+  weight: null,
+  height: null,
+  blood_pressure: null,
+  heart_rate: null,
+  temperature: null,
 };
 
 function lastUpdater(fn: unknown) {
@@ -127,6 +132,7 @@ describe("typeSpecificFieldsFromNL", () => {
       meal_timing: "after_food",
       hba1c_value: null,
       weight: "",
+      height: "172",
       blood_pressure: "120/80",
       heart_rate: null,
       temperature: null,
@@ -134,6 +140,7 @@ describe("typeSpecificFieldsFromNL", () => {
     expect(fields).toEqual({
       glucose_value: "110",
       meal_timing: "after_food",
+      height: "172",
       blood_pressure: "120/80",
     });
   });

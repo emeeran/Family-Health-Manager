@@ -413,7 +413,7 @@ INSTRUCTIONS:
 4. Extract any relevant health data.
 5. Today's date is {datetime.now().strftime('%Y-%m-%d')} -- use it to resolve relative dates like "yesterday", "last week".
 6. For glucose/blood sugar mentions, include glucose_value and meal_timing.
-7. For vitals mentions (weight, BP, heart rate, temperature), include individual fields.
+7. For vitals mentions (weight, height, BP, heart rate, temperature), include individual fields.
 8. For HbA1c mentions, include hba1c_value (percentage).
 9. For prescriptions/medicines, populate the prescriptions array (one entry per medicine) AND a prescription_text summary.
 10. For lab/test results, populate the lab_tests array (one entry per test) and set record_type to lab_report.
@@ -445,6 +445,7 @@ Return this JSON:
   "meal_timing": "before_food|after_food" or null,
   "hba1c_value": "number" or null,
   "weight": "value" or null,
+  "height": "value in cm" or null,
   "blood_pressure": "systolic/diastolic" or null,
   "heart_rate": "number" or null,
   "temperature": "value" or null,

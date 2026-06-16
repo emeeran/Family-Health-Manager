@@ -67,6 +67,12 @@ export interface ExtractedFields {
   prescriptions: Record<string, string>[] | null;
   lab_tests: Record<string, string>[] | null;
   eyeglass: Record<string, string> | null;
+  // Vitals (weight kg, height cm, blood_pressure mmHg, heart_rate bpm, temperature °F)
+  weight: string | null;
+  height: string | null;
+  blood_pressure: string | null;
+  heart_rate: string | null;
+  temperature: string | null;
 }
 
 export interface ExtractionResponse {

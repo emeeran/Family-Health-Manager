@@ -57,6 +57,7 @@ IMPORTANT INSTRUCTIONS:
 11. chief_complaint: The main reason for the visit / chief complaint (e.g. "Fever for 3 days", "Routine follow-up for T2DM"). Extract exactly as stated, including from handwritten notes.
 12. investigations: Any tests or investigations ordered, recommended, or mentioned (e.g. "CBC, HbA1c, Lipid profile, ECG"). Comma-separated.
 13. clinical_data: Include a transcription of any handwritten notes, advice, or instructions that don't fit into other fields. Preserve the original meaning even if exact words are uncertain.
+14. VITALS: If the document records any vital signs or measurements, extract them. weight = numeric kg, height = numeric cm, blood_pressure = "systolic/diastolic" string e.g. "120/80" (mmHg), heart_rate = numeric bpm, temperature = numeric °F. Set a field to null if that vital is not present. Do not invent values.
 
 Return this exact JSON structure:
 {
@@ -83,7 +84,12 @@ Return this exact JSON structure:
     "re_sph": "+2.50", "re_cyl": "-0.50", "re_axs": "140", "re_va": "6/6",
     "le_sph": "+1.25", "le_cyl": "-0.75", "le_axs": "090", "le_va": "6/6",
     "add_power": "+2.50", "pd": "32/32"
-  } or null
+  } or null,
+  "weight": 72.5 or null,
+  "height": 170 or null,
+  "blood_pressure": "120/80" or null,
+  "heart_rate": 76 or null,
+  "temperature": 98.6 or null
 }"""
 
 

@@ -131,22 +131,144 @@ class MemberService:
         w_changed = w != old_w
 
         if (h_changed or w_changed) and h and w and h > 0:
-            hm = h / 100
-            bmi = round(w / (hm * hm), 1)
-            vitals_record = HealthRecord(
-                family_member_id=member_id,
-                record_type=RecordType.VITALS,
-                record_date=datetime.now(timezone.utc).date(),
-                clinical_data=json.dumps({
-                    "_type": "structured",
-                    "bmi": bmi,
-                    "height_cm": h,
-                    "weight_kg": w,
-                }),
-            )
-            self.db.add(vitals_record)
+            payload = self._build_vitals_payload(height_cm=h, weight_kg=w)
+            if payload is not None:
+                self.db.add(
+                    HealthRecord(
+                        family_member_id=member_id,
+                        record_type=RecordType.VITALS,
+                        record_date=datetime.now(timezone.utc).date(),
+                        clinical_data=json.dumps(payload),
+                    )
+                )
 
         return member
+
+    @staticmethod
+    def _build_vitals_payload(
+        *,
+        height_cm: float | None = None,
+        weight_kg: float | None = None,
+        blood_pressure: str | None = None,
+        heart_rate: str | None = None,
+        temperature: str | None = None,
+        source_visit_id: UUID | None = None,
+    ) -> dict | None:
+        """Build the structured clinical_data dict for a VITALS record.
+
+        Keys match what the BMI-history reader (member_history) expects
+        (bmi/height_cm/weight_kg) plus blood_pressure/heart_rate/temperature.
+        Returns None if no vital values are present.
+        """
+        payload: dict[str, object] = {"_type": "structured"}
+        if height_cm and weight_kg and height_cm > 0:
+            hm = height_cm / 100
+            payload["bmi"] = round(weight_kg / (hm * hm), 1)
+        if height_cm is not None:
+            payload["height_cm"] = height_cm
+        if weight_kg is not None:
+            payload["weight_kg"] = weight_kg
+        if blood_pressure:
+            payload["blood_pressure"] = blood_pressure
+        if heart_rate:
+            payload["heart_rate"] = heart_rate
+        if temperature:
+            payload["temperature"] = temperature
+        if source_visit_id is not None:
+            payload["_source_visit"] = str(source_visit_id)
+        vital_keys = {"bmi", "height_cm", "weight_kg", "blood_pressure", "heart_rate", "temperature"}
+        if not (vital_keys & payload.keys()):
+            return None
+        return payload
+
+    async def sync_vitals_from_visit(
+        self,
+        member_id: UUID,
+        record_date: date,
+        vitals: dict,
+        source_visit_id: UUID,
+    ) -> None:
+        """Sync vitals from a doctor-visit record into the member profile + a VITALS record.
+
+        ``vitals`` maps the frontend custom-field keys (weight, height,
+        blood_pressure, heart_rate, temperature) to their string values. Updates
+        the member's current height/weight directly (NOT via update_member, to
+        avoid its auto-VITALS duplicate), then writes exactly one VITALS record
+        tagged with the source visit so BMI/vitals history includes the visit and
+        edits update in place rather than creating duplicates.
+        """
+        def _fnum(val: object) -> float | None:
+            if val is None:
+                return None
+            try:
+                return float(str(val).strip())
+            except (TypeError, ValueError):
+                return None
+
+        def _fstr(val: object) -> str | None:
+            if val is None:
+                return None
+            s = str(val).strip()
+            return s or None
+
+        weight_kg = _fnum(vitals.get("weight"))
+        height_cm = _fnum(vitals.get("height"))
+        blood_pressure = _fstr(vitals.get("blood_pressure"))
+        heart_rate = _fstr(vitals.get("heart_rate"))
+        temperature = _fstr(vitals.get("temperature"))
+
+        if not any(v is not None for v in (weight_kg, height_cm, blood_pressure, heart_rate, temperature)):
+            return
+
+        payload = self._build_vitals_payload(
+            height_cm=height_cm,
+            weight_kg=weight_kg,
+            blood_pressure=blood_pressure,
+            heart_rate=heart_rate,
+            temperature=temperature,
+            source_visit_id=source_visit_id,
+        )
+        if payload is None:
+            return
+
+        # Update member's current profile values (skip update_member's auto-VITALS).
+        result = await self.db.execute(select(FamilyMember).where(FamilyMember.id == member_id))
+        member = result.scalar_one_or_none()
+        if member is not None:
+            if height_cm is not None:
+                member.height_cm = height_cm
+            if weight_kg is not None:
+                member.weight_kg = weight_kg
+
+        # Update-or-create: find an existing VITALS record tagged to this visit.
+        existing: HealthRecord | None = None
+        res = await self.db.execute(
+            select(HealthRecord).where(
+                HealthRecord.family_member_id == member_id,
+                HealthRecord.record_type == RecordType.VITALS,
+                HealthRecord.is_deleted.is_(False),
+            )
+        )
+        for rec in res.scalars().all():
+            try:
+                if json.loads(rec.clinical_data or "{}").get("_source_visit") == str(source_visit_id):
+                    existing = rec
+                    break
+            except (json.JSONDecodeError, TypeError):
+                continue
+
+        if existing is not None:
+            existing.clinical_data = json.dumps(payload)
+            existing.record_date = record_date
+        else:
+            self.db.add(
+                HealthRecord(
+                    family_member_id=member_id,
+                    record_type=RecordType.VITALS,
+                    record_date=record_date,
+                    clinical_data=json.dumps(payload),
+                )
+            )
 
     async def soft_delete_member(self, household_id: UUID, member_id: UUID) -> None:
         """Soft-delete a member."""

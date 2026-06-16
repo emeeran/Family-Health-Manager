@@ -113,6 +113,14 @@ export function mergeExtractedFields(
     chief_complaint: sanitizeText(extracted.chief_complaint),
     existing_conditions: sanitizeText(extracted.existing_conditions),
     investigations: sanitizeText(extracted.investigations),
+    // Vitals — populated by document extraction (NL path also passes these via
+    // extraCustomFields). Keys match the VITALS_FIELDS config so they render for
+    // both the `vitals` and `doctor_visit` record types.
+    weight: sanitizeText(extracted.weight),
+    height: sanitizeText(extracted.height),
+    blood_pressure: sanitizeText(extracted.blood_pressure),
+    heart_rate: sanitizeText(extracted.heart_rate),
+    temperature: sanitizeText(extracted.temperature),
   };
   const pendingCustom: Record<string, string> = {};
   for (const [fieldKey, val] of Object.entries(customFieldMap)) {
@@ -225,6 +233,11 @@ export function extractedFromNL(parsed: {
     prescriptions: parsed.prescriptions,
     lab_tests: parsed.lab_tests,
     eyeglass: null,
+    weight: null,
+    height: null,
+    blood_pressure: null,
+    heart_rate: null,
+    temperature: null,
   };
 }
 
@@ -237,6 +250,7 @@ export function typeSpecificFieldsFromNL(parsed: {
   meal_timing: string | null;
   hba1c_value: string | null;
   weight: string | null;
+  height: string | null;
   blood_pressure: string | null;
   heart_rate: string | null;
   temperature: string | null;
@@ -252,6 +266,7 @@ export function typeSpecificFieldsFromNL(parsed: {
     ["meal_timing", pick(parsed.meal_timing)],
     ["hba1c_value", pick(parsed.hba1c_value)],
     ["weight", pick(parsed.weight)],
+    ["height", pick(parsed.height)],
     ["blood_pressure", pick(parsed.blood_pressure)],
     ["heart_rate", pick(parsed.heart_rate)],
     ["temperature", pick(parsed.temperature)],

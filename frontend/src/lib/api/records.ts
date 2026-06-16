@@ -135,6 +135,7 @@ export interface NLParseResponse {
   meal_timing: string | null;
   hba1c_value: string | null;
   weight: string | null;
+  height: string | null;
   blood_pressure: string | null;
   heart_rate: string | null;
   temperature: string | null;
