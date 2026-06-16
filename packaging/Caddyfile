@@ -15,7 +15,13 @@
 	# Static frontend files (built by Vite)
 	handle {
 		root * /opt/health-manager/frontend
-		try_files {path} /index.html
+		
+		# Fallback to index.html only for paths that don't look like static assets
+		@not_static {
+			not path *.js *.css *.png *.jpg *.jpeg *.gif *.svg *.ico *.woff *.woff2 *.json *.map
+		}
+		rewrite @not_static /index.html
+		
 		file_server
 	}
 

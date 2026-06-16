@@ -43,10 +43,6 @@ export function UniversalQuickAdd() {
 
   const { data: members } = useSWR("quick-add-members", () => listMembers().catch(() => []));
 
-  // Hide on mobile (bottom nav covers it) and on chat page
-  const isChatPage = location.pathname === "/chat";
-  if (isChatPage) return null;
-
   // ── Drag handlers ──
   const onPointerDown = useCallback(
     (e: React.PointerEvent<HTMLButtonElement>) => {
@@ -102,6 +98,12 @@ export function UniversalQuickAdd() {
       dragging.current = false;
     };
   }, []);
+
+  // Hide on the chat page (the floating button collides with the chat input).
+  // IMPORTANT: this guard must stay *after* every hook above. Returning earlier
+  // would skip the useCallback/useEffect calls and break the Rules of Hooks
+  // ("Rendered fewer hooks than expected") when navigating to/from /chat.
+  if (location.pathname === "/chat") return null;
 
   const options: QuickAddOption[] = [
     {

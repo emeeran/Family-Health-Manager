@@ -1,7 +1,7 @@
-const CACHE_NAME = "health-keeper-v2";
-const API_CACHE_NAME = "health-api-v2";
+const CACHE_NAME = "health-keeper-v3";
+const API_CACHE_NAME = "health-api-v3";
 const _API_CACHE_TTL = 5 * 60 * 1000; // 5 minutes
-const PRECACHE_URLS = ["/dashboard", "/members", "/providers"];
+const PRECACHE_URLS = ["/", "/index.html"];
 
 // Install — precache key pages
 self.addEventListener("install", (event) => {
@@ -63,7 +63,7 @@ self.addEventListener("fetch", (event) => {
   if (request.mode === "navigate") {
     event.respondWith(
       fetch(request).catch(() =>
-        caches.match(request).then((r) => r || caches.match("/dashboard"))
+        caches.match(request).then((r) => r || caches.match("/") || caches.match("/index.html"))
       )
     );
     return;
@@ -75,11 +75,20 @@ self.addEventListener("fetch", (event) => {
       caches.match(request).then((cached) => {
         if (cached) return cached;
         return fetch(request).then((response) => {
-          const clone = response.clone();
-          caches.open(CACHE_NAME).then((cache) => cache.put(request, clone));
+          // Verify response is valid and is not a SPA HTML fallback before caching JS/CSS
+          if (response.ok) {
+            const contentType = response.headers.get("content-type") || "";
+            if (request.url.match(/\.(js|css)$/) && contentType.includes("text/html")) {
+              // Return a 404 response instead of caching HTML as a script
+              return new Response("Not Found", { status: 404, statusText: "Not Found" });
+            }
+            const clone = response.clone();
+            caches.open(CACHE_NAME).then((cache) => cache.put(request, clone));
+          }
           return response;
         });
       })
     );
   }
 });
+
