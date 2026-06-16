@@ -1,6 +1,7 @@
 """Fetch available models from each AI provider's API."""
 import asyncio
 import logging
+from collections.abc import Awaitable, Callable
 
 import httpx
 
@@ -83,7 +84,7 @@ async def fetch_available_models() -> dict[str, list[str]]:
     Returns a dict mapping provider ID to sorted model name list.
     Providers without API keys or that fail return an empty list.
     """
-    provider_fetchers: dict[str, object] = {
+    provider_fetchers: dict[str, Callable[[httpx.AsyncClient], Awaitable[list[str]]]] = {
         "openai": _fetch_openai,
         "groq": _fetch_groq,
         "openrouter": _fetch_openrouter,
