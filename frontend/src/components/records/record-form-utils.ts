@@ -20,7 +20,10 @@ export const VALID_RECORD_TYPES = new Set<string>([
   "parkinsons_log",
 ]);
 
-export const EXTRACT_TIMEOUT = 300_000; // 5 min
+// 8 min — headroom for large multi-page scanned PDFs. Server-side OCR runs
+// pages concurrently, but a big document + multiple AI round-trips can still
+// take a few minutes on CPU-only hardware.
+export const EXTRACT_TIMEOUT = 480_000;
 export const MEDICATION_SYNC_KEY = "_medication_sync";
 
 // Derived from the canonical option sets in record-type-configs (single source of truth).

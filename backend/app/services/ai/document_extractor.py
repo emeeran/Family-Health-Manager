@@ -170,7 +170,7 @@ async def extract_medical_data(
             return ExtractionResult(extracted=ExtractedFields())
 
         # Step 1: Render pages and OCR with tesseract (fast, local)
-        ocr_text = ocr_pdf_pages(file_path, page_count)
+        ocr_text = await ocr_pdf_pages(file_path, page_count)
 
         if ocr_text:
             logger.info("OCR extracted %d chars from %d pages — using text extraction", len(ocr_text), page_count)
@@ -309,71 +309,103 @@ def chunk_ocr_text(ocr_text: str, pages_per_chunk: int = 3) -> list[str]:
     return chunks if chunks else [ocr_text]
 
 
-def ocr_pdf_pages(file_path: str, page_count: int) -> str | None:
+# Max concurrent tesseract processes during multi-page OCR. tesseract is CPU-bound,
+# so cap concurrency to avoid thrashing CPU/memory on multi-page scanned PDFs.
+OCR_CONCURRENCY = 4
+
+
+async def ocr_pdf_pages(file_path: str, page_count: int) -> str | None:
     """OCR all pages of a scanned PDF using tesseract.
 
-    Renders each page to an image, runs tesseract OCR, and combines
-    the results. Much faster and more reliable than vision AI for
-    text-heavy scanned documents.
+    Renders each page to an image, runs tesseract OCR, and combines the
+    results. Pages are OCR'd concurrently (bounded by OCR_CONCURRENCY) and
+    each runs in a worker thread so the blocking tesseract subprocess does
+    not stall the event loop. Much faster and more reliable than vision AI
+    for text-heavy scanned documents.
     """
-    import os
     import shutil
-    import subprocess
-    import tempfile
 
     if not shutil.which("tesseract"):
         logger.info("Tesseract not installed — skipping OCR")
         return None
 
-    import fitz
-    doc = fitz.open(file_path)
-    all_text: list[str] = []
+    semaphore = asyncio.Semaphore(OCR_CONCURRENCY)
 
-    for page_num in range(page_count):
+    async def _bounded(page_num: int) -> str:
+        async with semaphore:
+            return await asyncio.to_thread(_ocr_single_page, file_path, page_num)
+
+    # gather preserves order, so page markers stay correctly numbered
+    results = await asyncio.gather(*[_bounded(p) for p in range(page_count)])
+
+    all_text = [f"--- Page {i + 1} ---\n{txt}" for i, txt in enumerate(results) if txt]
+    combined = "\n\n".join(all_text).strip()
+    return combined or None
+
+
+def _ocr_single_page(file_path: str, page_num: int) -> str:
+    """Render and OCR a single PDF page with tesseract (blocking worker).
+
+    Opens the PDF independently per call, so it is safe to run concurrently
+    from multiple threads. Returns the page text, or "" on failure/empty so
+    the caller can omit the page marker. All temp files are cleaned up in
+    the finally block regardless of outcome.
+    """
+    import os
+    import subprocess
+    import tempfile
+
+    import fitz
+
+    tmp_path: str | None = None
+    enhanced_path: str | None = None
+    try:
+        doc = fitz.open(file_path)
         try:
             page = doc[page_num]
             pix = page.get_pixmap(dpi=200)
             img_bytes = pix.tobytes("png")
+        finally:
+            doc.close()
 
-            with tempfile.NamedTemporaryFile(suffix=".png", delete=False) as tmp:
-                tmp.write(img_bytes)
-                tmp_path = tmp.name
+        with tempfile.NamedTemporaryFile(suffix=".png", delete=False) as tmp:
+            tmp.write(img_bytes)
+            tmp_path = tmp.name
 
-            # Preprocess for better handwriting OCR
-            enhanced_path = _preprocess_image_for_ocr(tmp_path)
-            ocr_input = enhanced_path or tmp_path
+        # Preprocess for better handwriting OCR
+        enhanced_path = _preprocess_image_for_ocr(tmp_path)
+        ocr_input = enhanced_path or tmp_path
 
-            # PSM 6 = uniform block of text, better for medical documents
+        # PSM 6 = uniform block of text, better for medical documents
+        result = subprocess.run(
+            ["tesseract", ocr_input, "stdout", "--psm", "6"],
+            capture_output=True, text=True, timeout=30,
+        )
+        page_text = result.stdout.strip()
+
+        # If PSM 6 returns nothing, try PSM 4 (variable text sizes)
+        if not page_text:
             result = subprocess.run(
-                ["tesseract", ocr_input, "stdout", "--psm", "6"],
+                ["tesseract", ocr_input, "stdout", "--psm", "4"],
                 capture_output=True, text=True, timeout=30,
             )
             page_text = result.stdout.strip()
 
-            # If PSM 6 returns nothing, try PSM 4 (variable text sizes)
-            if not page_text:
-                result = subprocess.run(
-                    ["tesseract", ocr_input, "stdout", "--psm", "4"],
-                    capture_output=True, text=True, timeout=30,
-                )
-                page_text = result.stdout.strip()
-
-            os.unlink(tmp_path)
-            if enhanced_path:
-                try:
-                    os.unlink(enhanced_path)
-                except OSError:
-                    pass
-
-            if page_text:
-                all_text.append(f"--- Page {page_num + 1} ---\n{page_text}")
-        except Exception as exc:
-            logger.warning("OCR failed for page %d: %s", page_num + 1, exc)
-            continue
-
-    doc.close()
-    combined = "\n\n".join(all_text).strip()
-    return combined or None
+        return page_text
+    except Exception as exc:
+        logger.warning("OCR failed for page %d: %s", page_num + 1, exc)
+        return ""
+    finally:
+        if tmp_path:
+            try:
+                os.unlink(tmp_path)
+            except OSError:
+                pass
+        if enhanced_path:
+            try:
+                os.unlink(enhanced_path)
+            except OSError:
+                pass
 
 
 def tesseract_image(file_path: str) -> str | None:
