@@ -19,7 +19,7 @@ class Household(Base):
     id: Mapped[UUID] = mapped_column(primary_key=True, default=uuid4)
     name: Mapped[str] = mapped_column(String(100), nullable=False)
     primary_user_id: Mapped[UUID] = mapped_column(ForeignKey("users.id"), nullable=False)
-    created_at: Mapped[datetime] = mapped_column(DateTime, default=lambda: datetime.now(timezone.utc), nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=lambda: datetime.now(timezone.utc), server_default="CURRENT_TIMESTAMP", nullable=False)
     settings_json: Mapped[str | None] = mapped_column(Text, nullable=True)  # JSON object for feature toggles
 
     primary_user: Mapped["User"] = relationship(back_populates="households")

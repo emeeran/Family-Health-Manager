@@ -45,6 +45,16 @@ if settings.DATABASE_URL.startswith("sqlite"):
     def set_sqlite_pragma(dbapi_connection, connection_record):
         cursor = dbapi_connection.cursor()
         cursor.execute("PRAGMA journal_mode=WAL")
+        # Wait (ms) on a locked DB instead of failing immediately — guards
+        # against transient "database is locked" under concurrent writes.
+        cursor.execute("PRAGMA busy_timeout=5000")
+        # NOTE: PRAGMA foreign_keys=ON is intentionally NOT set. Existing
+        # databases were created/populated with FK enforcement off, and the
+        # schema stores UUIDs inconsistently (users.id as 32-char hex via the
+        # Uuid type; child FK columns like refresh_tokens.user_id as dashed
+        # VARCHAR(36)), so enforcing FKs now would reject otherwise-valid
+        # writes (e.g. login's refresh-token insert) and break existing
+        # installs. Postgres enforces FKs natively regardless.
         cursor.close()
 
 # ---------------------------------------------------------------------------

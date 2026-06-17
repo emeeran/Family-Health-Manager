@@ -1,6 +1,10 @@
 """File storage abstraction."""
+import contextlib
 import hashlib
 import logging
+import shutil
+import subprocess
+import tempfile
 import uuid
 from pathlib import Path
 from collections.abc import AsyncGenerator
@@ -73,12 +77,126 @@ def _content_hash_to_path(content_hash: str, ext: str) -> Path:
     return files_dir / f"{content_hash}{ext}"
 
 
+def _safe_unlink(path: Path) -> None:
+    """Best-effort file deletion."""
+    try:
+        path.unlink()
+    except OSError:
+        pass
+
+
+def optimize_pdf(src: Path) -> Path:
+    """Downsample a PDF via ghostscript to shrink scanned-document size.
+
+    Returns a path to the optimized PDF (a temp file beside *src*). On any
+    failure — gs not installed, gs error, or no size reduction — returns *src*
+    unchanged, so the app always works (just unoptimized) without gs.
+    """
+    if not settings.OPTIMIZE_PDFS:
+        return src
+    gs = shutil.which("gs")
+    if not gs:
+        logger.info("ghostscript not installed — storing PDF unoptimized")
+        return src
+    out = src.parent / f"{src.name}.opt.pdf"
+    try:
+        # Note: PDFSETTINGS needs the PostScript-name form (/ebook), not bare
+        # "ebook" — the latter makes gs exit non-zero.
+        pdf_settings = f"/{settings.PDF_OPTIMIZE_DPI.lstrip('/')}"
+        result = subprocess.run(
+            [
+                gs, "-sDEVICE=pdfwrite",
+                f"-dPDFSETTINGS={pdf_settings}",
+                "-dNOPAUSE", "-dBATCH",
+                f"-sOutputFile={out}", str(src),
+            ],
+            capture_output=True,
+            timeout=120,
+        )
+    except Exception:
+        logger.warning("PDF optimization error", exc_info=True)
+        _safe_unlink(out)
+        return src
+    if result.returncode != 0 or not out.exists() or out.stat().st_size == 0:
+        logger.warning("ghostscript optimization failed: %s", result.stderr.decode()[:200])
+        _safe_unlink(out)
+        return src
+    # Only accept the optimized copy if it actually shrank the file.
+    if out.stat().st_size >= src.stat().st_size:
+        _safe_unlink(out)
+        return src
+    return out
+
+
+async def _store_plaintext_file(
+    src_plaintext: Path, ext: str, mime: str
+) -> tuple[Path, str]:
+    """Optimize (PDF) → hash plaintext → encrypt → write content-addressed.
+
+    Returns ``(final_path, content_hash)``. *src_plaintext* is read but not
+    deleted (the caller owns it). Dedup: if ``final_path`` already exists the
+    existing encrypted file is reused. The stored file is Fernet-encrypted
+    (chunked); ``content_hash`` is of the **plaintext** so dedup/integrity work.
+    """
+    from app.core.encryption import encrypt_file
+
+    optimized = optimize_pdf(src_plaintext) if mime == "application/pdf" else src_plaintext
+    try:
+        content_hash = await hash_existing_file(optimized)
+        final_path = _content_hash_to_path(content_hash, ext)
+        if not final_path.exists():
+            await encrypt_file(optimized, final_path)
+        return final_path, content_hash
+    finally:
+        if optimized is not src_plaintext:
+            _safe_unlink(optimized)
+
+
+@contextlib.asynccontextmanager
+async def plaintext_path(file_path: Path, encrypted: bool):
+    """Async context manager yielding a Path to PLAINTEXT file content.
+
+    For libraries that need a real file path (fitz, Pillow, tesseract). When not
+    encrypted, yields ``file_path`` directly; otherwise decrypts to a temp file
+    and removes it on exit.
+    """
+    if not encrypted:
+        yield file_path
+        return
+    from app.core.encryption import decrypt_file
+
+    tmp = tempfile.NamedTemporaryFile(suffix=".plain", delete=False)  # noqa: SIM115
+    tmp.close()
+    tmp_path = Path(tmp.name)
+    try:
+        tmp_path.write_bytes(await decrypt_file(file_path))
+        yield tmp_path
+    finally:
+        _safe_unlink(tmp_path)
+
+
+async def stream_plaintext(file_path: Path, encrypted: bool) -> AsyncGenerator[bytes, None]:
+    """Yield plaintext chunks — raw stream when unencrypted, else decrypted."""
+    if not encrypted:
+        async for chunk in stream_file(file_path):
+            yield chunk
+        return
+    from app.core.encryption import decrypt_file_chunks
+
+    async for chunk in decrypt_file_chunks(file_path):
+        yield chunk
+
+
+_clamav_unavailable_warned = False
+
+
 def scan_file(file_path: Path) -> bool:
     """Scan file for viruses using ClamAV (if available).
 
     Returns True if the file is clean (or ClamAV is not installed).
     Returns False if a virus is detected.
     """
+    global _clamav_unavailable_warned
     try:
         import clamd
 
@@ -90,9 +208,16 @@ def scan_file(file_path: Path) -> bool:
                 return False
         return True
     except ImportError:
+        # clamd not installed (the common self-hosted case). Warn once so it's
+        # visible that uploads are NOT being virus-scanned, without spamming.
+        if not _clamav_unavailable_warned:
+            logger.warning(
+                "ClamAV (clamd) not installed — uploads will not be virus-scanned"
+            )
+            _clamav_unavailable_warned = True
         return True
     except Exception:
-        logger.debug("ClamAV scan skipped for %s", file_path)
+        logger.warning("ClamAV scan failed for %s — treating file as clean", file_path)
         return True
 
 
@@ -153,12 +278,12 @@ async def save_file(file: UploadFile, prefix: str = "attachments") -> tuple[Path
 
 
 async def save_file_hashed(file: UploadFile) -> tuple[Path, str, str]:
-    """
-    Stream-write uploaded file to a temp path while computing SHA-256.
-    Move to content-addressable sharded path.
-    Deduplicate if file with same hash already exists.
+    """Stream an upload to a temp file, then optimize + encrypt + store.
 
-    Returns: (file_path, content_hash, ext)
+    Validates MIME/size/magic-bytes, virus-scans the plaintext, then runs the
+    storage pipeline (PDF optimization → SHA-256 → Fernet encrypt → content-
+    addressed path with dedup). Returns ``(file_path, content_hash, ext)``;
+    the stored file is encrypted (set ``Attachment.encrypted = True``).
     """
     validate_file(file)
 
@@ -169,8 +294,6 @@ async def save_file_hashed(file: UploadFile) -> tuple[Path, str, str]:
     declared_mime = file.content_type or "application/octet-stream"
     magic_checked = False
 
-    # Stream to temp file while hashing
-    hasher = hashlib.sha256()
     tmp_path = files_dir / f"_tmp_{uuid.uuid4()}{ext}"
 
     total_size = 0
@@ -186,7 +309,6 @@ async def save_file_hashed(file: UploadFile) -> tuple[Path, str, str]:
                         f"File content does not match declared type {declared_mime}"
                     )
                 magic_checked = True
-            hasher.update(chunk)
             await f.write(chunk)
             total_size += len(chunk)
 
@@ -194,21 +316,13 @@ async def save_file_hashed(file: UploadFile) -> tuple[Path, str, str]:
         await aiofiles.os.remove(tmp_path)
         raise ValueError(f"File size {total_size} exceeds maximum {MAX_FILE_SIZE}")
 
-    content_hash = hasher.hexdigest()
-    final_path = _content_hash_to_path(content_hash, ext)
-
-    if final_path.exists():
-        # Dedup: same content already stored
-        await aiofiles.os.remove(tmp_path)
-        logger.info("Deduplicated file with hash %s", content_hash[:12])
-    else:
-        # Move temp to final content-addressed path
-        tmp_path.rename(final_path)
-
-    # Virus scan
-    if not scan_file(final_path):
-        await aiofiles.os.remove(final_path)
-        raise ValueError("File failed virus scan")
+    try:
+        # Virus-scan the PLAINTEXT (before encryption) so ClamAV sees real content.
+        if not scan_file(tmp_path):
+            raise ValueError("File failed virus scan")
+        final_path, content_hash = await _store_plaintext_file(tmp_path, ext, declared_mime)
+    finally:
+        _safe_unlink(tmp_path)
 
     return final_path, content_hash, ext
 

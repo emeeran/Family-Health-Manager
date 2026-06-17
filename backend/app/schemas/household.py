@@ -1,4 +1,5 @@
 """Household schemas."""
+from typing import Literal
 from pydantic import BaseModel, Field, ConfigDict
 from datetime import datetime
 from uuid import UUID
@@ -15,6 +16,9 @@ class FeatureSettings(BaseModel):
     email_notifications: bool = False
     smart_entry: bool = True
     ai_providers: AIProviderConfig = Field(default_factory=default_provider_config)
+    # Data / backup configuration (Data tab). Opt-in; defaults are safe/no-op.
+    backup_schedule: Literal["off", "daily", "weekly"] = "off"
+    backup_keep_max: int = Field(default=10, ge=1, le=100)
 
 
 class HouseholdSettingsResponse(BaseModel):

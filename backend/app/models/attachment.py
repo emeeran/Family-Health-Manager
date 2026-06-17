@@ -23,7 +23,7 @@ class Attachment(Base):
     mime_type: Mapped[str] = mapped_column(String(50), nullable=False)
     file_size: Mapped[int] = mapped_column(Integer, nullable=False)
     uploaded_at: Mapped[datetime] = mapped_column(
-        DateTime, default=lambda: datetime.now(timezone.utc), nullable=False
+        DateTime, default=lambda: datetime.now(timezone.utc), server_default="CURRENT_TIMESTAMP", nullable=False
     )
     content_hash: Mapped[str | None] = mapped_column(String(64), nullable=True, index=True)
     storage_backend: Mapped[str] = mapped_column(String(20), nullable=False, default="local")

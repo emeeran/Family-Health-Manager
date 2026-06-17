@@ -3,6 +3,7 @@ from datetime import datetime, timezone
 from contextlib import asynccontextmanager
 import logging
 import logging.config
+import secrets
 from fastapi import Depends, FastAPI, Request
 from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.cors import CORSMiddleware
@@ -131,8 +132,9 @@ async def lifespan(app: FastAPI):
 
     register_job("prune_tokens", 86400, _prune_tokens)
 
-    # Database backup job
-    register_job("backup_database", 86400, _jobs.backup_database)
+    # Database backup job — ticks hourly; the job self-gates on the household's
+    # configured backup_schedule (off/daily/weekly) so cadence is live-editable.
+    register_job("backup_database", 3600, _jobs.backup_database)
 
     # Only start scheduler in designated container
     if settings.RUN_SCHEDULER:
@@ -345,9 +347,13 @@ async def health_detail(
     db: AsyncSession = Depends(get_db),
 ):
     """Detailed health check with DB connectivity test (requires shared secret)."""
-    health_key = request.headers.get("x-health-key")
-    expected = settings.HEALTH_CHECK_SECRET or settings.SECRET_KEY[:16]
-    if not health_key or health_key != expected:
+    health_key = request.headers.get("x-health-key") or ""
+    expected = settings.HEALTH_CHECK_SECRET
+    if not expected:
+        # Dev-only fallback. Production enforces HEALTH_CHECK_SECRET in config,
+        # so SECRET_KEY is never reachable here in prod.
+        expected = settings.SECRET_KEY[:16]
+    if not secrets.compare_digest(health_key, expected):
         return JSONResponse(status_code=403, content={"error": "forbidden"})
 
     import shutil

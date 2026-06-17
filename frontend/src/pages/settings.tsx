@@ -7,24 +7,10 @@ import { Label } from "@/components/ui/label";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Separator } from "@/components/ui/separator";
 import { Switch } from "@/components/ui/switch";
-import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogFooter,
-  DialogHeader,
-  DialogTitle,
-} from "@/components/ui/dialog";
-import {
-  getHousehold,
-  updateHousehold,
-  resetDatabase,
-  getSettings,
-  updateSettings,
-} from "@/lib/api/household";
+import { getHousehold, updateHousehold, getSettings, updateSettings } from "@/lib/api/household";
 import { getMe, changePassword } from "@/lib/api/auth";
 import { PasswordInput } from "@/components/shared/password-input";
-import { BackupRestoreSection } from "@/components/content/backup-restore";
+import { DataTab } from "@/components/content/data-tab";
 import { getAIStatus, type ProviderStatus } from "@/lib/api/ai";
 import {
   getAIProviderConfig,
@@ -55,20 +41,26 @@ import type { FeatureSettings } from "@/lib/types/household";
 
 // ── Tab configuration ──────────────────────────────────────────
 
-type TabId = "general" | "features" | "ai-providers";
+type TabId = "general" | "features" | "data" | "ai-providers";
 
-const VALID_TABS = new Set<string>(["general", "features", "ai-providers"]);
+const VALID_TABS = new Set<string>(["general", "features", "data", "ai-providers"]);
 
 const TABS: { id: TabId; label: string }[] = [
   { id: "general", label: "General" },
   { id: "features", label: "Features" },
+  { id: "data", label: "Data" },
   { id: "ai-providers", label: "AI Providers" },
 ];
 
 // ── Feature definitions ────────────────────────────────────────
 
+type BooleanFeatureKey = Extract<
+  keyof FeatureSettings,
+  "ai_features" | "ai_verification" | "notifications" | "email_notifications" | "smart_entry"
+>;
+
 const FEATURE_DEFS: {
-  key: keyof FeatureSettings;
+  key: BooleanFeatureKey;
   label: string;
   description: string;
 }[] = [
@@ -202,6 +194,22 @@ export default function SettingsPage() {
       toast.error("Failed to update setting");
     }
   }
+
+  /** Generic settings updater (used by the Data tab for non-boolean fields). */
+  const updateSetting = useCallback(
+    async <K extends keyof FeatureSettings>(key: K, value: FeatureSettings[K]) => {
+      if (!featureSettings) return;
+      const updated = { ...featureSettings, [key]: value };
+      setFeatureSettings(updated);
+      try {
+        await updateSettings({ settings: updated });
+      } catch {
+        setFeatureSettings(featureSettings); // rollback
+        toast.error("Failed to update setting");
+      }
+    },
+    [featureSettings]
+  );
 
   if (loading) {
     return (
@@ -369,27 +377,6 @@ export default function SettingsPage() {
               </form>
             </CardContent>
           </Card>
-
-          <BackupRestoreSection />
-
-          <Separator className="my-2" />
-
-          <Card className="border-destructive/40">
-            <CardHeader className="pb-3">
-              <CardTitle className="text-sm text-destructive">Danger Zone</CardTitle>
-            </CardHeader>
-            <CardContent>
-              <div className="flex items-center justify-between gap-4">
-                <div>
-                  <p className="text-sm font-medium">Reset Database</p>
-                  <p className="text-xs text-muted-foreground">
-                    Permanently delete all data and start fresh. Your account will be preserved.
-                  </p>
-                </div>
-                <ResetDatabaseDialog />
-              </div>
-            </CardContent>
-          </Card>
         </div>
       )}
 
@@ -422,98 +409,12 @@ export default function SettingsPage() {
         </div>
       )}
 
+      {activeTab === "data" && (
+        <DataTab featureSettings={featureSettings} onUpdateSetting={updateSetting} />
+      )}
+
       {activeTab === "ai-providers" && <AIProvidersTab />}
     </div>
-  );
-}
-
-// ── Reset Database Dialog ──────────────────────────────────────
-
-function ResetDatabaseDialog() {
-  const [open, setOpen] = useState(false);
-  const [password, setPassword] = useState("");
-  const [confirmation, setConfirmation] = useState("");
-  const [resetting, setResetting] = useState(false);
-
-  function handleOpenChange(val: boolean) {
-    setOpen(val);
-    if (!val) {
-      setPassword("");
-      setConfirmation("");
-    }
-  }
-
-  async function handleReset() {
-    setResetting(true);
-    try {
-      await resetDatabase(password, confirmation);
-      toast.success("Database reset successfully. Refreshing...");
-      setOpen(false);
-      setPassword("");
-      setConfirmation("");
-      setTimeout(() => window.location.reload(), 1500);
-    } catch (err) {
-      const msg = err instanceof Error ? err.message : "Failed to reset database";
-      toast.error(msg);
-    } finally {
-      setResetting(false);
-    }
-  }
-
-  const confirmed = confirmation === "RESET" && password.length > 0;
-
-  return (
-    <>
-      <Button variant="destructive" size="sm" onClick={() => setOpen(true)}>
-        Reset Database
-      </Button>
-      <Dialog open={open} onOpenChange={handleOpenChange}>
-        <DialogContent>
-          <DialogHeader>
-            <DialogTitle>Reset Database</DialogTitle>
-            <DialogDescription>
-              This will permanently delete all members, health records, providers, attachments,
-              conversations, reminders, and notifications. This action cannot be undone. Your admin
-              account will be preserved.
-            </DialogDescription>
-          </DialogHeader>
-          <div className="space-y-4 py-2">
-            <div className="space-y-2">
-              <Label htmlFor="reset-password" className="text-xs">
-                Your Password
-              </Label>
-              <PasswordInput
-                id="reset-password"
-                value={password}
-                onChange={(e) => setPassword(e.target.value)}
-                placeholder="Enter your password to confirm"
-                className="h-9"
-              />
-            </div>
-            <div className="space-y-2">
-              <Label htmlFor="reset-confirmation" className="text-xs">
-                Type <strong>RESET</strong> to confirm
-              </Label>
-              <Input
-                id="reset-confirmation"
-                value={confirmation}
-                onChange={(e) => setConfirmation(e.target.value)}
-                placeholder="RESET"
-                className="h-9"
-              />
-            </div>
-          </div>
-          <DialogFooter>
-            <Button variant="outline" onClick={() => handleOpenChange(false)} disabled={resetting}>
-              Cancel
-            </Button>
-            <Button variant="destructive" onClick={handleReset} disabled={!confirmed || resetting}>
-              {resetting ? "Resetting..." : "Reset Database"}
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
-    </>
   );
 }
 

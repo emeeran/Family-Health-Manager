@@ -1,5 +1,4 @@
 """Attachment service."""
-import shutil
 from pathlib import Path
 from uuid import UUID
 
@@ -13,8 +12,7 @@ from app.core.storage import (
     delete_file,
     get_staging_dir,
     save_file_hashed,
-    hash_existing_file,
-    _content_hash_to_path,
+    _store_plaintext_file,
 )
 
 
@@ -72,7 +70,7 @@ class AttachmentService:
             content_hash=content_hash,
             storage_backend="local",
             thumbnail_path=None,
-            encrypted=False,
+            encrypted=True,
         )
         self.db.add(attachment)
         await self.db.flush()
@@ -83,7 +81,7 @@ class AttachmentService:
             if isinstance(background_tasks, BackgroundTasks):
                 background_tasks.add_task(
                     generate_thumbnail_background,
-                    self.db, attachment.id, file_path, content_hash, mime,
+                    self.db, attachment.id, file_path, content_hash, mime, True,
                 )
 
         return attachment
@@ -168,22 +166,15 @@ class AttachmentService:
         if not staging_path.exists():
             raise ValueError(f"Staging file not found: {staging_file_id}")
 
-        # Hash the staged file and move to content-addressed path
-        content_hash = await hash_existing_file(staging_path)
-
         import mimetypes
         mime_type = mimetypes.guess_type(staging_file_id)[0] or "application/octet-stream"
         ext = Path(staging_file_id).suffix or ".bin"
 
-        dest_path = _content_hash_to_path(content_hash, ext)
-
-        if dest_path.exists():
-            # Dedup — remove staging file, use existing
-            staging_path.unlink()
-        else:
-            shutil.move(str(staging_path), str(dest_path))
-
+        # Optimize (PDF) + encrypt + content-addressed store (dedup-aware).
+        dest_path, content_hash = await _store_plaintext_file(staging_path, ext, mime_type)
         file_size = dest_path.stat().st_size
+        # Staging file has been consumed.
+        staging_path.unlink(missing_ok=True)
 
         # Performance: defer thumbnail generation to background task
         # instead of blocking the response.
@@ -196,7 +187,7 @@ class AttachmentService:
             content_hash=content_hash,
             storage_backend="local",
             thumbnail_path=None,
-            encrypted=False,
+            encrypted=True,
         )
         self.db.add(attachment)
         await self.db.flush()
@@ -207,7 +198,7 @@ class AttachmentService:
             if isinstance(background_tasks, BackgroundTasks):
                 background_tasks.add_task(
                     generate_thumbnail_background,
-                    self.db, attachment.id, dest_path, content_hash, mime_type,
+                    self.db, attachment.id, dest_path, content_hash, mime_type, True,
                 )
 
         return attachment

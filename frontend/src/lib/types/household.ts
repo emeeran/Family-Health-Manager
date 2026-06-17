@@ -24,6 +24,9 @@ export interface FeatureSettings {
   notifications: boolean;
   email_notifications: boolean;
   smart_entry: boolean;
+  // Data / backup configuration (Data tab)
+  backup_schedule: "off" | "daily" | "weekly";
+  backup_keep_max: number;
 }
 
 export interface HouseholdUpdate {

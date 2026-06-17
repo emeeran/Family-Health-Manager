@@ -30,6 +30,8 @@
   </head>
   <body class="min-h-full flex flex-col">
     <div id="root"></div>
+    <!-- Runtime config (editable post-build) must load before the app bundle. -->
+    <script src="/runtime-config.js"></script>
     <script type="module" src="/src/main.tsx"></script>
   </body>
 </html>

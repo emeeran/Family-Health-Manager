@@ -50,11 +50,12 @@ async def generate_pdf_thumbnail(source_path: Path, dest_path: Path) -> Path:
 
 
 async def generate_thumbnail(
-    file_path: Path, content_hash: str, mime_type: str
+    file_path: Path, content_hash: str, mime_type: str, encrypted: bool = False
 ) -> Path | None:
     """Generate and store a thumbnail for the given file.
 
     Returns the thumbnail path, or None if generation is not supported.
+    When *encrypted* is True the file is decrypted to a temp path first.
     """
     thumb_dir = get_thumbnails_dir()
     thumb_dir.mkdir(parents=True, exist_ok=True)
@@ -63,13 +64,17 @@ async def generate_thumbnail(
     if dest_path.exists():
         return dest_path
 
+    if not (mime_type.startswith("image/") or mime_type == "application/pdf"):
+        return None
+
     try:
-        if mime_type.startswith("image/"):
-            await generate_image_thumbnail(file_path, dest_path)
-        elif mime_type == "application/pdf":
-            await generate_pdf_thumbnail(file_path, dest_path)
-        else:
-            return None
+        from app.core.storage import plaintext_path
+
+        async with plaintext_path(file_path, encrypted) as plain:
+            if mime_type.startswith("image/"):
+                await generate_image_thumbnail(plain, dest_path)
+            else:
+                await generate_pdf_thumbnail(plain, dest_path)
 
         logger.info("Generated thumbnail for %s at %s", content_hash[:12], dest_path)
         return dest_path
@@ -86,6 +91,7 @@ async def generate_thumbnail_background(
     file_path: Path,
     content_hash: str,
     mime_type: str,
+    encrypted: bool = False,
 ) -> None:
     """Generate a thumbnail in a background task and persist the path to the DB.
 
@@ -101,7 +107,7 @@ async def generate_thumbnail_background(
     Errors are logged but never propagated — thumbnails are non-critical.
     """
     try:
-        thumb_path = await generate_thumbnail(file_path, content_hash, mime_type)
+        thumb_path = await generate_thumbnail(file_path, content_hash, mime_type, encrypted)
         if thumb_path is None:
             return
 

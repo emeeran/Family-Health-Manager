@@ -33,13 +33,25 @@ case "$1" in
         ln -s /var/lib/health-manager/data /opt/health-manager/backend/data
         chown -h health-manager:health-manager /opt/health-manager/backend/data
 
-        # Generate SECRET_KEY if not already set in config.env
-        if grep -q '<generate-on-install>' /etc/health-manager/config.env; then
+        # Generate SECRET_KEY if its placeholder is present (new install)
+        if grep -q '<generate-secret-key>' /etc/health-manager/config.env; then
             SECRET_KEY=$(python3 -c "import secrets; print(secrets.token_urlsafe(48))")
-            sed -i "s|<generate-on-install>|${SECRET_KEY}|" /etc/health-manager/config.env
-            chmod 600 /etc/health-manager/config.env
-            chown health-manager:health-manager /etc/health-manager/config.env
+            sed -i "s|<generate-secret-key>|${SECRET_KEY}|" /etc/health-manager/config.env
         fi
+
+        # Generate ENCRYPTION_KEY (Fernet key: 32 random bytes, urlsafe-b64).
+        # New install: replace the placeholder. Upgrade of an existing install:
+        # the line is absent (config.env is a preserved dpkg conffile) → append.
+        if grep -q '<generate-encryption-key>' /etc/health-manager/config.env; then
+            ENC_KEY=$(python3 -c "import base64, os; print(base64.urlsafe_b64encode(os.urandom(32)).decode())")
+            sed -i "s|<generate-encryption-key>|${ENC_KEY}|" /etc/health-manager/config.env
+        elif ! grep -qE '^ENCRYPTION_KEY=' /etc/health-manager/config.env; then
+            ENC_KEY=$(python3 -c "import base64, os; print(base64.urlsafe_b64encode(os.urandom(32)).decode())")
+            echo "ENCRYPTION_KEY=${ENC_KEY}" >> /etc/health-manager/config.env
+        fi
+
+        chmod 600 /etc/health-manager/config.env
+        chown health-manager:health-manager /etc/health-manager/config.env
 
         # Make caddy binary executable
         chmod +x /opt/health-manager/caddy

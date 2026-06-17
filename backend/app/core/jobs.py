@@ -1,15 +1,18 @@
 """Scheduled background jobs for the health tracker."""
+import asyncio
 import json
 import logging
 import os
 import re
+import shutil
 import subprocess
+import tarfile
+import tempfile
 import time
 from datetime import datetime, timezone
 from pathlib import Path
 
 import httpx
-import aiofiles
 from sqlalchemy import select
 from sqlalchemy.orm import selectinload
 
@@ -314,13 +317,12 @@ async def verify_file_integrity():
                     continue
 
                 try:
+                    from app.core.storage import stream_plaintext
                     hasher = hashlib.sha256()
-                    async with aiofiles.open(file_path, "rb") as f:
-                        while True:
-                            chunk = await f.read(1024 * 1024)
-                            if not chunk:
-                                break
-                            hasher.update(chunk)
+                    # Hash the PLAINTEXT (decrypt first when encrypted) so it
+                    # matches the content_hash recorded at upload/migration.
+                    async for chunk in stream_plaintext(file_path, att.encrypted):
+                        hasher.update(chunk)
 
                     actual_hash = hasher.hexdigest()
                     if actual_hash != att.content_hash:
@@ -351,43 +353,292 @@ async def verify_file_integrity():
 
 
 async def backup_database():
-    """Create a gzipped database backup using pg_dump.
+    """Scheduled backup — gated by the primary household's configured schedule.
 
-    Only runs when DATABASE_URL is PostgreSQL. Skips silently otherwise.
-    Saves backups to data/backups/ with timestamp filename.
+    The job ticks hourly (registered in main.py); it self-gates using the
+    household's ``backup_schedule`` (off/daily/weekly) and the last-run
+    timestamp in ``data/backups/.backup_state.json`` so the cadence can be
+    changed live without rescheduling APScheduler.
     """
-    db_url = settings.DATABASE_URL
-    if not db_url.startswith("postgresql"):
-        logger.debug("Backup skipped — not using PostgreSQL")
+    schedule, _ = await get_backup_config()
+    if schedule == "off":
         return
+    interval = {"daily": 86400, "weekly": 604800}.get(schedule)
+    if not interval:
+        return
+    state = read_backup_state()
+    last_run = state.get("last_run")
+    if last_run:
+        try:
+            elapsed = (datetime.now(timezone.utc) - datetime.fromisoformat(last_run)).total_seconds()
+        except ValueError:
+            elapsed = interval  # corrupt timestamp → treat as due
+        if elapsed < interval:
+            return
+    await run_backup_now()
 
-    backup_dir = Path("data/backups")
-    backup_dir.mkdir(parents=True, exist_ok=True)
 
+async def run_backup_now() -> dict | None:
+    """Create one compressed backup archive now, record state, apply retention.
+
+    Returns ``{filename, size_bytes, created_at}`` or ``None`` on failure.
+    Used by the scheduled job (after gating) and the manual ``POST /backup/run``.
+    """
+    archive = await asyncio.to_thread(create_backup_archive)
+    if archive is None:
+        return None
+    created = datetime.now(timezone.utc).isoformat()
+    state = read_backup_state()
+    write_backup_state({**state, "last_run": created, "last_archive": archive.name})
+    _, keep_max = await get_backup_config()
+    apply_retention(keep_max)
+    try:
+        size = archive.stat().st_size
+    except OSError:
+        size = 0
+    logger.info("Backup archive created: %s (%d bytes)", archive.name, size)
+    return {"filename": archive.name, "size_bytes": size, "created_at": created}
+
+
+# ── backup helpers (sync — run in a worker thread) ───────────────────────────
+
+BACKUP_DIR = Path("data/backups")
+
+
+def create_backup_archive() -> Path | None:
+    """Build a single ``backup_{ts}.tar.gz`` containing the DB + all attachments.
+
+    SQLite is snapshotted via the online-backup API (``health.db``); PostgreSQL
+    via ``pg_dump`` (``health.sql``). The encrypted-attachment store is added as
+    ``attachments/``. gzip compresses the (text) DB dump; attachments are already
+    encrypted so stay faithful but incompressible.
+    """
+    BACKUP_DIR.mkdir(parents=True, exist_ok=True)
     timestamp = datetime.now(timezone.utc).strftime("%Y%m%d_%H%M%S")
-    backup_file = backup_dir / f"health_{timestamp}.sql.gz"
+    archive = BACKUP_DIR / f"backup_{timestamp}.tar.gz"
+    db_url = settings.DATABASE_URL
+    try:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            tmp = Path(tmpdir)
+            if db_url.startswith("sqlite"):
+                db_name = "health.db"
+                _snapshot_sqlite(db_url, tmp / db_name)
+            else:
+                db_name = "health.sql"
+                _dump_postgres(db_url, tmp / db_name)
+            with tarfile.open(archive, "w:gz") as tar:
+                tar.add(tmp / db_name, arcname=db_name)
+                attachments_dir = Path(settings.STORAGE_PATH)
+                if attachments_dir.exists():
+                    tar.add(attachments_dir, arcname="attachments")
+        return archive
+    except Exception:
+        logger.exception("Backup archive creation failed")
+        try:
+            if archive.exists():
+                archive.unlink()
+        except OSError:
+            pass
+        return None
+
+
+def _snapshot_sqlite(db_url: str, dest: Path) -> None:
+    """Online-backup the SQLite DB to *dest* (atomic, safe while in use)."""
+    import sqlite3
+
+    db_path = db_url.split("///", 1)[-1]
+    src = sqlite3.connect(db_path)
+    dst = sqlite3.connect(str(dest))
+    try:
+        src.backup(dst)
+    finally:
+        dst.close()
+        src.close()
+
+
+def _dump_postgres(db_url: str, dest: Path) -> None:
+    """Dump PostgreSQL via pg_dump to *dest* (plain SQL; gzip happens in the tar)."""
+    pg_url = db_url.replace("+asyncpg", "")
+    result = subprocess.run(["pg_dump", pg_url], capture_output=True, text=True, timeout=300)
+    if result.returncode != 0:
+        raise RuntimeError(f"pg_dump failed: {result.stderr[:200]}")
+    dest.write_text(result.stdout)
+
+
+def _backup_state_path() -> Path:
+    return BACKUP_DIR / ".backup_state.json"
+
+
+def read_backup_state() -> dict:
+    try:
+        return json.loads(_backup_state_path().read_text())
+    except Exception:
+        return {}
+
+
+def write_backup_state(state: dict) -> None:
+    try:
+        BACKUP_DIR.mkdir(parents=True, exist_ok=True)
+        _backup_state_path().write_text(json.dumps(state))
+    except Exception:
+        logger.warning("Could not write backup state file")
+
+
+def list_backup_archives() -> list[dict]:
+    """List ``backup_*.tar.gz`` newest-first as ``{name, size_bytes, created_at}``."""
+    if not BACKUP_DIR.exists():
+        return []
+    archives = sorted(
+        BACKUP_DIR.glob("backup_*.tar.gz"),
+        key=lambda p: p.stat().st_mtime,
+        reverse=True,
+    )
+    out = []
+    for p in archives:
+        try:
+            st = p.stat()
+        except OSError:
+            continue
+        out.append({
+            "name": p.name,
+            "size_bytes": st.st_size,
+            "created_at": datetime.fromtimestamp(st.st_mtime, tz=timezone.utc).isoformat(),
+        })
+    return out
+
+
+def apply_retention(keep_max: int) -> None:
+    """Delete oldest backups beyond *keep_max* (count-based)."""
+    if not BACKUP_DIR.exists() or keep_max < 1:
+        return
+    archives = sorted(
+        BACKUP_DIR.glob("backup_*.tar.gz"),
+        key=lambda p: p.stat().st_mtime,
+        reverse=True,
+    )
+    for old in archives[keep_max:]:
+        try:
+            old.unlink()
+        except OSError:
+            logger.warning("Could not delete old backup: %s", old)
+
+
+def get_backup_status() -> dict:
+    """Storage overview for the Data tab."""
+    def _dir_size(path: Path) -> int:
+        if not path.exists():
+            return 0
+        total = 0
+        for root, _dirs, files in os.walk(path):
+            for f in files:
+                try:
+                    total += (Path(root) / f).stat().st_size
+                except OSError:
+                    pass
+        return total
+
+    db_size = 0
+    if settings.DATABASE_URL.startswith("sqlite"):
+        db_path = Path(settings.DATABASE_URL.split("///", 1)[-1])
+        if db_path.exists():
+            db_size = db_path.stat().st_size
+
+    du = shutil.disk_usage(".")
+    state = read_backup_state()
+    return {
+        "attachments_bytes": _dir_size(Path(settings.STORAGE_PATH)),
+        "database_bytes": db_size,
+        "backups_bytes": _dir_size(BACKUP_DIR),
+        "disk": {"total": du.total, "used": du.used, "free": du.free},
+        "last_run": state.get("last_run"),
+        "last_archive": state.get("last_archive"),
+    }
+
+
+async def get_backup_config() -> tuple[str, int]:
+    """Read the primary household's backup schedule + retention (``off``, 10 default).
+
+    Single-household family-server assumption: the oldest household's settings
+    drive the server-wide backup schedule.
+    """
+    from sqlalchemy import select
+    from app.core.database import SessionLocal
+    from app.models.base import Household
 
     try:
-        # pg_dump doesn't accept asyncpg driver, convert to standard psycopg format
-        pg_url = db_url.replace("+asyncpg", "")
-        result = subprocess.run(
-            ["pg_dump", pg_url],
-            capture_output=True,
-            text=True,
-            timeout=300,
-        )
-        if result.returncode != 0:
-            logger.error("pg_dump failed: %s", result.stderr)
-            return
-
-        import gzip
-        with gzip.open(backup_file, "wt") as f:
-            f.write(result.stdout)
-
-        logger.info("Database backup created: %s (%d bytes)", backup_file.name, backup_file.stat().st_size)
-    except FileNotFoundError:
-        logger.warning("pg_dump not found — database backup skipped")
-    except subprocess.TimeoutExpired:
-        logger.error("pg_dump timed out after 300s")
+        async with SessionLocal() as db:
+            result = await db.execute(select(Household).order_by(Household.created_at).limit(1))
+            hh = result.scalar_one_or_none()
+            if hh and hh.settings_json:
+                data = json.loads(hh.settings_json)
+                schedule = data.get("backup_schedule", "off")
+                keep_max = int(data.get("backup_keep_max", 10))
+                return (schedule if schedule in ("off", "daily", "weekly") else "off", max(1, keep_max))
     except Exception:
-        logger.exception("Database backup failed")
+        logger.exception("Could not read backup config; defaulting to off")
+    return ("off", 10)
+
+
+async def migrate_attachments_to_encrypted() -> dict:
+    """One-time migration: optimize + encrypt existing plaintext attachments.
+
+    Closes the storage-at-rest gap for files written before encryption was
+    enabled. Idempotent (skips ``encrypted=True``). Per-file safe:
+    write the new encrypted file → round-trip verify → update the row → delete
+    the old raw file. Graceful without ghostscript (encrypts without optimizing).
+
+    NOTE: PDF optimization is lossy (ghostscript downsamples embedded images);
+    recommend a backup before running. Returns ``{migrated, failed}``.
+    """
+    import hashlib
+    from sqlalchemy import select
+    from app.core.database import SessionLocal
+    from app.models.base import Attachment
+    from app.core.storage import _store_plaintext_file, _safe_unlink
+    from app.core.encryption import decrypt_file
+
+    migrated = 0
+    failed = 0
+    async with SessionLocal() as db:
+        result = await db.execute(
+            select(Attachment).where(Attachment.encrypted.is_(False))
+        )
+        attachments = list(result.scalars().all())
+        if not attachments:
+            return {"migrated": 0, "failed": 0}
+
+        for att in attachments:
+            old_path = Path(att.file_path)
+            if not old_path.exists():
+                logger.warning("attachment migration: file missing for %s — skipping", att.id)
+                failed += 1
+                continue
+            try:
+                ext = old_path.suffix or ".bin"
+                new_path, new_hash = await _store_plaintext_file(
+                    old_path, ext, att.mime_type
+                )
+                # Round-trip verify before committing the row.
+                plain = await decrypt_file(new_path)
+                if hashlib.sha256(plain).hexdigest() != new_hash:
+                    logger.error("attachment migration: verify failed for %s", att.id)
+                    failed += 1
+                    continue
+                att.content_hash = new_hash
+                att.file_path = str(new_path)
+                att.file_size = len(plain)  # plaintext size
+                att.encrypted = True
+                await db.commit()
+                # Only now safe to remove the old raw file.
+                if old_path.resolve() != new_path.resolve():
+                    _safe_unlink(old_path)
+                migrated += 1
+            except Exception:
+                await db.rollback()
+                logger.exception("attachment migration: failed for %s", att.id)
+                failed += 1
+
+    logger.info(
+        "attachment migration complete: %d migrated, %d failed", migrated, failed
+    )
+    return {"migrated": migrated, "failed": failed}

@@ -2,7 +2,7 @@
   "name": "DAWNSTAR Family Health Keeper",
   "short_name": "Health Keeper",
   "description": "Self-hosted family health records with AI-powered insights",
-  "start_url": "/dashboard",
+  "start_url": "/",
   "display": "standalone",
   "background_color": "#ffffff",
   "theme_color": "#1A2B42",

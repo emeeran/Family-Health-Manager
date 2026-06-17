@@ -23,7 +23,7 @@ class Provider(Base):
     speciality: Mapped[str | None] = mapped_column(String(100), nullable=True)
     phone: Mapped[str | None] = mapped_column(String(20), nullable=True)
     address: Mapped[str | None] = mapped_column(Text, nullable=True)
-    created_at: Mapped[datetime] = mapped_column(DateTime, default=lambda: datetime.now(timezone.utc), nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=lambda: datetime.now(timezone.utc), server_default="CURRENT_TIMESTAMP", nullable=False)
 
     household: Mapped["Household"] = relationship(back_populates="providers")
     assignments: Mapped[list["ProviderAssignment"]] = relationship(
@@ -42,7 +42,7 @@ class ProviderAssignment(Base):
     provider_id: Mapped[UUID] = mapped_column(ForeignKey("providers.id"), nullable=False)
     family_member_id: Mapped[UUID] = mapped_column(ForeignKey("family_members.id"), nullable=False)
     uhid: Mapped[str | None] = mapped_column(String(50), nullable=True)
-    created_at: Mapped[datetime] = mapped_column(DateTime, default=lambda: datetime.now(timezone.utc), nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=lambda: datetime.now(timezone.utc), server_default="CURRENT_TIMESTAMP", nullable=False)
 
     provider: Mapped["Provider"] = relationship(back_populates="assignments")
     family_member: Mapped["FamilyMember"] = relationship(back_populates="provider_assignments")

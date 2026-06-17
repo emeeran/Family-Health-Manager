@@ -37,11 +37,11 @@ class Medication(Base):
     prescription_index: Mapped[int] = mapped_column(Integer, default=0)
     provider_name: Mapped[str] = mapped_column(Text, default="")
     created_at: Mapped[datetime] = mapped_column(
-        DateTime, default=lambda: datetime.now(timezone.utc), nullable=False
+        DateTime, default=lambda: datetime.now(timezone.utc), server_default="CURRENT_TIMESTAMP", nullable=False
     )
     updated_at: Mapped[datetime] = mapped_column(
         DateTime,
-        default=lambda: datetime.now(timezone.utc),
+        default=lambda: datetime.now(timezone.utc), server_default="CURRENT_TIMESTAMP",
         onupdate=lambda: datetime.now(timezone.utc),
         nullable=False,
     )

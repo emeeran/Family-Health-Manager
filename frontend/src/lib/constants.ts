@@ -7,7 +7,25 @@ import type {
   ProviderType,
 } from "./types/enums";
 
-export const API_BASE_URL = import.meta.env.VITE_API_URL || "/api/v1";
+/**
+ * Resolve the API base URL.
+ *
+ * Precedence: runtime override (`window.__API_BASE__`, set by the static
+ * runtime-config.js so a single build can be repointed without rebuilding) →
+ * build-time `VITE_API_URL` → a relative `/api/v1` (the default, which works
+ * behind the bundled Caddy reverse proxy with no configuration).
+ *
+ * The resolved value is the FULL base including `/api/v1`.
+ */
+function resolveApiBaseUrl(): string {
+  if (typeof window !== "undefined") {
+    const runtime = (window as unknown as { __API_BASE__?: string }).__API_BASE__;
+    if (runtime) return runtime;
+  }
+  return import.meta.env.VITE_API_URL || "/api/v1";
+}
+
+export const API_BASE_URL = resolveApiBaseUrl();
 
 export const MAX_FILE_SIZE = 25 * 1024 * 1024; // 25MB
 export const ALLOWED_MIME_TYPES = [

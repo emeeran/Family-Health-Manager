@@ -170,6 +170,10 @@ export function streamRequest(
   if (body) headers["Content-Type"] = "application/json";
 
   const controller = new AbortController();
+  // Distinguishes a user-initiated cancel (silent) from a genuine timeout
+  // (surfaces an error). setTimeout return objects have no `.refresh`, so the
+  // previous `!timeoutId.refresh` check was always true and swallowed BOTH.
+  let userCancelled = false;
   // Local CPU inference (e.g. medgemma) can take many minutes to evaluate a
   // large clinical prompt before the first token streams; the backend caps the
   // streaming read timeout at 1800s, so allow the request to live that long.
@@ -247,9 +251,8 @@ export function streamRequest(
     } catch (err) {
       if (err instanceof ApiError) throw err;
       if (err instanceof DOMException && err.name === "AbortError") {
-        // User-initiated cancel vs timeout
-        if (controller.signal.aborted && !timeoutId.refresh) {
-          return; // Cancelled by user — resolve silently
+        if (userCancelled) {
+          return; // Cancelled by the user — resolve silently
         }
         throw new ApiError(408, { message: "Request timed out" });
       }
@@ -265,6 +268,7 @@ export function streamRequest(
   return {
     promise,
     cancel: () => {
+      userCancelled = true;
       clearTimeout(timeoutId);
       controller.abort();
     },

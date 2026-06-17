@@ -8,7 +8,7 @@ from sqlalchemy import select, or_, text
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import joinedload
 from app.core.database import get_db
-from app.core.deps import get_household_from_token, get_current_user
+from app.core.deps import get_household_from_token, require_admin
 from app.core.security import verify_password
 from app.services.household_service import HouseholdService
 from app.schemas.household import (
@@ -224,7 +224,7 @@ class ResetDatabaseRequest(BaseModel):
 @router.post("/reset-database")
 async def reset_database(
     request: ResetDatabaseRequest,
-    user: User = Depends(get_current_user),
+    user: User = Depends(require_admin),
     db: AsyncSession = Depends(get_db),
 ):
     """Reset the database — drop all data and recreate tables.

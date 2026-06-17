@@ -148,7 +148,13 @@ async def refresh_token(
     # Get expiry from the new access token
     import jwt as _jwt
     from datetime import datetime, timezone
-    payload = _jwt.decode(new_access, settings.SECRET_KEY, algorithms=["HS256"])
+    payload = _jwt.decode(
+        new_access,
+        settings.SECRET_KEY,
+        algorithms=["HS256"],
+        audience=settings.JWT_AUDIENCE,
+        issuer=settings.JWT_ISSUER,
+    )
     expires = datetime.fromtimestamp(payload["exp"], tz=timezone.utc)
 
     return RefreshResponse(
@@ -187,6 +193,7 @@ async def get_me(user: User = Depends(get_current_user)):
 @router.post("/change-password")
 async def change_password(
     request: ChangePasswordRequest,
+    http_request: Request,
     user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
@@ -214,7 +221,18 @@ async def change_password(
     await db.flush()
     await db.commit()
 
-    logger.info("Password changed for user %s", user.username)
+    # Invalidate all existing sessions so a compromised session dies on reset.
+    await revoke_all_refresh_tokens(user.id, db)
+    access_token = http_request.cookies.get("access_token")
+    if not access_token:
+        auth_header = http_request.headers.get("authorization", "")
+        if auth_header.startswith("Bearer "):
+            access_token = auth_header[7:]
+    if access_token:
+        await revoke_token_persist(access_token, db)
+    await db.commit()
+
+    logger.info("Password changed for user %s; sessions revoked", user.username)
     return {"message": "Password changed successfully"}
 
 
@@ -249,9 +267,10 @@ async def setup_2fa(
     qr_base64 = TOTPService.generate_qr_code_base64(secret, user.username)
     backup_codes = TOTPService.generate_backup_codes()
 
-    # Store secret and backup codes (not yet enabled)
-    user.totp_secret = secret
-    user.backup_codes = json.dumps(backup_codes)
+    # Store secret and backup codes encrypted at rest (not yet enabled)
+    from app.core.encryption import encrypt_secret
+    user.totp_secret = encrypt_secret(secret)
+    user.backup_codes = encrypt_secret(json.dumps(backup_codes))
     await db.flush()
 
     return TwoFASetupResponse(
@@ -273,7 +292,8 @@ async def verify_2fa_setup(
     if user.totp_enabled:
         raise HTTPException(status_code=400, detail="2FA is already enabled")
 
-    if not TOTPService.verify_code(user.totp_secret, request.code):
+    from app.core.encryption import decrypt_secret
+    if not TOTPService.verify_code(decrypt_secret(user.totp_secret), request.code):
         raise HTTPException(status_code=400, detail="Invalid code")
 
     user.totp_enabled = True
@@ -292,15 +312,19 @@ async def disable_2fa(
     if not user.totp_enabled:
         raise HTTPException(status_code=400, detail="2FA is not enabled")
 
+    from app.core.encryption import decrypt_secret, encrypt_secret
     # Accept either TOTP code or a backup code
-    if user.totp_secret and TOTPService.verify_code(user.totp_secret, request.code):
+    totp_secret = decrypt_secret(user.totp_secret)
+    if totp_secret and TOTPService.verify_code(totp_secret, request.code):
         pass  # Valid TOTP code
     else:
         # Try backup code
-        valid, updated_codes = TOTPService.verify_backup_code(user.backup_codes, request.code)
+        valid, updated_codes = TOTPService.verify_backup_code(
+            decrypt_secret(user.backup_codes), request.code
+        )
         if not valid:
             raise HTTPException(status_code=400, detail="Invalid code")
-        user.backup_codes = updated_codes
+        user.backup_codes = encrypt_secret(updated_codes)
 
     user.totp_enabled = False
     user.totp_secret = None
@@ -325,14 +349,17 @@ async def login_2fa(
     if not user or not user.totp_enabled or not user.totp_secret:
         raise HTTPException(status_code=401, detail="Invalid request")
 
+    from app.core.encryption import decrypt_secret, encrypt_secret
     # Verify TOTP code or backup code
-    if TOTPService.verify_code(user.totp_secret, request.code):
+    if TOTPService.verify_code(decrypt_secret(user.totp_secret), request.code):
         pass
     else:
-        valid, updated_codes = TOTPService.verify_backup_code(user.backup_codes, request.code)
+        valid, updated_codes = TOTPService.verify_backup_code(
+            decrypt_secret(user.backup_codes), request.code
+        )
         if not valid:
             raise HTTPException(status_code=401, detail="Invalid 2FA code")
-        user.backup_codes = updated_codes
+        user.backup_codes = encrypt_secret(updated_codes)
 
     auth_service = AuthService(db)
     access_token, expires = auth_service.create_session_token(user.id)

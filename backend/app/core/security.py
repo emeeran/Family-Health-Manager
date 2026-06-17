@@ -21,7 +21,13 @@ REFRESH_TOKEN_EXPIRY = timedelta(days=7)
 async def revoke_token_persist(token: str, db: AsyncSession) -> None:
     """Revoke an access token by persisting its jti to the database."""
     try:
-        payload = jwt.decode(token, settings.SECRET_KEY, algorithms=["HS256"])
+        payload = jwt.decode(
+            token,
+            settings.SECRET_KEY,
+            algorithms=["HS256"],
+            audience=settings.JWT_AUDIENCE,
+            issuer=settings.JWT_ISSUER,
+        )
         jti = payload.get("jti")
         exp = datetime.fromtimestamp(payload["exp"], tz=timezone.utc)
         if jti:
@@ -60,6 +66,8 @@ def create_access_token(user_id: UUID) -> tuple[str, datetime]:
         "sub": str(user_id),
         "exp": expires,
         "iat": datetime.now(timezone.utc),
+        "iss": settings.JWT_ISSUER,
+        "aud": settings.JWT_AUDIENCE,
         "jti": secrets.token_urlsafe(16),
         "type": "access",
     }
@@ -70,7 +78,13 @@ def create_access_token(user_id: UUID) -> tuple[str, datetime]:
 async def decode_access_token(token: str, db: AsyncSession) -> UUID | None:
     """Decode and validate JWT access token."""
     try:
-        payload = jwt.decode(token, settings.SECRET_KEY, algorithms=["HS256"])
+        payload = jwt.decode(
+            token,
+            settings.SECRET_KEY,
+            algorithms=["HS256"],
+            audience=settings.JWT_AUDIENCE,
+            issuer=settings.JWT_ISSUER,
+        )
         if await _is_revoked(payload.get("jti"), db):
             return None
         return UUID(payload["sub"])
@@ -81,6 +95,9 @@ async def decode_access_token(token: str, db: AsyncSession) -> UUID | None:
 def validate_password_strength(password: str) -> bool:
     """Validate password meets strength requirements."""
     if len(password) < 8:
+        return False
+    # Upper bound: reject pathologically long input to avoid argon2 DoS.
+    if len(password) > 4096:
         return False
     has_upper = any(c.isupper() for c in password)
     has_digit = any(c.isdigit() for c in password)

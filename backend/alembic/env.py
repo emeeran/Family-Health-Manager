@@ -1,3 +1,4 @@
+import re
 from logging.config import fileConfig
 
 from sqlalchemy import engine_from_config, pool
@@ -13,9 +14,10 @@ config = context.config
 # Override sqlalchemy.url from app settings
 settings = get_settings()
 db_url = settings.DATABASE_URL
-# Convert async URL to sync for Alembic
-if db_url.startswith("sqlite+aiosqlite"):
-    db_url = db_url.replace("sqlite+aiosqlite", "sqlite")
+# Convert async driver URLs to their sync counterparts — Alembic runs against a
+# synchronous engine (engine_from_config / NullPool), so an async-only driver
+# (aiosqlite, asyncpg, …) crashes with MissingGreenlet. Strip the +driver.
+db_url = re.sub(r"\+(aiosqlite|asyncpg|aiomysql|asyncmy|aioodbc)", "", db_url)
 config.set_main_option("sqlalchemy.url", db_url)
 
 # Interpret the config file for Python logging.

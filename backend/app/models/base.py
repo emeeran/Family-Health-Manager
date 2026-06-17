@@ -103,6 +103,7 @@ class ProviderType(str, enum.Enum):
 from app.models.user import User  # noqa: E402
 from app.models.household import Household  # noqa: E402
 from app.models.refresh_token import RefreshToken  # noqa: E402
+from app.models.revoked_token import RevokedToken  # noqa: E402, F401
 from app.models.member import FamilyMember  # noqa: E402
 from app.models.provider import Provider, ProviderAssignment  # noqa: E402
 from app.models.record import HealthRecord  # noqa: E402

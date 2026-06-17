@@ -23,6 +23,14 @@ class Settings(BaseSettings):
 
     # Security
     SECRET_KEY: str
+    # Dedicated Fernet key for encrypting files/2FA secrets at rest. Decoupled
+    # from SECRET_KEY (JWT signing) so rotating the JWT key doesn't render every
+    # encrypted file unrecoverable. Empty → fall back to SECRET_KEY-derived key
+    # (legacy behaviour). Generated on .deb install (see packaging/debian/postinst).
+    ENCRYPTION_KEY: str = ""
+    # JWT issuer/audience claims (token-confusion hardening).
+    JWT_ISSUER: str = "health-manager"
+    JWT_AUDIENCE: str = "health-manager-web"
 
     # Database
     DATABASE_URL: str = "sqlite+aiosqlite:///./data/health.db"
@@ -56,6 +64,10 @@ class Settings(BaseSettings):
     # Storage
     STORAGE_PATH: str = "./data/attachments"
     STORAGE_BACKEND: str = "local"
+    # PDF optimization on ingest (ghostscript image downsampling). Lossy —
+    # embedded images are downsampled per PDF_OPTIMIZE_DPI. No-op if gs missing.
+    OPTIMIZE_PDFS: bool = True
+    PDF_OPTIMIZE_DPI: str = "ebook"  # screen(72) | ebook(150) | printer(300) | prepress
 
     # AI Verification
     AI_VERIFICATION_ENABLED: bool = True
@@ -72,19 +84,22 @@ class Settings(BaseSettings):
         """Validate settings after loading."""
         if self.APP_ENV == "production":
             self.DEBUG = False
-            if not self.DATABASE_URL.startswith("postgresql"):
-                raise ValueError(
-                    "DATABASE_URL must use PostgreSQL in production! "
-                    "Set DATABASE_URL=postgresql+asyncpg://user:pass@host/db in .env"
-                )
+            # SQLite is a supported production backend for single-server
+            # self-hosted deployments (WAL mode + foreign keys enabled). We no
+            # longer hard-require PostgreSQL — only warn that, without Redis,
+            # rate limiting and the insight cache fall back to per-process
+            # in-memory state (fine for one worker, imprecise across many).
             if not self.HEALTH_CHECK_SECRET:
                 raise ValueError(
                     "HEALTH_CHECK_SECRET must be set in production! "
                     "Generate one with: python -c \"import secrets; print(secrets.token_urlsafe(24))\""
                 )
             if not self.REDIS_URL:
-                logger.warning("REDIS_URL not set — rate limiting and cache will use in-memory fallback")
-            logger.info("Running in PRODUCTION mode")
+                logger.warning(
+                    "REDIS_URL not set — rate limiting and cache will use "
+                    "in-memory fallback (per-process; use 1 worker or add Redis)"
+                )
+            logger.info("Running in PRODUCTION mode (db=%s)", "postgresql" if self.DATABASE_URL.startswith("postgresql") else "sqlite")
 
 
 @lru_cache

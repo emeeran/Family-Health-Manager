@@ -41,3 +41,26 @@ export interface BackupImportResponse {
   failed: number;
   errors: string[];
 }
+
+// ── On-server compressed backups (Data tab) ────────────────────────────────
+
+export interface BackupArchive {
+  name: string;
+  size_bytes: number;
+  created_at: string;
+}
+
+export interface BackupStatus {
+  attachments_bytes: number;
+  database_bytes: number;
+  backups_bytes: number;
+  disk: { total: number; used: number; free: number };
+  last_run: string | null;
+  last_archive: string | null;
+}
+
+export interface BackupRunResult {
+  filename: string;
+  size_bytes: number;
+  created_at: string;
+}

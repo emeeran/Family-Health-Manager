@@ -1,16 +1,18 @@
 """Backup and restore router."""
 import logging
+import re
 import uuid
 from datetime import datetime, timezone
 from pathlib import Path
 
 from fastapi import APIRouter, Depends, HTTPException, UploadFile, File
-from fastapi.responses import Response
+from fastapi.responses import FileResponse, Response
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.core import jobs
 from app.core.config import get_settings
 from app.core.database import get_db
-from app.core.deps import get_household_from_token
+from app.core.deps import get_current_user, get_household_from_token, require_admin
 from app.models.base import Household
 from app.services.backup_service import BackupService
 from app.schemas.backup import BackupImportRequest, BackupImportResponse, BackupValidationResponse
@@ -105,3 +107,69 @@ async def cleanup_staging(
         raise HTTPException(status_code=400, detail="Invalid validation ID")
     if staged_path.exists():
         staged_path.unlink()
+
+
+# ── On-server compressed backups (Data tab) ─────────────────────────────────
+# These produce/consume the server-wide disaster-recovery archives written by
+# jobs.run_backup_now() (data/backups/backup_*.tar.gz), distinct from the
+# household-scoped export/import ZIP above.
+
+# Strict pattern: backup_YYYYMMDD_HHMMSS.tar.gz — no room for path traversal.
+_ARCHIVE_RE = re.compile(r"^backup_\d{8}_\d{6}\.tar\.gz$")
+
+
+def _resolve_archive(name: str) -> Path:
+    """Validate *name* and return its absolute path within the backup dir."""
+    if not _ARCHIVE_RE.match(name):
+        raise HTTPException(status_code=400, detail="Invalid archive name")
+    backup_root = jobs.BACKUP_DIR.resolve()
+    path = (jobs.BACKUP_DIR / name).resolve()
+    try:
+        path.relative_to(backup_root)
+    except ValueError:
+        raise HTTPException(status_code=400, detail="Invalid archive name")
+    if not path.exists():
+        raise HTTPException(status_code=404, detail="Archive not found")
+    return path
+
+
+@router.get("/status")
+async def backup_status(_user=Depends(get_current_user)):
+    """Storage overview: attachments / DB / backups sizes, disk, last run."""
+    return jobs.get_backup_status()
+
+
+@router.get("/archives")
+async def list_backup_archives(_user=Depends(get_current_user)):
+    """List on-server backup archives (newest first)."""
+    return {"archives": jobs.list_backup_archives()}
+
+
+@router.post("/run")
+async def run_backup(_user=Depends(require_admin)):
+    """Create a compressed backup archive now (admin)."""
+    result = await jobs.run_backup_now()
+    if result is None:
+        raise HTTPException(status_code=500, detail="Backup failed — see server logs")
+    return result
+
+
+@router.get("/archives/{name}")
+async def download_backup_archive(name: str, _user=Depends(require_admin)):
+    """Download a backup archive (admin — contains all data)."""
+    path = _resolve_archive(name)
+    return FileResponse(
+        str(path),
+        media_type="application/gzip",
+        filename=name,
+    )
+
+
+@router.delete("/archives/{name}", status_code=204)
+async def delete_backup_archive(name: str, _user=Depends(require_admin)):
+    """Delete a backup archive (admin)."""
+    path = _resolve_archive(name)
+    try:
+        path.unlink()
+    except OSError as exc:
+        raise HTTPException(status_code=500, detail=f"Could not delete archive: {exc}")

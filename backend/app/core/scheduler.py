@@ -3,10 +3,24 @@
 Uses APScheduler AsyncIOScheduler with a SQLite jobstore so jobs
 survive process restarts. Falls back to in-process asyncio tasks
 when APScheduler is unavailable.
+
+When the app runs under multiple uvicorn workers (e.g. ``--workers 2``), the
+lifespan — and therefore ``start_scheduler`` — runs in *every* worker. To stop
+periodic jobs (reminders, backups, anomaly scans …) firing once per worker, we
+acquire an exclusive ``fcntl`` file lock on startup; only the worker that wins
+the lock actually starts the scheduler. The lock is per-process and is released
+automatically on crash/exit, so a restarted worker re-acquires it cleanly.
 """
 import asyncio
 import logging
 from pathlib import Path
+
+try:  # POSIX-only; the deployment target is Linux.
+    import fcntl
+    _HAS_FCNTL = True
+except ImportError:  # pragma: no cover — Windows/dev without fcntl
+    fcntl = None
+    _HAS_FCNTL = False
 
 logger = logging.getLogger(__name__)
 
@@ -14,6 +28,45 @@ logger = logging.getLogger(__name__)
 _jobs: dict[str, tuple[int, object]] = {}
 _running_tasks: list[asyncio.Task] = []
 _scheduler = None
+
+# Held for the lifetime of the winning worker to guarantee a single scheduler.
+_scheduler_lock_fd = None
+_SCHEDULER_LOCK_PATH = Path("data") / "scheduler.lock"
+
+
+def _try_acquire_scheduler_lock() -> bool:
+    """Try to grab the single-instance scheduler lock. Returns True if won.
+
+    On failure (no fcntl, or another worker already holds it) returns False.
+    Any unexpected error is logged and we return True so the scheduler still
+    runs — locking is an optimisation, not a hard requirement to serve traffic.
+    """
+    global _scheduler_lock_fd
+    if not _HAS_FCNTL:
+        return True
+    try:
+        Path("data").mkdir(parents=True, exist_ok=True)
+        fd = open(_SCHEDULER_LOCK_PATH, "w")
+        try:
+            fcntl.flock(fd.fileno(), fcntl.LOCK_EX | fcntl.LOCK_NB)
+        except OSError:
+            fd.close()
+            return False
+        _scheduler_lock_fd = fd
+        return True
+    except Exception:
+        logger.exception("Could not acquire scheduler lock — running unlocked")
+        return True
+
+
+def _release_scheduler_lock() -> None:
+    global _scheduler_lock_fd
+    if _scheduler_lock_fd is not None:
+        try:
+            _scheduler_lock_fd.close()
+        except Exception:
+            pass
+        _scheduler_lock_fd = None
 
 
 def register_job(name: str, interval_seconds: int, coro_factory):
@@ -41,8 +94,15 @@ async def start_scheduler():
     """Start all registered background jobs.
 
     Uses APScheduler when available; falls back to in-process asyncio tasks.
+    Only runs in the worker that wins the single-instance file lock.
     """
     if not _jobs:
+        return
+
+    # Single-instance guard: under multi-worker deployments only one process
+    # should actually execute scheduled jobs.
+    if not _try_acquire_scheduler_lock():
+        logger.info("Scheduler disabled — another worker owns the lock")
         return
 
     # Try APScheduler with persistent jobstore
@@ -87,11 +147,13 @@ async def stop_scheduler():
     if _scheduler is not None:
         _scheduler.shutdown(wait=False)
         logger.info("APScheduler stopped")
-        return
+    else:
+        for task in _running_tasks:
+            task.cancel()
+        if _running_tasks:
+            await asyncio.gather(*_running_tasks, return_exceptions=True)
+        _running_tasks.clear()
+        logger.info("All scheduled jobs stopped")
 
-    for task in _running_tasks:
-        task.cancel()
-    if _running_tasks:
-        await asyncio.gather(*_running_tasks, return_exceptions=True)
-    _running_tasks.clear()
-    logger.info("All scheduled jobs stopped")
+    # Release the single-instance lock so another worker can take over.
+    _release_scheduler_lock()

@@ -32,7 +32,7 @@ class AIInsight(Base):
     response: Mapped[str] = mapped_column(Text, nullable=False)
     provider_used: Mapped[str] = mapped_column(String(50), nullable=False)
     generated_at: Mapped[datetime] = mapped_column(
-        DateTime, default=lambda: datetime.now(timezone.utc), nullable=False
+        DateTime, default=lambda: datetime.now(timezone.utc), server_default="CURRENT_TIMESTAMP", nullable=False
     )
 
     # Verification fields — cross-checked by a different AI provider

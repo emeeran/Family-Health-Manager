@@ -27,7 +27,7 @@ class ResponseVerification(Base):
     verifier_provider: Mapped[str] = mapped_column(String(50), nullable=False, default="")
     summary: Mapped[str | None] = mapped_column(String(500), nullable=True)
     verified_at: Mapped[datetime] = mapped_column(
-        DateTime, default=lambda: datetime.now(timezone.utc), nullable=False
+        DateTime, default=lambda: datetime.now(timezone.utc), server_default="CURRENT_TIMESTAMP", nullable=False
     )
 
     message: Mapped["Message"] = relationship(back_populates="verification")  # noqa: F821

@@ -1,12 +1,11 @@
 /** Pure utilities and constants for RecordForm — no React dependencies. */
 import { z } from "zod";
-import { RECORD_TYPE_LABELS } from "@/lib/constants";
+import { API_BASE_URL, RECORD_TYPE_LABELS } from "@/lib/constants";
 import { MED_TYPE_OPTIONS, TIMING_OPTIONS } from "@/lib/record-type-configs";
 import type { RecordType } from "@/lib/types/enums";
 
-export const API_BASE = import.meta.env.VITE_API_URL
-  ? `${import.meta.env.VITE_API_URL}/api/v1`
-  : "/api/v1";
+/** Single source of truth for the API base (see constants.resolveApiBaseUrl). */
+export const API_BASE = API_BASE_URL;
 
 export const RECORD_TYPE_OPTIONS = Object.entries(RECORD_TYPE_LABELS) as [RecordType, string][];
 

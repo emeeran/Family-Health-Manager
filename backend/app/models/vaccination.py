@@ -22,7 +22,7 @@ class Vaccination(Base):
     date_administered: Mapped[date] = mapped_column(Date, nullable=False)
     booster_due_date: Mapped[date | None] = mapped_column(Date, nullable=True, index=True)
     notes: Mapped[str | None] = mapped_column(Text, nullable=True)
-    created_at: Mapped[datetime] = mapped_column(DateTime, default=lambda: datetime.now(timezone.utc), nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=lambda: datetime.now(timezone.utc), server_default="CURRENT_TIMESTAMP", nullable=False)
 
     family_member: Mapped["FamilyMember"] = relationship(back_populates="vaccinations")
 

@@ -1,11 +1,12 @@
 """Database setup script for the .deb package.
 
 For SQLite (fresh install):
-  - Creates all tables from SQLAlchemy models
-  - Stamps alembic at the latest revision (skips broken ALTER TABLE migrations)
+  - Creates all tables from SQLAlchemy models (fast path)
+  - Stamps alembic at the latest revision
 
-For PostgreSQL:
-  - Runs alembic upgrade head normally
+For SQLite (existing install) and PostgreSQL:
+  - Runs alembic upgrade head (the baseline migration is runnable on both
+    dialects; on a stamped DB this is a no-op).
 """
 
 import os
@@ -27,6 +28,65 @@ def main():
         setup_sqlite(db_url)
     else:
         setup_postgresql(db_url)
+
+    # Encrypt any legacy plaintext 2FA secrets (older installs stored
+    # totp_secret / backup_codes unencrypted). Idempotent + best-effort.
+    _encrypt_legacy_2fa_secrets(db_url)
+
+    # Optimize + encrypt existing plaintext attachments (closes the at-rest
+    # gap for files written before encryption was enabled). Idempotent +
+    # best-effort. NOTE: PDF optimization is lossy — back up first.
+    _migrate_attachments()
+
+
+def _migrate_attachments() -> None:
+    """Run the attachment encryption/optimization migration (best-effort)."""
+    try:
+        import asyncio
+        from app.core.jobs import migrate_attachments_to_encrypted
+
+        result = asyncio.run(migrate_attachments_to_encrypted())
+        migrated = result.get("migrated", 0)
+        failed = result.get("failed", 0)
+        if migrated or failed:
+            print(f"Attachment migration: {migrated} migrated, {failed} failed.")
+    except Exception as exc:  # noqa: BLE001 — never block startup
+        print(f"Attachment migration skipped: {exc}")
+
+
+def _encrypt_legacy_2fa_secrets(db_url: str) -> None:
+    """Encrypt plaintext totp_secret/backup_codes left over from older installs.
+
+    Skips values that are already Fernet tokens. Wrapped so any failure logs
+    but never blocks startup.
+    """
+    try:
+        from sqlalchemy import create_engine, select
+        from sqlalchemy.orm import Session
+        from app.models.base import User
+        from app.core.encryption import encrypt_secret, is_secret_encrypted
+
+        sync_url = db_url.replace("sqlite+aiosqlite", "sqlite").replace("+asyncpg", "")
+        engine = create_engine(sync_url)
+        changed = 0
+        with Session(engine) as session:
+            for u in session.execute(select(User)).scalars().all():
+                touched = False
+                if u.totp_secret and not is_secret_encrypted(u.totp_secret):
+                    u.totp_secret = encrypt_secret(u.totp_secret)
+                    touched = True
+                if u.backup_codes and not is_secret_encrypted(u.backup_codes):
+                    u.backup_codes = encrypt_secret(u.backup_codes)
+                    touched = True
+                if touched:
+                    changed += 1
+            if changed:
+                session.commit()
+        engine.dispose()
+        if changed:
+            print(f"Encrypted 2FA secrets at rest for {changed} user(s).")
+    except Exception as exc:  # noqa: BLE001 — never block startup on this
+        print(f"2FA-secret migration skipped: {exc}")
 
 
 def setup_sqlite(db_url: str) -> None:
