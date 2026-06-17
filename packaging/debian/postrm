@@ -10,6 +10,7 @@ case "$1" in
         # Disable and remove systemd service files
         systemctl disable health-manager-caddy.service 2>/dev/null || true
         systemctl disable health-manager.service 2>/dev/null || true
+        systemctl disable --now health-manager-restore.path 2>/dev/null || true
 
         # Remove data directory
         if [ -d /var/lib/health-manager ]; then
@@ -29,6 +30,11 @@ case "$1" in
         # Remove systemd unit files installed by the package
         rm -f /etc/systemd/system/health-manager.service
         rm -f /etc/systemd/system/health-manager-caddy.service
+        rm -f /etc/systemd/system/health-manager-restore.path
+        rm -f /etc/systemd/system/health-manager-restore.service
+        # Privileged restore helper (removed with /opt/health-manager above, but
+        # be explicit in case the dir is preserved)
+        rm -f /opt/health-manager/restore-archive.sh
 
         # Remove system user
         if id -u health-manager &>/dev/null; then
@@ -46,8 +52,11 @@ case "$1" in
         # Stop and disable services but keep config and data
         systemctl disable health-manager-caddy.service 2>/dev/null || true
         systemctl disable health-manager.service 2>/dev/null || true
+        systemctl disable --now health-manager-restore.path 2>/dev/null || true
         rm -f /etc/systemd/system/health-manager.service
         rm -f /etc/systemd/system/health-manager-caddy.service
+        rm -f /etc/systemd/system/health-manager-restore.path
+        rm -f /etc/systemd/system/health-manager-restore.service
         systemctl daemon-reload
 
         # Update desktop databases

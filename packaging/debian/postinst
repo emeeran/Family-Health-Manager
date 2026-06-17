@@ -68,6 +68,14 @@ case "$1" in
         systemctl enable health-manager-caddy.service
         systemctl start health-manager.service || echo "WARNING: health-manager.service failed to start. Check: journalctl -eu health-manager.service"
         systemctl start health-manager-caddy.service || echo "WARNING: health-manager-caddy.service failed to start. Check: journalctl -eu health-manager-caddy.service"
+
+        # Disaster-recovery restore trigger: the path unit watches for a
+        # restore-request flag file written by the app, then runs the root
+        # restore helper. Enable + start only the path unit (the service is
+        # triggered on demand; not started at boot).
+        chmod 755 /opt/health-manager/restore-archive.sh
+        systemctl enable health-manager-restore.path
+        systemctl start health-manager-restore.path || echo "WARNING: health-manager-restore.path failed to start. One-click restore will be unavailable."
         ;;
 
     abort-upgrade|abort-remove|abort-deconfigure)

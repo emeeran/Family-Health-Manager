@@ -14,18 +14,23 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { BackupRestoreSection } from "@/components/content/backup-restore";
+import { DatabaseIntegrityCard } from "@/components/content/database-integrity-card";
+import { ConfirmDialog } from "@/components/shared/confirm-dialog";
 import { ResetDatabaseDialog } from "@/components/shared/reset-database-dialog";
 import {
   getBackupStatus,
   listBackupArchives,
   runBackup,
   deleteBackupArchive,
+  restoreBackupArchive,
+  getRestoreStatus,
   backupArchiveDownloadUrl,
 } from "@/lib/api/backup";
+import { ApiError } from "@/lib/api-client";
 import type { BackupArchive, BackupStatus } from "@/lib/types/backup";
 import type { FeatureSettings } from "@/lib/types/household";
 import { toast } from "sonner";
-import { RefreshCw, Loader2, Download, Trash2, HardDrive } from "lucide-react";
+import { RefreshCw, Loader2, Download, Trash2, RotateCcw, HardDrive } from "lucide-react";
 
 function formatBytes(bytes: number): string {
   if (!bytes) return "0 B";
@@ -61,6 +66,10 @@ export function DataTab({
   const [loading, setLoading] = useState(true);
   const [running, setRunning] = useState(false);
   const [deleting, setDeleting] = useState<string | null>(null);
+  // Restore flow: which archive the confirm dialog targets, and the
+  // full-screen overlay shown while the privileged restore restarts the app.
+  const [restoreTarget, setRestoreTarget] = useState<BackupArchive | null>(null);
+  const [restorePending, setRestorePending] = useState(false);
   // Local input state for keep-max (persist on blur to avoid per-keystroke saves).
   const [keepMaxDraft, setKeepMaxDraft] = useState("");
 
@@ -110,6 +119,48 @@ export function DataTab({
       toast.error("Failed to delete archive");
     } finally {
       setDeleting(null);
+    }
+  }
+
+  /** Poll the restore pipeline until the service has cycled, then hard-reload. */
+  async function waitForRestoreAndReload() {
+    const deadline = Date.now() + 90_000;
+    let sawActive = false; // have we observed the restore actually running?
+    while (Date.now() < deadline) {
+      try {
+        const st = await getRestoreStatus();
+        if (st.in_progress) {
+          sawActive = true;
+        } else if (sawActive && st.last?.status === "ok") {
+          await new Promise((r) => setTimeout(r, 1500));
+          window.location.reload();
+          return;
+        }
+      } catch {
+        // Backend down during the stop/start — that's expected, keep waiting.
+        sawActive = true;
+      }
+      await new Promise((r) => setTimeout(r, 2000));
+    }
+    toast.error("Restore is taking longer than expected — reloading.");
+    window.location.reload();
+  }
+
+  async function confirmRestore() {
+    const name = restoreTarget?.name;
+    if (!name) return;
+    try {
+      await restoreBackupArchive(name); // 202 on success
+      setRestoreTarget(null);
+      setRestorePending(true);
+      toast.success("Restore started — the app is restarting.");
+      void waitForRestoreAndReload();
+    } catch (err) {
+      if (err instanceof ApiError && err.status === 409) {
+        toast.error("A restore is already in progress. Wait for it to finish.");
+      } else {
+        toast.error("Failed to start restore");
+      }
     }
   }
 
@@ -184,8 +235,8 @@ export function DataTab({
         <CardContent className="space-y-4">
           <p className="text-xs text-muted-foreground">
             Compressed archives (database + all original medical-record files) saved to the server.
-            Restorable by stopping the service, restoring <code>health.db</code> and the{" "}
-            <code>attachments/</code> folder, then restarting.
+            Use the restore button next to any archive below to roll back to that snapshot — a
+            safety backup of the current state is made automatically first.
           </p>
           <div className="grid sm:grid-cols-2 gap-4">
             <div className="space-y-1.5">
@@ -283,6 +334,14 @@ export function DataTab({
                     <Download className="h-3.5 w-3.5" />
                   </a>
                   <button
+                    onClick={() => setRestoreTarget(a)}
+                    disabled={restorePending}
+                    className="p-1 text-muted-foreground hover:text-foreground disabled:opacity-50"
+                    title="Restore this archive"
+                  >
+                    <RotateCcw className="h-3.5 w-3.5" />
+                  </button>
+                  <button
                     onClick={() => handleDelete(a.name)}
                     disabled={deleting === a.name}
                     className="p-1 text-muted-foreground hover:text-destructive disabled:opacity-50"
@@ -301,8 +360,35 @@ export function DataTab({
         </CardContent>
       </Card>
 
+      {/* Database integrity check + maintenance/repair */}
+      <DatabaseIntegrityCard />
+
       {/* Export / Import (household-scoped ZIP) */}
       <BackupRestoreSection />
+
+      {/* Restore confirm — replaces ALL data with the chosen snapshot */}
+      <ConfirmDialog
+        open={restoreTarget !== null}
+        onOpenChange={(open) => !open && !restorePending && setRestoreTarget(null)}
+        title={`Restore ${restoreTarget?.name ?? ""}?`}
+        description="This replaces ALL current data — the entire database plus every medical-record file — with this snapshot. A safety backup of the current state is made first. The app will restart and reload. This is irreversible beyond that safety backup."
+        confirmLabel="Restore"
+        onConfirm={confirmRestore}
+      />
+
+      {/* Full-screen overlay while the privileged restore cycles the service */}
+      {restorePending && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-background/80 backdrop-blur-sm">
+          <div className="flex flex-col items-center gap-3 text-center px-6">
+            <Loader2 className="h-8 w-8 animate-spin text-primary" />
+            <p className="text-sm font-medium">Restoring…</p>
+            <p className="text-xs text-muted-foreground max-w-xs">
+              The app is restoring the snapshot and restarting. This page will reload automatically
+              when it&apos;s ready.
+            </p>
+          </div>
+        </div>
+      )}
 
       {/* Danger zone */}
       <Separator className="my-2" />

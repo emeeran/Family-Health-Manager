@@ -15,7 +15,13 @@ from app.core.database import get_db
 from app.core.deps import get_current_user, get_household_from_token, require_admin
 from app.models.base import Household
 from app.services.backup_service import BackupService
-from app.schemas.backup import BackupImportRequest, BackupImportResponse, BackupValidationResponse
+from app.schemas.backup import (
+    BackupImportRequest,
+    BackupImportResponse,
+    BackupValidationResponse,
+    RestoreResponse,
+    RestoreStatusResponse,
+)
 
 settings = get_settings()
 router = APIRouter(prefix="/backup", tags=["Backup & Restore"])
@@ -173,3 +179,37 @@ async def delete_backup_archive(name: str, _user=Depends(require_admin)):
         path.unlink()
     except OSError as exc:
         raise HTTPException(status_code=500, detail=f"Could not delete archive: {exc}")
+
+
+@router.post("/archives/{name}/restore", response_model=RestoreResponse, status_code=202)
+async def restore_backup_archive(name: str, _user=Depends(require_admin)):
+    """Restore a disaster-recovery ``backup_*.tar.gz`` archive (admin).
+
+    Swapping a live SQLite snapshot requires a service restart, which the
+    unprivileged ``health-manager`` service can't perform. So this endpoint only
+    *validates* the archive and drops its name into a flag file watched by the
+    root ``health-manager-restore.path`` unit, which does the actual
+    stop → swap → start. Returns immediately (202); the client polls
+    ``/restore/status`` (or ``/backup/status``) until the service is back.
+    """
+    archive = _resolve_archive(name)  # 400 on bad name, 404 if missing
+
+    if jobs.is_restore_in_progress():
+        raise HTTPException(status_code=409, detail="A restore is already in progress")
+
+    jobs.trigger_restore(archive.name)
+    logger.info(
+        "Restore requested by admin '%s' for archive %s",
+        getattr(_user, "username", "?"),
+        archive.name,
+    )
+    return RestoreResponse(status="restore_started", archive=archive.name)
+
+
+@router.get("/restore/status", response_model=RestoreStatusResponse)
+async def restore_status(_user=Depends(get_current_user)):
+    """Report whether a restore is in progress plus the last outcome marker."""
+    return RestoreStatusResponse(
+        in_progress=jobs.is_restore_in_progress(),
+        last=jobs.read_restore_result(),
+    )

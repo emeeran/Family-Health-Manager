@@ -114,10 +114,28 @@ cp "${SCRIPT_DIR}/Caddyfile" "${STAGING}/etc/health-manager/Caddyfile"
 cp "${SCRIPT_DIR}/config.env" "${STAGING}/etc/health-manager/config.env"
 cp "${SCRIPT_DIR}/systemd/health-manager.service" "${STAGING}/etc/systemd/system/"
 cp "${SCRIPT_DIR}/systemd/health-manager-caddy.service" "${STAGING}/etc/systemd/system/"
+cp "${SCRIPT_DIR}/systemd/health-manager-restore.path" "${STAGING}/etc/systemd/system/"
+cp "${SCRIPT_DIR}/systemd/health-manager-restore.service" "${STAGING}/etc/systemd/system/"
+
+# Privileged disaster-recovery restore helper (root-run, triggered by the
+# health-manager-restore.path unit when the app writes a restore-request flag).
+cp "${SCRIPT_DIR}/restore-archive.sh" "${STAGING}/opt/health-manager/restore-archive.sh"
+chmod 755 "${STAGING}/opt/health-manager/restore-archive.sh"
 
 # Desktop entry and icon
 cp "${SCRIPT_DIR}/health-manager.desktop" "${STAGING}/usr/share/applications/"
 cp "${PROJECT_ROOT}/frontend/public/favicon.svg" "${STAGING}/usr/share/icons/hicolor/scalable/apps/health-manager.svg"
+
+# ── Tidy: strip stray Python caches/bytecode before packaging ────────────────
+# The copied app/ source may carry __pycache__/.pyc from local dev/test runs,
+# and the staged venv carries installed-package bytecode. Both are regenerated
+# by the interpreter at runtime, so drop them for a leaner, source-clean package.
+echo "[7.5/8] Tidying staged Python trees..."
+find "${STAGING}/opt/health-manager/backend" -type d \
+    \( -name '__pycache__' -o -name '.pytest_cache' -o -name '.mypy_cache' -o -name '.ruff_cache' \) \
+    -prune -exec rm -rf {} +
+find "${STAGING}/opt/health-manager/backend" -type f \
+    \( -name '*.pyc' -o -name '*.pyo' \) -delete
 
 # ── 8. Generate DEBIAN control files ─────────────────────────────────────────
 echo "[8/8] Generating DEBIAN control files..."

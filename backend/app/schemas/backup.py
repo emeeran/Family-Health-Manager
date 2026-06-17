@@ -193,3 +193,17 @@ class BackupImportResponse(BaseModel):
     skipped: BackupCounts
     failed: int = 0
     errors: list[str] = []
+
+
+class RestoreResponse(BaseModel):
+    """Acknowledgement that a disaster-recovery restore has been queued."""
+
+    status: str
+    archive: str
+
+
+class RestoreStatusResponse(BaseModel):
+    """Live state of the restore pipeline (flag file + last result marker)."""
+
+    in_progress: bool
+    last: dict | None = None

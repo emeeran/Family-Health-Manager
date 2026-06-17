@@ -45,6 +45,7 @@ from app.routers import (
     smart_entry,
     smart_search,
     health_alerts,
+    database,
 )
 
 logger = logging.getLogger(__name__)
@@ -329,6 +330,7 @@ app.include_router(smart_search.router, prefix="/api/v1")
 app.include_router(health_alerts.router, prefix="/api/v1")
 app.include_router(dashboard.router, prefix="/api/v1")
 app.include_router(dashboard.risk_router, prefix="/api/v1")
+app.include_router(database.router, prefix="/api/v1")
 
 
 @app.get("/health")

@@ -62,6 +62,27 @@ export async function deleteBackupArchive(name: string): Promise<void> {
   return apiRequest<void>(`/backup/archives/${encodeURIComponent(name)}`, { method: "DELETE" });
 }
 
+/**
+ * Queue a disaster-recovery restore of a tar.gz archive (admin).
+ * Returns 202 immediately — the privileged systemd unit performs the
+ * stop → swap → restart out-of-band. Throws ApiError(409) if a restore is
+ * already in progress.
+ */
+export async function restoreBackupArchive(name: string): Promise<void> {
+  await apiRequest<void>(`/backup/archives/${encodeURIComponent(name)}/restore`, {
+    method: "POST",
+  });
+}
+
+export interface RestoreStatus {
+  in_progress: boolean;
+  last: { status?: string; archive?: string; ts?: string; reason?: string } | null;
+}
+
+export async function getRestoreStatus(): Promise<RestoreStatus> {
+  return apiRequest<RestoreStatus>("/backup/restore/status", { method: "GET" });
+}
+
 /** URL for downloading an archive (same-origin GET sends the auth cookie). */
 export function backupArchiveDownloadUrl(name: string): string {
   return `${API_BASE_URL}/backup/archives/${encodeURIComponent(name)}`;

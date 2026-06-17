@@ -404,6 +404,56 @@ async def run_backup_now() -> dict | None:
 
 BACKUP_DIR = Path("data/backups")
 
+# Restore pipeline: the app (running as the unprivileged ``health-manager`` user)
+# cannot restart its own systemd service, so a restore is delegated to the root
+# ``health-manager-restore.service`` unit. That unit is triggered by a systemd
+# path-unit watching RESTORE_REQUEST_NAME. The endpoint just drops the validated
+# archive name into the flag file and returns 202; the privileged unit does the
+# stop → swap → start and writes RESTORE_RESULT_NAME on completion.
+RESTORE_REQUEST_NAME = ".restore-request"
+RESTORE_RESULT_NAME = ".restore-result"
+
+
+def restore_request_path() -> Path:
+    """Flag file watched by ``health-manager-restore.path`` to trigger a restore.
+
+    Lives alongside the backups under the persistent data dir
+    (``/var/lib/health-manager/data/``), which the ``health-manager`` user owns
+    and can therefore write.
+    """
+    return (BACKUP_DIR.parent / RESTORE_REQUEST_NAME).resolve()
+
+
+def restore_result_path() -> Path:
+    """JSON marker written by the privileged restore unit on completion."""
+    return (BACKUP_DIR.parent / RESTORE_RESULT_NAME).resolve()
+
+
+def is_restore_in_progress() -> bool:
+    """True if a restore flag file is present (a restore is queued/running)."""
+    return restore_request_path().exists()
+
+
+def read_restore_result() -> dict | None:
+    """Last restore outcome written by the privileged unit, or None."""
+    try:
+        return json.loads(restore_result_path().read_text())
+    except (OSError, ValueError):
+        return None
+
+
+def trigger_restore(archive_name: str) -> None:
+    """Atomically drop *archive_name* into the restore flag file.
+
+    The temp-file + rename guarantees the watching path-unit fires exactly once
+    on a complete value (no partial reads).
+    """
+    path = restore_request_path()
+    path.parent.mkdir(parents=True, exist_ok=True)
+    tmp = path.with_name(path.name + ".tmp")
+    tmp.write_text(archive_name)
+    tmp.replace(path)
+
 
 def create_backup_archive() -> Path | None:
     """Build a single ``backup_{ts}.tar.gz`` containing the DB + all attachments.
