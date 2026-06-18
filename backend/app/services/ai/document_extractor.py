@@ -53,7 +53,7 @@ IMPORTANT INSTRUCTIONS:
    - ref_value: Use the reference range printed on the document if available. If NOT printed, provide the standard reference range from established medical guidelines (e.g. WHO, ADA, standard lab medicine references). Always include units.
    - note: Write a brief clinical comment on the result status. Examples: "Normal", "Elevated - above target", "Low - monitor", "Critical high", "Borderline", "Well controlled". Keep it under 10 words.
 9. If the document is an eyeglass prescription, extract vision data into the "eyeglass" object.
-10. existing_conditions: Extract any mentioned existing/chronic conditions (e.g. "T2DM, Hypertension, Depression"). Comma-separated, uppercase.
+10. existing_conditions: Extract ONLY conditions the document EXPLICITLY labels as pre-existing, chronic, or past medical history (e.g. a "PMH", "Known case of", or "History of" section). Do NOT infer these from the current visit's diagnosis. Comma-separated, uppercase, or null if none are explicitly stated.
 11. chief_complaint: The main reason for the visit / chief complaint (e.g. "Fever for 3 days", "Routine follow-up for T2DM"). Extract exactly as stated, including from handwritten notes.
 12. investigations: Any tests or investigations ordered, recommended, or mentioned (e.g. "CBC, HbA1c, Lipid profile, ECG"). Comma-separated.
 13. clinical_data: Include a transcription of any handwritten notes, advice, or instructions that don't fit into other fields. Preserve the original meaning even if exact words are uncertain.
@@ -175,9 +175,13 @@ async def extract_medical_data(
 
         # Step 1: Render pages and OCR with tesseract (fast, local)
         ocr_text = await ocr_pdf_pages(file_path, page_count)
+        ocr_quality = _ocr_quality(ocr_text)
 
-        if ocr_text:
-            logger.info("OCR extracted %d chars from %d pages — using text extraction", len(ocr_text), page_count)
+        if ocr_text and ocr_quality >= OCR_QUALITY_THRESHOLD:
+            logger.info(
+                "OCR extracted %d chars (quality %.2f) from %d pages — using text extraction",
+                len(ocr_text), ocr_quality, page_count,
+            )
             # Chunk OCR text by page markers to keep prompts small for local models
             page_chunks = chunk_ocr_text(ocr_text, pages_per_chunk=3)
             all_extracted = ExtractedFields()
@@ -194,7 +198,9 @@ async def extract_medical_data(
                 return ExtractionResult(extracted=all_extracted, transcription=formatted)
             logger.warning("OCR text extraction returned no usable fields — falling back to vision AI")
         else:
-            logger.warning("OCR produced no text — falling back to vision AI")
+            logger.warning(
+                "OCR quality too low (%.2f) or empty — falling back to vision AI", ocr_quality
+            )
 
         # Step 2: Vision AI fallback (slow, requires working provider)
         page_images: list[str] = []
@@ -234,7 +240,7 @@ async def extract_medical_data(
     if mime_type.startswith("image/"):
         # Try local tesseract first (fast, free)
         ocr_text = tesseract_image(file_path)
-        if ocr_text:
+        if ocr_text and _ocr_quality(ocr_text) >= OCR_QUALITY_THRESHOLD:
             logger.info("Image OCR (tesseract) extracted %d chars — using text extraction", len(ocr_text))
             raw_text, formatted = await asyncio.gather(
                 call_text_extraction(ocr_text, last_provider_ref),
@@ -245,9 +251,9 @@ async def extract_medical_data(
                 transcription=formatted,
             )
 
-        # Fallback: cloud AI OCR
+        # Tesseract produced nothing usable — try cloud AI OCR
         ocr_text = await call_ocr(file_path, mime_type)
-        if ocr_text:
+        if ocr_text and _ocr_quality(ocr_text) >= OCR_QUALITY_THRESHOLD:
             raw_text, formatted = await asyncio.gather(
                 call_text_extraction(ocr_text, last_provider_ref),
                 _format_ocr_transcription(ocr_text, last_provider_ref),
@@ -256,7 +262,7 @@ async def extract_medical_data(
                 extracted=parse_extraction(raw_text, ExtractedFields),
                 transcription=formatted,
             )
-        # OCR failed — fall through to vision providers
+        # OCR failed / too low quality — fall through to vision providers
 
     # Vision-only path: run extraction and transcription in parallel
     file_bytes = Path(file_path).read_bytes()
@@ -320,6 +326,72 @@ def chunk_ocr_text(ocr_text: str, pages_per_chunk: int = 3) -> list[str]:
 # Max concurrent tesseract processes during multi-page OCR. tesseract is CPU-bound,
 # so cap concurrency to avoid thrashing CPU/memory on multi-page scanned PDFs.
 OCR_CONCURRENCY = 4
+
+# Minimum OCR quality to trust the text-extraction path instead of escalating to
+# vision AI. Garbage OCR (non-empty but mostly symbols, or very sparse) scores
+# below this, so the extractor falls back to vision rather than extracting from
+# junk — the old code only escalated when OCR returned *nothing at all*.
+OCR_QUALITY_THRESHOLD = 0.5
+
+
+def _ocr_quality(text: str | None) -> float:
+    """Heuristic OCR quality in [0, 1].
+
+    Combines the alphanumeric ratio with a sparsity penalty. Garbage OCR
+    (non-empty but mostly punctuation, or very few characters) scores low so the
+    caller escalates to vision AI instead of extracting fields from junk text.
+    """
+    if not text:
+        return 0.0
+    total = len(text)
+    alpha = sum(c.isalnum() for c in text)
+    if total == 0 or alpha == 0:
+        return 0.0
+    ratio = alpha / total
+    sparse_penalty = min(1.0, alpha / 40.0)  # <40 alnum chars → suspect
+    return ratio * sparse_penalty
+
+
+def extraction_confidence(extracted: "ExtractedFields") -> str:  # noqa: F821
+    """Coverage-based confidence label: high/medium/low.
+
+    More usable structured data → higher confidence. Replaces the binary
+    has-any-data heuristic with a field-coverage signal.
+    """
+    score = 0
+    if extracted.record_type:
+        score += 1
+    if extracted.record_date:
+        score += 1
+    if extracted.provider_name:
+        score += 1
+    if extracted.diagnosis:
+        score += 1
+    if extracted.chief_complaint:
+        score += 1
+    if extracted.prescriptions:
+        score += 2
+    if extracted.lab_tests:
+        score += 2
+    if extracted.eyeglass:
+        score += 2
+    vitals = sum(
+        1
+        for v in (
+            extracted.weight,
+            extracted.height,
+            extracted.blood_pressure,
+            extracted.heart_rate,
+            extracted.temperature,
+        )
+        if v
+    )
+    score += min(vitals, 2)
+    if score >= 6:
+        return "high"
+    if score >= 3:
+        return "medium"
+    return "low"
 
 
 async def ocr_pdf_pages(file_path: str, page_count: int) -> str | None:

@@ -26,7 +26,7 @@ logger = logging.getLogger(__name__)
 # re-running OCR + the LLM pass. Bump EXTRACTION_CACHE_VERSION to invalidate
 # every cached extraction whenever the prompt or extraction logic changes.
 EXTRACTION_CACHE_TTL = 86400  # seconds (1 day)
-EXTRACTION_CACHE_VERSION = "1"
+EXTRACTION_CACHE_VERSION = "2"
 
 _CLINICAL_SYSTEM_NOTE = (
     "You are a senior clinical reviewer AI, functioning as an attending physician "

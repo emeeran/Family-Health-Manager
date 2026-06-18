@@ -17,6 +17,7 @@ from app.services.health_record_service import HealthRecordService
 from app.services.attachment_service import AttachmentService
 from app.services.reminder_service import ReminderService
 from app.services.ai_service import AIService
+from app.services.ai.document_extractor import extraction_confidence
 from app.core.cache import cache
 from app.schemas.health_record import (
     HealthRecordCreate, HealthRecordUpdate, HealthRecordResponse,
@@ -76,7 +77,7 @@ async def extract_from_document(
         staging_file_id=unique_filename,
         original_file_name=file.filename,
         extracted=extracted,
-        confidence="low" if not extracted.has_any_data() else "medium",
+        confidence=extraction_confidence(extracted),
         verification=None,
         transcription=transcription,
     )
@@ -153,7 +154,7 @@ async def extract_from_document_stream(
                 "original_file_name": original_name,
                 "extracted": extracted.model_dump(mode="json"),
                 "transcription": result.transcription,
-                "confidence": "low" if not extracted.has_any_data() else "medium",
+                "confidence": extraction_confidence(extracted),
                 "verification": None,
             })
         except Exception as exc:

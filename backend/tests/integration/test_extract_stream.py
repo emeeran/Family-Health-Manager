@@ -5,9 +5,11 @@ extraction failures surface as an error event instead of crashing the stream.
 The AI layer is mocked so this exercises the streaming wiring, not the model.
 """
 import json
+from datetime import date
 
 import pytest
 
+from app.models.base import RecordType
 from app.schemas.health_record import ExtractedFields
 from app.services.ai import AIService
 from app.services.ai.document_extractor import ExtractionResult
@@ -47,7 +49,14 @@ async def test_extract_stream_emits_secured_then_complete(auth_client, monkeypat
 
     async def fake_extract(self, file_path, mime_type, content_hash=None):
         return ExtractionResult(
-            extracted=ExtractedFields(diagnosis="Type 2 Diabetes"),
+            extracted=ExtractedFields(
+                record_type=RecordType.DOCTOR_VISIT,
+                record_date=date(2024, 1, 15),
+                provider_name="Test Clinic",
+                diagnosis="Type 2 Diabetes",
+                chief_complaint="Follow-up",
+                prescriptions=[{"medicine": "Metformin 500mg"}],
+            ),
             transcription="raw transcription",
         )
 
@@ -76,7 +85,7 @@ async def test_extract_stream_emits_secured_then_complete(auth_client, monkeypat
     assert complete["staging_file_id"] == secured["staging_file_id"]
     assert complete["extracted"]["diagnosis"] == "Type 2 Diabetes"
     assert complete["transcription"] == "raw transcription"
-    assert complete["confidence"] == "medium"
+    assert complete["confidence"] == "high"
 
 
 async def test_extract_stream_surfaces_extraction_error(auth_client, monkeypatch):
