@@ -23,7 +23,7 @@ cd backend && uv run ruff check --fix .  # Lint Python
 
 ## Project Structure
 ```
-sdd-health-manager/
+health-manager/
 ├── backend/
 │   ├── app/
 │   │   ├── main.py          # FastAPI entry point
@@ -42,23 +42,23 @@ sdd-health-manager/
 │   └── pyproject.toml
 ├── frontend/
 │   ├── src/
-│   │   ├── app/             # Page components
-│   │   ├── components/      # Shared UI components
+│   │   ├── components/      # Shared UI components (shadcn/ui under ui/)
+│   │   ├── hooks/           # React hooks
 │   │   ├── lib/             # API client, types, utilities
 │   │   ├── layouts/         # App layout with sidebar
-│   │   └── pages/           # Route-level page components
+│   │   ├── pages/           # Route-level page components
+│   │   └── types/           # TypeScript type definitions
 │   ├── vite.config.ts
 │   └── package.json
 ├── docs/                    # SDD artefacts (domain, spec, design)
 ├── prompts/                 # Prompt templates for AI pipeline
-├── automation/              # Audit reports and CI tooling
+├── packaging/               # Debian pkg, Caddyfile, systemd deploy scripts
+├── scripts/                 # Deploy & sync helper scripts (gitignored)
 ├── dev.sh                   # One-command dev server startup
-├── docker-compose.yml
-├── Dockerfile
-├── Caddyfile
 ├── CLAUDE.md                # ← You are here
 ├── lefthook.yml             # Git hooks (lint, typecheck)
-└── Makefile
+├── Makefile                 # SDD pipeline targets (domain → test)
+└── package.json             # vitest + jsdom for frontend tests
 ```
 
 ## Conventions
