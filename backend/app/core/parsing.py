@@ -1,5 +1,22 @@
 """Shared parsing utilities."""
+import json
 import re
+
+
+def parse_clinical_data(clinical_data: str | None) -> dict | None:
+    """Safely parse a ``clinical_data`` JSON string into a dict.
+
+    Returns ``None`` for empty / non-dict / unparseable input.
+    """
+    if not clinical_data:
+        return None
+    try:
+        parsed = json.loads(clinical_data)
+        if isinstance(parsed, dict):
+            return parsed
+    except (json.JSONDecodeError, ValueError):
+        pass
+    return None
 
 
 def parse_duration(duration_str: str | None) -> int:

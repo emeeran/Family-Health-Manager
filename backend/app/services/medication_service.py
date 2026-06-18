@@ -10,7 +10,7 @@ from sqlalchemy.orm import load_only
 
 from app.models.base import HealthRecord, RecordType
 from app.models.medication import Medication
-from app.core.parsing import parse_duration
+from app.core.parsing import parse_clinical_data, parse_duration
 
 MEDICATION_SYNC_KEY = "_medication_sync"
 logger = logging.getLogger(__name__)
@@ -34,7 +34,7 @@ class MedicationService:
 
         Returns the number of medication rows inserted/updated.
         """
-        parsed = self._parse_clinical_data(clinical_data_str)
+        parsed = parse_clinical_data(clinical_data_str)
         if not parsed or parsed.get("_type") != "structured":
             return 0
         if parsed.get(MEDICATION_SYNC_KEY) is False:
@@ -159,7 +159,7 @@ class MedicationService:
             if not r.clinical_data:
                 continue
 
-            parsed = self._parse_clinical_data(r.clinical_data)
+            parsed = parse_clinical_data(r.clinical_data)
 
             # Skip records where user chose "Save Only" (no medication sync)
             if parsed and parsed.get(MEDICATION_SYNC_KEY) is False:
@@ -297,7 +297,7 @@ class MedicationService:
         for r in records:
             if not r.clinical_data:
                 continue
-            parsed = self._parse_clinical_data(r.clinical_data)
+            parsed = parse_clinical_data(r.clinical_data)
             if not parsed or parsed.get("_type") != "structured":
                 continue
 
@@ -456,19 +456,6 @@ class MedicationService:
         }
 
     @staticmethod
-    def _parse_clinical_data(clinical_data: str | None) -> dict | None:
-        """Safely parse clinical_data JSON string."""
-        if not clinical_data:
-            return None
-        try:
-            parsed = json.loads(clinical_data)
-            if isinstance(parsed, dict):
-                return parsed
-        except (json.JSONDecodeError, ValueError):
-            pass
-        return None
-
-    @staticmethod
     def count_medications_from_records(records: list) -> dict[str, int]:
         """Count unique active medications per member from pre-fetched records.
 
@@ -485,7 +472,7 @@ class MedicationService:
             seen_names: set[str] = set()
             count = 0
             for r in recs:
-                parsed = MedicationService._parse_clinical_data(r.clinical_data)
+                parsed = parse_clinical_data(r.clinical_data)
                 if not parsed or parsed.get("_type") != "structured":
                     continue
                 if parsed.get(MEDICATION_SYNC_KEY) is False:

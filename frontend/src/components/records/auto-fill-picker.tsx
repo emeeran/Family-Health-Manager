@@ -2,6 +2,7 @@ import { Button } from "@/components/ui/button";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { WandSparkles, FileText, ChevronRight } from "lucide-react";
 import type { ExtractionBatch } from "@/lib/extraction-store";
+import { timeAgo } from "./record-form-utils";
 
 interface AutoFillPickerProps {
   batches: ExtractionBatch[];
@@ -36,16 +37,6 @@ function batchSummary(
     return "RE/LE prescription data";
   }
   return "";
-}
-
-function timeAgo(timestamp: number): string {
-  const seconds = Math.floor((Date.now() - timestamp) / 1000);
-  if (seconds < 60) return "just now";
-  const minutes = Math.floor(seconds / 60);
-  if (minutes < 60) return `${minutes}m ago`;
-  const hours = Math.floor(minutes / 60);
-  if (hours < 24) return `${hours}h ago`;
-  return `${Math.floor(hours / 24)}d ago`;
 }
 
 export function AutoFillPicker({ batches, dataType, onSelect, disabled }: AutoFillPickerProps) {

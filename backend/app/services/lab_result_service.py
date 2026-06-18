@@ -1,5 +1,4 @@
 """Lab result service — sync and query lab results from structured clinical_data."""
-import json
 import logging
 from datetime import date
 from uuid import UUID
@@ -7,6 +6,7 @@ from uuid import UUID
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.core.parsing import parse_clinical_data
 from app.models.lab_result import LabResult
 
 logger = logging.getLogger(__name__)
@@ -29,7 +29,7 @@ class LabResultService:
 
         Returns the number of lab result rows inserted.
         """
-        parsed = self._parse_clinical_data(clinical_data_str)
+        parsed = parse_clinical_data(clinical_data_str)
         if not parsed or parsed.get("_type") != "structured":
             return 0
 
@@ -103,16 +103,3 @@ class LabResultService:
             }
             for lr in result.scalars().all()
         ]
-
-    @staticmethod
-    def _parse_clinical_data(clinical_data: str | None) -> dict | None:
-        """Safely parse clinical_data JSON string."""
-        if not clinical_data:
-            return None
-        try:
-            parsed = json.loads(clinical_data)
-            if isinstance(parsed, dict):
-                return parsed
-        except (json.JSONDecodeError, ValueError):
-            pass
-        return None
