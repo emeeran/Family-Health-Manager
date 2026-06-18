@@ -74,51 +74,61 @@ async def check_ai_providers():
             logger.warning("%s health check failed: %s", name, exc)
             return name, False
 
+    # Resolve credentials once (stored value wins; .env fallback). Each call is
+    # cached, so this is cheap and reflects UI-managed keys immediately.
+    from app.core.provider_keys import resolve_provider_value
+
+    openai_key = await resolve_provider_value("openai")
+    gemini_key = await resolve_provider_value("gemini")
+    groq_key = await resolve_provider_value("groq")
+    openrouter_key = await resolve_provider_value("openrouter")
+    ollama_url = await resolve_provider_value("ollama")
+
     async with httpx.AsyncClient(timeout=10) as client:
         tasks: list[asyncio.Task] = []
 
-        if settings.OPENAI_API_KEY:
+        if openai_key:
             async def _openai():
                 resp = await client.get(
                     "https://api.openai.com/v1/models",
-                    headers={"Authorization": f"Bearer {settings.OPENAI_API_KEY}"},
+                    headers={"Authorization": f"Bearer {openai_key}"},
                 )
                 return resp.status_code == 200
             tasks.append(asyncio.create_task(_check("OpenAI", _openai())))
 
-        if settings.GEMINI_API_KEY:
+        if gemini_key:
             async def _gemini():
                 resp = await client.post(
                     "https://generativelanguage.googleapis.com/v1beta/"
                     "models/gemini-2.5-flash:generateContent",
                     json={"contents": [{"parts": [{"text": "hi"}]}]},
-                    headers={"x-goog-api-key": settings.GEMINI_API_KEY},
+                    headers={"x-goog-api-key": gemini_key},
                 )
                 return resp.status_code == 200
             tasks.append(asyncio.create_task(_check("Gemini", _gemini())))
 
-        if settings.GROQ_API_KEY:
+        if groq_key:
             async def _groq():
                 resp = await client.get(
                     "https://api.groq.com/openai/v1/models",
-                    headers={"Authorization": f"Bearer {settings.GROQ_API_KEY}"},
+                    headers={"Authorization": f"Bearer {groq_key}"},
                 )
                 return resp.status_code == 200
             tasks.append(asyncio.create_task(_check("Groq", _groq())))
 
-        if settings.OPENROUTER_API_KEY:
+        if openrouter_key:
             async def _openrouter():
                 resp = await client.get(
                     "https://openrouter.ai/api/v1/models",
-                    headers={"Authorization": f"Bearer {settings.OPENROUTER_API_KEY}"},
+                    headers={"Authorization": f"Bearer {openrouter_key}"},
                 )
                 return resp.status_code == 200
             tasks.append(asyncio.create_task(_check("OpenRouter", _openrouter())))
 
         # Ollama (local)
-        if settings.OLLAMA_LOCAL_URL:
+        if ollama_url:
             async def _ollama():
-                resp = await client.get(f"{settings.OLLAMA_LOCAL_URL}/api/tags")
+                resp = await client.get(f"{ollama_url}/api/tags")
                 if resp.status_code != 200:
                     return False
                 model_names = [m["name"] for m in resp.json().get("models", [])]

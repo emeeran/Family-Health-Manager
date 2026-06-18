@@ -116,6 +116,7 @@ from app.models.verification import ResponseVerification  # noqa: E402
 from app.models.health_alert import HealthAlert, AlertType, AlertSeverity  # noqa: E402
 from app.models.medication import Medication  # noqa: E402
 from app.models.lab_result import LabResult  # noqa: E402
+from app.models.app_secret import AppSecret  # noqa: E402, F401
 
 __all__ = [
     "Base",
@@ -147,4 +148,5 @@ __all__ = [
     "AlertSeverity",
     "Medication",
     "LabResult",
+    "AppSecret",
 ]

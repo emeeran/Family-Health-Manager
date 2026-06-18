@@ -7,6 +7,7 @@ from collections.abc import AsyncGenerator
 import httpx
 
 from app.core.config import get_settings
+from app.core.provider_keys import resolve_provider_value
 from app.services.ai.base import get_ollama_client
 
 settings = get_settings()
@@ -70,10 +71,11 @@ async def call_ollama_text(
     ``fmt`` enables grammar-constrained output (e.g. ``"json"``); used for
     structured extraction to cut generation length and guarantee parseable JSON.
     """
-    if not settings.OLLAMA_LOCAL_URL:
+    base_url = await resolve_provider_value("ollama")
+    if not base_url:
         return None
     use_model = model or settings.OLLAMA_TEXT_MODEL
-    url = f"{settings.OLLAMA_LOCAL_URL}/api/chat"
+    url = f"{base_url}/api/chat"
     payload = {
         "model": use_model,
         "messages": [{"role": "user", "content": prompt}],
@@ -100,9 +102,10 @@ async def call_ollama_text(
 
 async def ollama_chat(model: str, prompt: str) -> str | None:
     """Call local Ollama with a specific model."""
-    if not settings.OLLAMA_LOCAL_URL:
+    base_url = await resolve_provider_value("ollama")
+    if not base_url:
         return None
-    url = f"{settings.OLLAMA_LOCAL_URL}/api/chat"
+    url = f"{base_url}/api/chat"
     payload = {
         "model": model,
         "messages": [{"role": "user", "content": prompt}],
@@ -134,9 +137,10 @@ async def ollama_chat_stream(model: str, prompt: str) -> AsyncGenerator[str, Non
     generous timeout that still fires means the model cannot keep up and
     retrying would only double the wait.
     """
-    if not settings.OLLAMA_LOCAL_URL:
+    base_url = await resolve_provider_value("ollama")
+    if not base_url:
         return
-    url = f"{settings.OLLAMA_LOCAL_URL}/api/chat"
+    url = f"{base_url}/api/chat"
     payload = {
         "model": model,
         "messages": [{"role": "user", "content": prompt}],
@@ -186,9 +190,10 @@ async def call_ollama_vision(
 
     ``fmt`` enables grammar-constrained output (e.g. ``"json"``) for extraction.
     """
-    if not settings.OLLAMA_LOCAL_URL:
+    base_url = await resolve_provider_value("ollama")
+    if not base_url:
         return None
-    url = f"{settings.OLLAMA_LOCAL_URL}/api/chat"
+    url = f"{base_url}/api/chat"
     payload = {
         "model": settings.OLLAMA_MODEL,
         "messages": [{
@@ -218,13 +223,14 @@ async def call_ollama_ocr(
     b64_data: str, mime_type: str
 ) -> str | None:
     """Use local Ollama vision to OCR an image to text."""
-    if not settings.OLLAMA_LOCAL_URL:
+    base_url = await resolve_provider_value("ollama")
+    if not base_url:
         return None
     ocr_prompt = (
         "Transcribe all the text in this document, including any handwritten text. "
         "Return ONLY the raw text, nothing else."
     )
-    url = f"{settings.OLLAMA_LOCAL_URL}/api/chat"
+    url = f"{base_url}/api/chat"
     payload = {
         "model": settings.OLLAMA_MODEL,
         "messages": [{

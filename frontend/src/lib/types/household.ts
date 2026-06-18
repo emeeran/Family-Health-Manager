@@ -48,3 +48,21 @@ export interface HouseholdSettingsResponse {
 export interface HouseholdSettingsUpdate {
   settings: FeatureSettings;
 }
+
+export interface ProviderKeyStatus {
+  provider: string;
+  label: string;
+  is_set: boolean;
+  using_env: boolean;
+  masked: string | null;
+  is_secret: boolean;
+}
+
+export interface ProviderKeysResponse {
+  keys: ProviderKeyStatus[];
+}
+
+export interface ImportFromEnvResponse {
+  imported: string[];
+  skipped: string[];
+}

@@ -10,6 +10,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.config import get_settings
+from app.core.provider_keys import is_provider_configured
 from app.models.base import AIInsight, Message, MessageRole
 from app.services.ai import base as _base
 from app.services.ai.context_builder import (
@@ -179,11 +180,11 @@ async def chat_stream(
     # Fallback: cloud providers (non-streaming, sent as single token)
     if not full_response:
         cloud_providers: list[tuple] = []
-        if settings.OPENROUTER_API_KEY:
+        if await is_provider_configured("openrouter"):
             cloud_providers.append((call_openrouter_text, "OpenRouter DeepSeek V4 Flash"))
-        if settings.GROQ_API_KEY:
+        if await is_provider_configured("groq"):
             cloud_providers.append((call_groq_text, "Groq Llama-4-Scout"))
-        if settings.GEMINI_API_KEY:
+        if await is_provider_configured("gemini"):
             cloud_providers.append((call_gemini_text, "Google Gemini 2.5 Flash"))
 
         if cloud_providers:

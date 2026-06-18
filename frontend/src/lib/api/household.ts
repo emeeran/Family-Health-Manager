@@ -7,6 +7,9 @@ import type {
   AIProviderConfig,
   AIProviderConfigResponse,
   FetchedModelsResponse,
+  ProviderKeyStatus,
+  ProviderKeysResponse,
+  ImportFromEnvResponse,
 } from "../types/household";
 import type { HealthRecordResponse } from "../types/health-record";
 
@@ -61,4 +64,27 @@ export function updateAIProviderConfig(config: AIProviderConfig) {
 
 export function fetchProviderModels() {
   return apiRequest<FetchedModelsResponse>("/household/ai-provider-config/fetch-models");
+}
+
+export function getProviderKeys() {
+  return apiRequest<ProviderKeysResponse>("/system/provider-keys");
+}
+
+export function updateProviderKey(provider: string, value: string) {
+  return apiRequest<ProviderKeyStatus>("/system/provider-keys", {
+    method: "PUT",
+    body: { provider, value },
+  });
+}
+
+export function deleteProviderKey(provider: string) {
+  return apiRequest<{ deleted: string }>(`/system/provider-keys/${provider}`, {
+    method: "DELETE",
+  });
+}
+
+export function importProviderKeysFromEnv() {
+  return apiRequest<ImportFromEnvResponse>("/system/provider-keys/import-from-env", {
+    method: "POST",
+  });
 }

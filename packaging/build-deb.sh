@@ -9,7 +9,7 @@
 # Usage:
 #   bash packaging/build-deb.sh [VERSION]
 #
-# The VERSION defaults to what's in backend/pyproject.toml (currently 0.1.0).
+# The VERSION defaults to what's in backend/pyproject.toml, overridable via arg.
 
 set -euo pipefail
 
@@ -18,7 +18,14 @@ PROJECT_ROOT="$(cd "${SCRIPT_DIR}/.." && pwd)"
 STAGING="${PROJECT_ROOT}/staging"
 
 # ── Version ──────────────────────────────────────────────────────────────────
-VERSION="${1:-0.1.0}"
+# Default to the version declared in backend/pyproject.toml unless overridden.
+PYPROJECT_VERSION="$(sed -nE 's/^version[[:space:]]*=[[:space:]]*"([^"]+)".*/\1/p' \
+    "${PROJECT_ROOT}/backend/pyproject.toml" | head -n1)"
+VERSION="${1:-${PYPROJECT_VERSION}}"
+if [ -z "${VERSION}" ]; then
+    echo "Error: could not determine version (pass it as arg, or set 'version' in backend/pyproject.toml)" >&2
+    exit 1
+fi
 PKG_NAME="health-manager"
 DEB_FILE="${PROJECT_ROOT}/${PKG_NAME}_${VERSION}_amd64.deb"
 

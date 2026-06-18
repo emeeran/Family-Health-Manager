@@ -10,18 +10,17 @@ from pathlib import Path
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.core.config import get_settings
+from app.core.provider_keys import any_cloud_provider_configured
 from app.services.ai.providers.gemini import call_gemini_text, call_gemini_vision, call_gemini_ocr
 from app.services.ai.providers.openai import call_openai_text, call_openai_vision
 from app.services.ai.providers.groq import call_groq_text, call_groq_vision
 from app.services.ai.providers.openrouter import call_openrouter_text, call_openrouter_vision
 from app.services.ai.providers.ollama import call_ollama_text, call_ollama_vision, call_ollama_ocr
 
-settings = get_settings()
 logger = logging.getLogger(__name__)
 
 
-def _fast_cloud_text_available() -> bool:
+async def _fast_cloud_text_available() -> bool:
     """True if any non-Ollama text provider has an API key configured.
 
     When False, local Ollama is the only viable provider. The cosmetic
@@ -29,12 +28,7 @@ def _fast_cloud_text_available() -> bool:
     Ollama server serializes requests — a second call would roughly double the
     already-large per-call latency. Raw OCR/text is used as the transcript.
     """
-    return bool(
-        settings.OPENROUTER_API_KEY
-        or settings.GEMINI_API_KEY
-        or settings.GROQ_API_KEY
-        or settings.OPENAI_API_KEY
-    )
+    return await any_cloud_provider_configured()
 
 
 @dataclass
@@ -164,7 +158,7 @@ async def extract_medical_data(
             logger.info("PDF has embedded text (%d chars) — using fast text extraction", len(pdf_text))
             # Extraction and transcription-formatting both consume only pdf_text —
             # run them concurrently to save an AI round-trip.
-            if _fast_cloud_text_available():
+            if await _fast_cloud_text_available():
                 raw_text, formatted = await asyncio.gather(
                     call_text_extraction(pdf_text, last_provider_ref),
                     _format_ocr_transcription(pdf_text, last_provider_ref),
@@ -219,7 +213,7 @@ async def extract_medical_data(
             if all_extracted.has_any_data():
                 formatted = (
                     await _format_ocr_transcription(ocr_text, last_provider_ref)
-                    if _fast_cloud_text_available()
+                    if await _fast_cloud_text_available()
                     else ocr_text
                 )
                 return ExtractionResult(extracted=all_extracted, transcription=formatted)
@@ -272,7 +266,7 @@ async def extract_medical_data(
         ocr_text = await asyncio.to_thread(tesseract_image, file_path)
         if ocr_text and _ocr_quality(ocr_text) >= OCR_QUALITY_THRESHOLD:
             logger.info("Image OCR (tesseract) extracted %d chars — using text extraction", len(ocr_text))
-            if _fast_cloud_text_available():
+            if await _fast_cloud_text_available():
                 raw_text, formatted = await asyncio.gather(
                     call_text_extraction(ocr_text, last_provider_ref),
                     _format_ocr_transcription(ocr_text, last_provider_ref),
@@ -288,7 +282,7 @@ async def extract_medical_data(
         # Tesseract produced nothing usable — try cloud AI OCR
         ocr_text = await call_ocr(file_path, mime_type)
         if ocr_text and _ocr_quality(ocr_text) >= OCR_QUALITY_THRESHOLD:
-            if _fast_cloud_text_available():
+            if await _fast_cloud_text_available():
                 raw_text, formatted = await asyncio.gather(
                     call_text_extraction(ocr_text, last_provider_ref),
                     _format_ocr_transcription(ocr_text, last_provider_ref),

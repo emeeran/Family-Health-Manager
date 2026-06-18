@@ -5,19 +5,19 @@ from collections.abc import Awaitable, Callable
 
 import httpx
 
-from app.core.config import get_settings
+from app.core.provider_keys import resolve_provider_api_key, resolve_provider_value
 
 logger = logging.getLogger(__name__)
-settings = get_settings()
 
 
 async def _fetch_openai(client: httpx.AsyncClient) -> list[str]:
     """Fetch model list from OpenAI."""
-    if not settings.OPENAI_API_KEY:
+    api_key = await resolve_provider_api_key("openai")
+    if not api_key:
         return []
     resp = await client.get(
         "https://api.openai.com/v1/models",
-        headers={"Authorization": f"Bearer {settings.OPENAI_API_KEY}"},
+        headers={"Authorization": f"Bearer {api_key}"},
     )
     resp.raise_for_status()
     return sorted(m["id"] for m in resp.json().get("data", []))
@@ -25,11 +25,12 @@ async def _fetch_openai(client: httpx.AsyncClient) -> list[str]:
 
 async def _fetch_groq(client: httpx.AsyncClient) -> list[str]:
     """Fetch model list from Groq."""
-    if not settings.GROQ_API_KEY:
+    api_key = await resolve_provider_api_key("groq")
+    if not api_key:
         return []
     resp = await client.get(
         "https://api.groq.com/openai/v1/models",
-        headers={"Authorization": f"Bearer {settings.GROQ_API_KEY}"},
+        headers={"Authorization": f"Bearer {api_key}"},
     )
     resp.raise_for_status()
     return sorted(m["id"] for m in resp.json().get("data", []))
@@ -37,11 +38,12 @@ async def _fetch_groq(client: httpx.AsyncClient) -> list[str]:
 
 async def _fetch_openrouter(client: httpx.AsyncClient) -> list[str]:
     """Fetch model list from OpenRouter."""
-    if not settings.OPENROUTER_API_KEY:
+    api_key = await resolve_provider_api_key("openrouter")
+    if not api_key:
         return []
     resp = await client.get(
         "https://openrouter.ai/api/v1/models",
-        headers={"Authorization": f"Bearer {settings.OPENROUTER_API_KEY}"},
+        headers={"Authorization": f"Bearer {api_key}"},
     )
     resp.raise_for_status()
     return sorted(m["id"] for m in resp.json().get("data", []))
@@ -49,11 +51,12 @@ async def _fetch_openrouter(client: httpx.AsyncClient) -> list[str]:
 
 async def _fetch_gemini(client: httpx.AsyncClient) -> list[str]:
     """Fetch model list from Google Gemini."""
-    if not settings.GEMINI_API_KEY:
+    api_key = await resolve_provider_api_key("gemini")
+    if not api_key:
         return []
     resp = await client.get(
         "https://generativelanguage.googleapis.com/v1beta/models",
-        headers={"x-goog-api-key": settings.GEMINI_API_KEY},
+        headers={"x-goog-api-key": api_key},
     )
     resp.raise_for_status()
     models = []
@@ -69,8 +72,11 @@ async def _fetch_gemini(client: httpx.AsyncClient) -> list[str]:
 
 async def _fetch_ollama(client: httpx.AsyncClient) -> list[str]:
     """Fetch locally available models from Ollama."""
+    base_url = await resolve_provider_value("ollama")
+    if not base_url:
+        return []
     try:
-        resp = await client.get(f"{settings.OLLAMA_LOCAL_URL}/api/tags")
+        resp = await client.get(f"{base_url}/api/tags")
         resp.raise_for_status()
         return sorted(m["name"] for m in resp.json().get("models", []))
     except Exception:

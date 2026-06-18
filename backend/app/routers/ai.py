@@ -6,7 +6,7 @@ from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel, Field
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
-from app.core.config import get_settings
+from app.core.provider_keys import is_provider_configured
 from app.core.database import get_db
 from app.core.deps import get_household_from_token
 from app.services.ai_service import AIService
@@ -94,7 +94,6 @@ async def get_ai_status(
     from app.schemas.ai_provider_config import PROVIDER_LABELS, default_provider_config
     from app.schemas.household import FeatureSettings
 
-    settings = get_settings()
     test_prompt = "Reply with only the word OK."
 
     # Load provider config from household settings
@@ -143,7 +142,7 @@ async def get_ai_status(
                 elapsed = time.monotonic() - start
                 providers.append({"name": label, "id": prov.id, "model": model, "available": bool(result), "response_ms": round(elapsed * 1000)})
             elif prov.id == "gemini":
-                if not settings.GEMINI_API_KEY:
+                if not await is_provider_configured("gemini"):
                     providers.append({"name": label, "id": prov.id, "model": model, "available": False, "error": "No API key"})
                     continue
                 from app.services.ai.providers.gemini import call_gemini_text
@@ -152,7 +151,7 @@ async def get_ai_status(
                 elapsed = time.monotonic() - start
                 providers.append({"name": label, "id": prov.id, "model": model, "available": bool(result), "response_ms": round(elapsed * 1000)})
             elif prov.id == "openrouter":
-                if not settings.OPENROUTER_API_KEY:
+                if not await is_provider_configured("openrouter"):
                     providers.append({"name": label, "id": prov.id, "model": model, "available": False, "error": "No API key"})
                     continue
                 from app.services.ai.providers.openrouter import call_openrouter_text
@@ -161,7 +160,7 @@ async def get_ai_status(
                 elapsed = time.monotonic() - start
                 providers.append({"name": label, "id": prov.id, "model": model, "available": bool(result), "response_ms": round(elapsed * 1000)})
             elif prov.id == "groq":
-                if not settings.GROQ_API_KEY:
+                if not await is_provider_configured("groq"):
                     providers.append({"name": label, "id": prov.id, "model": model, "available": False, "error": "No API key"})
                     continue
                 from app.services.ai.providers.groq import call_groq_text
@@ -170,7 +169,7 @@ async def get_ai_status(
                 elapsed = time.monotonic() - start
                 providers.append({"name": label, "id": prov.id, "model": model, "available": bool(result), "response_ms": round(elapsed * 1000)})
             elif prov.id == "openai":
-                if not settings.OPENAI_API_KEY:
+                if not await is_provider_configured("openai"):
                     providers.append({"name": label, "id": prov.id, "model": model, "available": False, "error": "No API key"})
                     continue
                 from app.services.ai.providers.openai import call_openai_text

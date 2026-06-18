@@ -9,6 +9,7 @@ import { Separator } from "@/components/ui/separator";
 import { Switch } from "@/components/ui/switch";
 import { getHousehold, updateHousehold, getSettings, updateSettings } from "@/lib/api/household";
 import { getMe, changePassword } from "@/lib/api/auth";
+import { ApiError } from "@/lib/api-client";
 import { PasswordInput } from "@/components/shared/password-input";
 import { DataTab } from "@/components/content/data-tab";
 import { getAIStatus, type ProviderStatus } from "@/lib/api/ai";
@@ -16,8 +17,16 @@ import {
   getAIProviderConfig,
   updateAIProviderConfig,
   fetchProviderModels,
+  getProviderKeys,
+  updateProviderKey,
+  deleteProviderKey,
+  importProviderKeysFromEnv,
 } from "@/lib/api/household";
-import type { ProviderConfigItem, AIProviderConfigResponse } from "@/lib/types/household";
+import type {
+  ProviderConfigItem,
+  AIProviderConfigResponse,
+  ProviderKeyStatus,
+} from "@/lib/types/household";
 import { toast } from "sonner";
 import {
   CheckCircle2,
@@ -29,6 +38,8 @@ import {
   ChevronUp,
   ChevronDown,
   GripVertical,
+  KeyRound,
+  Trash2,
 } from "lucide-react";
 import {
   Select,
@@ -542,6 +553,9 @@ function AIProvidersTab() {
 
   return (
     <div className="space-y-6 pt-2">
+      {/* API Keys — admin-managed, encrypted at rest */}
+      <ProviderKeysCard />
+
       {/* Section A: Provider Configuration */}
       <div className="space-y-3">
         <div className="flex items-center justify-between">
@@ -653,6 +667,268 @@ function AIProvidersTab() {
         )}
       </div>
     </div>
+  );
+}
+
+// ── API Keys Card (admin) ──
+
+function ProviderKeysCard() {
+  const [keys, setKeys] = useState<ProviderKeyStatus[] | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [forbidden, setForbidden] = useState(false);
+  const [editing, setEditing] = useState<string | null>(null);
+  const [draft, setDraft] = useState("");
+  const [busy, setBusy] = useState<string | null>(null);
+  const [confirmImport, setConfirmImport] = useState(false);
+
+  const loadKeys = useCallback(() => {
+    setLoading(true);
+    getProviderKeys()
+      .then((r) => {
+        setKeys(r.keys);
+        setForbidden(false);
+      })
+      .catch((e: unknown) => {
+        if (e instanceof ApiError && e.status === 403) {
+          setForbidden(true); // non-admin — card is hidden below
+        } else {
+          toast.error("Failed to load API keys");
+        }
+        setKeys(null);
+      })
+      .finally(() => setLoading(false));
+  }, []);
+
+  useEffect(() => {
+    loadKeys();
+  }, [loadKeys]);
+
+  // Non-admins see nothing; everyone else gets a brief loader.
+  if (forbidden) return null;
+  if (loading || !keys) {
+    return (
+      <Card>
+        <CardContent className="flex items-center gap-2 py-6">
+          <Loader2 className="h-4 w-4 animate-spin text-muted-foreground" />
+          <span className="text-sm text-muted-foreground">Loading API keys…</span>
+        </CardContent>
+      </Card>
+    );
+  }
+
+  async function save(provider: string) {
+    const value = draft.trim();
+    if (!value) return;
+    setBusy(provider);
+    try {
+      await updateProviderKey(provider, value);
+      toast.success("API key saved");
+      setEditing(null);
+      setDraft("");
+      loadKeys();
+    } catch {
+      toast.error("Failed to save API key");
+    } finally {
+      setBusy(null);
+    }
+  }
+
+  async function clearKey(provider: string) {
+    setBusy(provider);
+    try {
+      await deleteProviderKey(provider);
+      toast.success("API key cleared");
+      loadKeys();
+    } catch {
+      toast.error("Failed to clear API key");
+    } finally {
+      setBusy(null);
+    }
+  }
+
+  async function doImport() {
+    setBusy("__import__");
+    try {
+      const r = await importProviderKeysFromEnv();
+      const msg =
+        r.imported.length > 0
+          ? `Imported ${r.imported.length} key(s) from .env`
+          : "No keys found in .env";
+      toast.success(r.skipped.length ? `${msg} (${r.skipped.length} empty)` : msg);
+      setConfirmImport(false);
+      loadKeys();
+    } catch {
+      toast.error("Import from .env failed");
+    } finally {
+      setBusy(null);
+    }
+  }
+
+  return (
+    <Card>
+      <CardHeader className="pb-3">
+        <div className="flex items-center justify-between gap-2">
+          <div>
+            <CardTitle className="flex items-center gap-2 text-sm">
+              <KeyRound className="h-4 w-4" /> API Keys
+            </CardTitle>
+            <p className="text-xs text-muted-foreground mt-1">
+              Stored encrypted. Overrides any value in <code>.env</code>; use Import to migrate.
+            </p>
+          </div>
+          {confirmImport ? (
+            <div className="flex items-center gap-2">
+              <span className="text-xs text-muted-foreground hidden sm:inline">
+                Overwrites saved keys
+              </span>
+              <Button
+                size="sm"
+                variant="outline"
+                className="h-7 text-xs"
+                onClick={() => setConfirmImport(false)}
+                disabled={!!busy}
+              >
+                Cancel
+              </Button>
+              <Button size="sm" className="h-7 text-xs" onClick={doImport} disabled={!!busy}>
+                {busy === "__import__" ? (
+                  <Loader2 className="h-3 w-3 animate-spin" />
+                ) : (
+                  "Confirm Import"
+                )}
+              </Button>
+            </div>
+          ) : (
+            <Button
+              size="sm"
+              variant="outline"
+              className="h-7 gap-1.5 text-xs"
+              onClick={() => setConfirmImport(true)}
+              disabled={!!busy}
+            >
+              Import from .env
+            </Button>
+          )}
+        </div>
+      </CardHeader>
+      <CardContent className="space-y-2">
+        {keys.map((k) => {
+          const isEditing = editing === k.provider;
+          return (
+            <div
+              key={k.provider}
+              className="flex flex-col gap-2 rounded-lg border px-3 py-2 sm:flex-row sm:items-center sm:justify-between"
+            >
+              <div className="min-w-0">
+                <div className="text-sm font-medium">{k.label}</div>
+                <div className="text-xs text-muted-foreground">
+                  {k.is_set ? (
+                    <span className="text-emerald-600">
+                      Configured{k.masked ? ` · ${k.masked}` : ""}
+                    </span>
+                  ) : k.using_env ? (
+                    <span className="text-amber-600">
+                      Using .env{k.masked ? ` · ${k.masked}` : ""}
+                    </span>
+                  ) : (
+                    <span>Not set</span>
+                  )}
+                </div>
+              </div>
+
+              <div className="flex items-center gap-2">
+                {isEditing ? (
+                  <>
+                    {k.is_secret ? (
+                      <PasswordInput
+                        autoFocus
+                        className="h-8 w-56 text-sm"
+                        placeholder={k.is_set ? "Enter new key to replace" : "Paste API key"}
+                        value={draft}
+                        onChange={(e) => setDraft(e.target.value)}
+                        onKeyDown={(e) => {
+                          if (e.key === "Enter") save(k.provider);
+                          if (e.key === "Escape") {
+                            setEditing(null);
+                            setDraft("");
+                          }
+                        }}
+                      />
+                    ) : (
+                      <Input
+                        autoFocus
+                        className="h-8 w-56 text-sm"
+                        placeholder="http://localhost:11434"
+                        value={draft}
+                        onChange={(e) => setDraft(e.target.value)}
+                        onKeyDown={(e) => {
+                          if (e.key === "Enter") save(k.provider);
+                          if (e.key === "Escape") {
+                            setEditing(null);
+                            setDraft("");
+                          }
+                        }}
+                      />
+                    )}
+                    <Button
+                      size="sm"
+                      className="h-8"
+                      onClick={() => save(k.provider)}
+                      disabled={!!busy || !draft.trim()}
+                    >
+                      {busy === k.provider ? (
+                        <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                      ) : (
+                        "Save"
+                      )}
+                    </Button>
+                    <Button
+                      size="sm"
+                      variant="ghost"
+                      className="h-8"
+                      onClick={() => {
+                        setEditing(null);
+                        setDraft("");
+                      }}
+                      disabled={!!busy}
+                    >
+                      Cancel
+                    </Button>
+                  </>
+                ) : (
+                  <>
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      className="h-8 gap-1.5 text-xs"
+                      onClick={() => {
+                        setEditing(k.provider);
+                        setDraft(k.is_secret ? "" : (k.masked ?? ""));
+                      }}
+                      disabled={!!busy}
+                    >
+                      <KeyRound className="h-3 w-3" />
+                      {k.is_set ? "Edit" : "Set"}
+                    </Button>
+                    {k.is_set && (
+                      <Button
+                        size="sm"
+                        variant="ghost"
+                        className="h-8 text-xs text-muted-foreground hover:text-destructive"
+                        onClick={() => clearKey(k.provider)}
+                        disabled={!!busy}
+                      >
+                        <Trash2 className="h-3 w-3" />
+                      </Button>
+                    )}
+                  </>
+                )}
+              </div>
+            </div>
+          );
+        })}
+      </CardContent>
+    </Card>
   );
 }
 
