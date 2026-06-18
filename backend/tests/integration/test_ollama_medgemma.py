@@ -1,5 +1,7 @@
 """Integration tests for Ollama + MedGemma connectivity and accessibility."""
 import json
+import os
+import time
 
 import httpx
 import pytest
@@ -238,13 +240,24 @@ async def test_medgemma_handles_handwriting_prompt():
 
 @pytest.mark.asyncio
 async def test_medgemma_response_time_acceptable():
-    """MedGemma responds within a reasonable time for interactive use."""
-    import time
+    """MedGemma answers a trivial prompt within a CPU-realistic time.
+
+    medgemma runs CPU-only here (~20 tok/s; the streaming extraction endpoint
+    deliberately allows minutes via keepalive heartbeats), so the threshold is
+    intentionally generous — this is a liveness / "not hung" smoke check, not a
+    tight SLA. It catches a broken or thrashing model while tolerating CPU
+    contention. Override with OLLAMA_TEST_MAX_RESPONSE_SECONDS for faster
+    hardware (e.g. GPU).
+    """
+    max_seconds = float(os.environ.get("OLLAMA_TEST_MAX_RESPONSE_SECONDS", "120"))
 
     start = time.time()
     response = await _ollama_chat("What is normal blood pressure? One sentence.")
     elapsed = time.time() - start
 
     assert response is not None
-    # Local inference should complete within 30s even on CPU
-    assert elapsed < 30, f"Response took {elapsed:.1f}s — too slow for interactive use"
+    assert elapsed < max_seconds, (
+        f"Response took {elapsed:.1f}s (> {max_seconds:.0f}s) — the model may be "
+        f"overloaded or cold; raise OLLAMA_TEST_MAX_RESPONSE_SECONDS if this is "
+        f"expected on your hardware."
+    )
