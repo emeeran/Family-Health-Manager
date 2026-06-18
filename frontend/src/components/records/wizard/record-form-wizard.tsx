@@ -4,6 +4,7 @@ import { StepTypeSelection } from "./step-type-selection";
 import { StepVisitDetails } from "./step-visit-details";
 import { StepClinicalData } from "./step-clinical-data";
 import { StepReview } from "./step-review";
+import { StagingFileViewer } from "./staging-file-viewer";
 import {
   Dialog,
   DialogContent,
@@ -31,6 +32,7 @@ import {
   FileText,
   CheckCircle2,
   Clock,
+  Eye,
   X,
   AlertTriangle,
   PenLine,
@@ -73,6 +75,7 @@ export function RecordFormWizard({
 }: RecordFormProps) {
   const [currentStep, setCurrentStep] = useState(() => (defaultType ? 1 : 0));
   const [isDragOver, setIsDragOver] = useState(false);
+  const [viewing, setViewing] = useState<{ stagingId: string; name: string } | null>(null);
   const cameraInputRef = useRef<HTMLInputElement>(null);
 
   const {
@@ -396,12 +399,19 @@ export function RecordFormWizard({
               data below
             </p>
             {uploadedFiles.map((f) => (
-              <p
+              <div
                 key={f.stagingId}
-                className="text-[11px] text-green-600/70 dark:text-green-500 flex items-center gap-1 mt-0.5"
+                className="text-[11px] text-green-600/70 dark:text-green-500 mt-0.5 flex items-center gap-1"
               >
-                <FileText className="h-3 w-3" /> {f.name}
-              </p>
+                <FileText className="h-3 w-3 shrink-0" /> {f.name}
+                <button
+                  type="button"
+                  onClick={() => setViewing({ stagingId: f.stagingId, name: f.name })}
+                  className="ml-1 inline-flex items-center gap-0.5 rounded text-blue-600 hover:underline dark:text-blue-400"
+                >
+                  <Eye className="h-3 w-3" /> View
+                </button>
+              </div>
             ))}
           </div>
         </div>
@@ -802,6 +812,15 @@ export function RecordFormWizard({
             const { applyMedicationSync } = await import("@/lib/api/members");
             await applyMedicationSync(memberId, added, updated, removed);
           }}
+        />
+      )}
+
+      {viewing && memberId && (
+        <StagingFileViewer
+          memberId={memberId}
+          stagingId={viewing.stagingId}
+          fileName={viewing.name}
+          onClose={() => setViewing(null)}
         />
       )}
     </form>

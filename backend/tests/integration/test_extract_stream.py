@@ -6,9 +6,12 @@ The AI layer is mocked so this exercises the streaming wiring, not the model.
 """
 import json
 from datetime import date
+from io import BytesIO
 
 import pytest
+from fastapi import UploadFile
 
+from app.core.storage import save_staged_secured
 from app.models.base import RecordType
 from app.schemas.health_record import ExtractedFields
 from app.services.ai import AIService
@@ -108,3 +111,32 @@ async def test_extract_stream_surfaces_extraction_error(auth_client, monkeypatch
     stages = [e.get("stage") for e in _data_events(lines)]
     assert stages[0] == "secured"
     assert stages[-1] == "error"
+
+
+async def test_get_staging_file_serves_decrypted_original(auth_client):
+    """The "View original" endpoint streams the staged file decrypted, inline."""
+    body = b"%PDF-1.4 original preview content for the fly-out"
+    upload = UploadFile(
+        file=BytesIO(body),
+        filename="scan.pdf",
+        headers={"content-type": "application/pdf"},
+    )
+    _staged, staging_id, _hash = await save_staged_secured(upload)
+    member_id = await _create_member(auth_client)
+
+    resp = await auth_client.get(f"/api/v1/members/{member_id}/records/staging/{staging_id}")
+
+    assert resp.status_code == 200
+    assert resp.headers["content-type"] == "application/pdf"
+    assert resp.content == body  # decrypted plaintext, not the on-disk ciphertext
+    assert "inline" in resp.headers.get("content-disposition", "")
+
+
+async def test_get_staging_file_rejects_traversal(auth_client):
+    """A staging file id that escapes the staging dir is rejected."""
+    member_id = await _create_member(auth_client)
+    resp = await auth_client.get(
+        f"/api/v1/members/{member_id}/records/staging/..%2F..%2Fetc%2Fpasswd"
+    )
+    assert resp.status_code in (400, 404)
+

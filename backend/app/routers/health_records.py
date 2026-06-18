@@ -171,6 +171,46 @@ async def extract_from_document_stream(
     return StreamingResponse(event_stream(), media_type="text/event-stream")
 
 
+@router.get("/staging/{staging_file_id}")
+async def get_staging_file(
+    member_id: UUID,
+    staging_file_id: str,
+    household: Household = Depends(get_household_from_token),
+    _member: FamilyMember = Depends(require_member_in_household),
+):
+    """Serve the original staged upload (decrypted) for in-browser preview.
+
+    Powers the record form's "View original" fly-out: the user reads the source
+    document alongside the form while entering data. The staged file is
+    encrypted at rest (Phase 0); this streams the decrypted plaintext with the
+    original content type so the browser renders it inline.
+    """
+    import mimetypes
+
+    from app.core.storage import _read_staging_meta, get_staging_dir, stream_plaintext
+
+    staging_root = get_staging_dir().resolve()
+    staged_path = (staging_root / staging_file_id).resolve()
+    if not staged_path.is_relative_to(staging_root):
+        raise HTTPException(status_code=400, detail="Invalid staging file ID")
+    if not staged_path.exists():
+        raise HTTPException(status_code=404, detail="Staging file not found")
+
+    meta = _read_staging_meta(staging_file_id)
+    encrypted = meta is not None
+    mime = (
+        (meta or {}).get("mime")
+        or mimetypes.guess_type(staging_file_id)[0]
+        or "application/octet-stream"
+    )
+
+    return StreamingResponse(
+        stream_plaintext(staged_path, encrypted=encrypted),
+        media_type=mime,
+        headers={"Content-Disposition": f'inline; filename="{staging_file_id}"'},
+    )
+
+
 async def _extract_single_file(
     file: UploadFile, ai_service: AIService
 ) -> BatchExtractionItemSchema:
