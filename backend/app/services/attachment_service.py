@@ -13,6 +13,9 @@ from app.core.storage import (
     get_staging_dir,
     save_file_hashed,
     _store_plaintext_file,
+    finalize_staged_to_content_addressed,
+    _read_staging_meta,
+    _safe_unlink,
 )
 
 
@@ -167,14 +170,29 @@ class AttachmentService:
             raise ValueError(f"Staging file not found: {staging_file_id}")
 
         import mimetypes
-        mime_type = mimetypes.guess_type(staging_file_id)[0] or "application/octet-stream"
         ext = Path(staging_file_id).suffix or ".bin"
 
-        # Optimize (PDF) + encrypt + content-addressed store (dedup-aware).
-        dest_path, content_hash = await _store_plaintext_file(staging_path, ext, mime_type)
+        meta = _read_staging_meta(staging_file_id)
+        if meta and meta.get("content_hash"):
+            # Phase 0: the staged file is already encrypted at rest — relocate
+            # it to content-addressable storage (dedup-aware, no re-encrypt).
+            mime_type = (
+                meta.get("mime")
+                or mimetypes.guess_type(staging_file_id)[0]
+                or "application/octet-stream"
+            )
+            dest_path, content_hash = await finalize_staged_to_content_addressed(
+                staging_path, meta["content_hash"], meta.get("ext") or ext
+            )
+            _safe_unlink(staging_root / f"{staging_file_id}.meta")
+        else:
+            # Legacy plaintext-staged file (pre-Phase-0 uploads still in
+            # flight): optimize + hash + encrypt exactly as before.
+            mime_type = mimetypes.guess_type(staging_file_id)[0] or "application/octet-stream"
+            dest_path, content_hash = await _store_plaintext_file(staging_path, ext, mime_type)
+            staging_path.unlink(missing_ok=True)
+
         file_size = dest_path.stat().st_size
-        # Staging file has been consumed.
-        staging_path.unlink(missing_ok=True)
 
         # Performance: defer thumbnail generation to background task
         # instead of blocking the response.

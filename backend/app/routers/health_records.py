@@ -4,6 +4,7 @@ import logging
 from datetime import date, datetime, time
 from uuid import UUID
 from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Query, UploadFile, File, Response
+from fastapi.responses import StreamingResponse
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, update
 from sqlalchemy.orm import joinedload
@@ -11,7 +12,7 @@ import json
 from app.core.database import get_db
 from app.core.deps import get_household_from_token, require_member_in_household, decode_cursor
 from app.core.sse import make_sse_stream
-from app.core.storage import validate_file, save_file
+from app.core.storage import validate_file, save_staged_secured, plaintext_path
 from app.services.health_record_service import HealthRecordService
 from app.services.attachment_service import AttachmentService
 from app.services.reminder_service import ReminderService
@@ -31,6 +32,11 @@ from app.models.record import HealthRecord
 router = APIRouter(prefix="/members/{member_id}/records", tags=["Health Records"])
 logger = logging.getLogger(__name__)
 
+# Max concurrent extractions within a batch upload. Bounds fan-out to the AI
+# providers while removing the old fixed batch-of-3 barrier so a fast file no
+# longer waits on a slow one sharing its chunk.
+BATCH_EXTRACTION_CONCURRENCY = 8
+
 
 @router.post("/extract", response_model=ExtractionResponse)
 async def extract_from_document(
@@ -44,42 +50,124 @@ async def extract_from_document(
     from app.services.ai_service import AIService
 
     validate_file(file)
-    file_path, unique_filename = await save_file(file, prefix="staging")
+    staged_path, unique_filename, content_hash = await save_staged_secured(file)
+    logger.debug("Staged upload %s (content hash %s)", unique_filename, content_hash)
 
     ai_service = AIService(db, household_id=household.id)
     transcription = None
     try:
-        result = await ai_service.extract_medical_data(
-            str(file_path), file.content_type or "application/octet-stream"
-        )
+        async with plaintext_path(staged_path, encrypted=True) as plain_path:
+            result = await ai_service.extract_medical_data(
+                str(plain_path),
+                file.content_type or "application/octet-stream",
+                content_hash=content_hash,
+            )
         extracted = result.extracted
         transcription = result.transcription
-        provider_used = ai_service.last_provider
     except Exception as exc:
         logger.error("AI extraction failed: %s", exc)
         extracted = ExtractedFields()
-        provider_used = ""
 
-    # Run extraction verification using a different AI provider
-    verification = None
-    try:
-        from app.services.verification_service import VerificationService
-        verification_svc = VerificationService(db, ai_service)
-        verification = await verification_svc.verify_extraction(
-            extracted.model_dump(),
-            original_provider=provider_used,
-        )
-    except Exception as exc:
-        logger.debug("Extraction verification skipped: %s", exc)
-
+    # Verification is intentionally omitted on the single-file path: it added a
+    # full AI round-trip to every upload and the result is unused by the RecordForm
+    # (mergeExtracted only consumes extracted/transcription). Batch upload still
+    # verifies via extract_batch.
     return ExtractionResponse(
         staging_file_id=unique_filename,
         original_file_name=file.filename,
         extracted=extracted,
         confidence="low" if not extracted.has_any_data() else "medium",
-        verification=verification,
+        verification=None,
         transcription=transcription,
     )
+
+
+@router.post("/extract/stream")
+async def extract_from_document_stream(
+    member_id: UUID,
+    file: UploadFile = File(...),
+    household: Household = Depends(get_household_from_token),
+    _member: FamilyMember = Depends(require_member_in_household),
+    db: AsyncSession = Depends(get_db),
+):
+    """Upload a document and stream extraction progress over SSE.
+
+    Emits one JSON event per ``data:`` line:
+
+    * ``{stage:"secured", staging_file_id, original_file_name, content_hash}`` —
+      the original is safely stored + encrypted; the browser can ack the upload
+      instantly instead of waiting on extraction.
+    * ``{stage:"extracting", pct:50}`` — extraction in progress.
+    * ``{stage:"complete", extracted, transcription, confidence, ...}`` — full
+      result (form can fill). For a cache hit this follows near-instantly.
+    * ``{stage:"error", message}`` — on failure.
+
+    Sits alongside the blocking ``/extract`` endpoint (kept as a fallback). The
+    SSE connection itself is the "job" — no DB job table is needed unless
+    background refinement (Phase 3 tier-2) is introduced later.
+    """
+    validate_file(file)
+    staged_path, unique_filename, content_hash = await save_staged_secured(file)
+    ai_service = AIService(db, household_id=household.id)
+    mime = file.content_type or "application/octet-stream"
+    original_name = file.filename
+
+    async def event_stream():
+        def sse(payload: dict) -> str:
+            return f"data: {json.dumps(payload, default=str)}\n\n"
+
+        yield sse({
+            "stage": "secured",
+            "staging_file_id": unique_filename,
+            "original_file_name": original_name,
+            "content_hash": content_hash,
+        })
+        yield sse({"stage": "extracting", "pct": 50})
+
+        async def run_extract():
+            async with plaintext_path(staged_path, encrypted=True) as plain_path:
+                return await ai_service.extract_medical_data(
+                    str(plain_path), mime, content_hash=content_hash
+                )
+
+        task = asyncio.create_task(run_extract())
+        try:
+            # Heartbeat while extraction runs: SSE comment lines (": ...") are
+            # ignored by the client parser but flush the connection, defeating
+            # idle timeouts on slow CPU-only models (e.g. local medgemma) that
+            # can take minutes between the "extracting" and "complete" events.
+            while True:
+                done, _pending = await asyncio.wait({task}, timeout=15.0)
+                if task in done:
+                    break
+                yield ": keepalive\n\n"
+
+            exc = task.exception()
+            if exc is not None:
+                raise exc
+            result = task.result()
+            extracted = result.extracted
+            yield sse({
+                "stage": "complete",
+                "staging_file_id": unique_filename,
+                "original_file_name": original_name,
+                "extracted": extracted.model_dump(mode="json"),
+                "transcription": result.transcription,
+                "confidence": "low" if not extracted.has_any_data() else "medium",
+                "verification": None,
+            })
+        except Exception as exc:
+            logger.error("Streamed AI extraction failed: %s", exc)
+            yield sse({"stage": "error", "message": str(exc)})
+        finally:
+            if not task.done():
+                task.cancel()
+                try:
+                    await task
+                except (asyncio.CancelledError, Exception):
+                    pass
+
+    return StreamingResponse(event_stream(), media_type="text/event-stream")
 
 
 async def _extract_single_file(
@@ -100,7 +188,7 @@ async def _extract_single_file(
         )
 
     try:
-        file_path, unique_filename = await save_file(file, prefix="staging")
+        staged_path, unique_filename, content_hash = await save_staged_secured(file)
     except Exception as exc:
         return BatchExtractionItemSchema(
             filename=file.filename or "unknown",
@@ -108,9 +196,12 @@ async def _extract_single_file(
         )
 
     try:
-        result = await ai_service.extract_medical_data(
-            str(file_path), file.content_type or "application/octet-stream"
-        )
+        async with plaintext_path(staged_path, encrypted=True) as plain_path:
+            result = await ai_service.extract_medical_data(
+                str(plain_path),
+                file.content_type or "application/octet-stream",
+                content_hash=content_hash,
+            )
 
         return BatchExtractionItemSchema(
             filename=file.filename or "unknown",
@@ -148,15 +239,18 @@ async def extract_batch(
     # (no mutable state mutation). The _ollama_client lazy-init is the only
     # shared mutable field, but Ollama runs as a separate service now.
     ai_service = AIService(db, household_id=household.id)
-    results: list[BatchExtractionItemSchema] = []
-    batch_size = 3
 
-    for i in range(0, len(files), batch_size):
-        chunk = files[i : i + batch_size]
-        chunk_results = await asyncio.gather(
-            *[_extract_single_file(f, ai_service) for f in chunk]
-        )
-        results.extend(chunk_results)
+    # All files concurrent under a semaphore — no batch barrier. A fast file no
+    # longer waits on a slow one sharing its chunk; wall-clock is set by the
+    # slowest single file. The cap bounds fan-out so we don't overwhelm the AI
+    # providers (each extraction already races several providers in parallel).
+    sem = asyncio.Semaphore(BATCH_EXTRACTION_CONCURRENCY)
+
+    async def _bounded(f: UploadFile) -> BatchExtractionItemSchema:
+        async with sem:
+            return await _extract_single_file(f, ai_service)
+
+    results = list(await asyncio.gather(*[_bounded(f) for f in files]))
 
     # Run verification in parallel for all successful extractions
     from app.services.verification_service import VerificationService
@@ -232,6 +326,34 @@ async def list_records(
 
 
 
+async def _generate_summary_background(
+    record_id: UUID, extracted_data: dict, household_id: UUID
+) -> None:
+    """Generate and persist the consultation summary after a record is created.
+
+    Runs as a FastAPI BackgroundTask so record creation returns immediately
+    instead of blocking the response on an AI call. The summary fills in
+    asynchronously; on any failure the record stays valid without one (it can
+    be regenerated via /regenerate-summary or /backfill-summaries).
+    """
+    from app.core.database import SessionLocal
+
+    try:
+        async with SessionLocal() as db:
+            ai_service = AIService(db, household_id=household_id)
+            summary = await ai_service.generate_consultation_summary(extracted_data)
+            if summary:
+                await db.execute(
+                    update(HealthRecord)
+                    .where(HealthRecord.id == record_id)
+                    .values(summary=summary)
+                )
+                await db.commit()
+                await cache.invalidate_async(f"dashboard_summary:{household_id}")
+    except Exception as exc:
+        logger.warning("Background summary generation failed for %s: %s", record_id, exc)
+
+
 @router.post("", status_code=201, response_model=HealthRecordResponse)
 async def create_record(
     member_id: UUID,
@@ -252,11 +374,12 @@ async def create_record(
     record_service = HealthRecordService(db)
     tags_json = json.dumps(request.tags) if request.tags else None
 
-    # Auto-generate summary if not provided and record has clinical data
+    # Summary: if not explicitly provided, defer AI generation to a background
+    # task so the record is created immediately instead of blocking on an AI call.
     summary_text = request.summary
+    deferred_summary_data: dict | None = None
     if not summary_text and request.clinical_data:
         try:
-            ai_service = AIService(db, household_id=household.id)
             # Build extracted data dict from the request for summary generation
             extracted_data: dict = {}
             if request.diagnosis:
@@ -283,9 +406,10 @@ async def create_record(
             if request.record_time:
                 extracted_data["record_time"] = str(request.record_time)
 
-            summary_text = await ai_service.generate_consultation_summary(extracted_data)
+            deferred_summary_data = extracted_data
         except Exception as exc:
-            logger.warning("Auto-summary generation skipped: %s", exc)
+            logger.warning("Summary data build skipped: %s", exc)
+            deferred_summary_data = None
 
     try:
         record = await record_service.create_record(
@@ -305,6 +429,17 @@ async def create_record(
         if "Duplicate" in str(e):
             raise HTTPException(status_code=409, detail=str(e))
         raise
+
+    # Generate the consultation summary in the background now that the record exists
+    if deferred_summary_data:
+        if background_tasks is None:
+            background_tasks = BackgroundTasks()
+        background_tasks.add_task(
+            _generate_summary_background,
+            record.id,
+            deferred_summary_data,
+            household.id,
+        )
 
     if staging_file_ids:
         attachment_service = AttachmentService(db)

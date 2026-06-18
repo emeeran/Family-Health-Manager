@@ -1,8 +1,6 @@
 /** Custom hook for PDF/image upload + AI extraction logic in RecordForm. */
 import { useState, useRef, useCallback, useMemo, useEffect } from "react";
 import {
-  API_BASE,
-  EXTRACT_TIMEOUT,
   VALID_RECORD_TYPES,
   normalizeDate,
   sanitizeText,
@@ -24,7 +22,8 @@ import {
 import { ALLOWED_MIME_TYPES, MAX_FILE_SIZE } from "@/lib/constants";
 import type { RecordType } from "@/lib/types/enums";
 import type { ProviderResponse } from "@/lib/types/provider";
-import type { ExtractionResponse } from "@/lib/types/health-record";
+import type { ExtractionResponse, ExtractedFields } from "@/lib/types/health-record";
+import { extractDocumentStream } from "@/lib/api/records";
 import type { UseFormReturn } from "react-hook-form";
 
 interface UploadedFile {
@@ -254,60 +253,71 @@ export function useFileExtraction({
     return populated.size > 0;
   }
 
-  async function extractFile(file: File): Promise<{ data?: ExtractionResponse; error?: string }> {
-    const formData = new FormData();
-    formData.append("file", file);
-    const controller = new AbortController();
-    const timer = setTimeout(() => controller.abort(), EXTRACT_TIMEOUT);
-    try {
-      let response = await fetch(`${API_BASE}/members/${memberId}/records/extract`, {
-        method: "POST",
-        body: formData,
-        credentials: "include",
-        signal: controller.signal,
+  async function extractFile(
+    file: File,
+    index: number,
+    total: number,
+    allDone: string[]
+  ): Promise<{ data?: ExtractionResponse; error?: string }> {
+    const basePct = Math.round((index / total) * 100);
+    const filePct = Math.round(100 / total);
+    const SUBSTEPS = [
+      "Uploading file...",
+      "AI analyzing document...",
+      "Extracting medical data...",
+      "Auto-filling form...",
+    ];
+
+    return new Promise<{ data?: ExtractionResponse; error?: string }>((resolve) => {
+      let settled = false;
+      const finish = (r: { data?: ExtractionResponse; error?: string }) => {
+        if (!settled) {
+          settled = true;
+          resolve(r);
+        }
+      };
+
+      if (!memberId) {
+        finish({ error: "No member selected" });
+        return;
+      }
+
+      const { promise } = extractDocumentStream(memberId, file, (event) => {
+        const stage = event.stage as string;
+        if (stage === "secured") {
+          // Original is safely stored + encrypted — AI extraction now running.
+          setProgress({
+            step: `Analyzing ${index + 1}/${total}: ${file.name}`,
+            pct: basePct + Math.round(filePct * 0.45),
+            substeps: SUBSTEPS,
+            done: [...allDone, "Uploading file..."],
+          });
+        } else if (stage === "complete") {
+          setProgress((prev) => ({
+            ...prev,
+            step: `Extracting ${index + 1}/${total}: ${file.name}`,
+            pct: basePct + Math.round(filePct * 0.8),
+            done: [...allDone, "Uploading file...", "AI analyzing document..."],
+          }));
+          finish({
+            data: {
+              staging_file_id: (event.staging_file_id as string) || "",
+              original_file_name: (event.original_file_name as string) ?? null,
+              extracted: event.extracted as ExtractedFields,
+              confidence: (event.confidence as string) ?? "medium",
+              verification: null,
+              transcription: (event.transcription as string) ?? null,
+            },
+          });
+        } else if (stage === "error") {
+          finish({ error: (event.message as string) || "Extraction failed" });
+        }
       });
 
-      // Attempt token refresh on 401, then retry once
-      if (response.status === 401) {
-        const tryRefreshToken = (await import("@/lib/api-client")).tryRefreshToken;
-        const refreshed = await tryRefreshToken();
-        if (refreshed) {
-          response = await fetch(`${API_BASE}/members/${memberId}/records/extract`, {
-            method: "POST",
-            body: formData,
-            credentials: "include",
-            signal: controller.signal,
-          });
-        }
-      }
-
-      if (!response.ok) {
-        const body = await response.json().catch(() => null);
-        const msg =
-          body?.detail ||
-          body?.message ||
-          (response.status === 401
-            ? "Session expired — please log in again"
-            : response.status === 413
-              ? "File too large for the server"
-              : response.status >= 500
-                ? "Server error — please try again"
-                : "Extraction failed");
-        return { error: msg };
-      }
-      return { data: await response.json() };
-    } catch (e) {
-      if (controller.signal.aborted)
-        return {
-          error:
-            "Extraction timed out — the document may be too large or complex. Try a smaller file.",
-        };
-      if (e instanceof TypeError && e.message === "Failed to fetch")
-        return { error: "Network error — check your connection and try again." };
-      return { error: e instanceof Error ? e.message : "Extraction failed" };
-    } finally {
-      clearTimeout(timer);
-    }
+      promise.catch((e: unknown) => {
+        finish({ error: e instanceof Error ? e.message : "Extraction failed" });
+      });
+    });
   }
 
   async function handleMultiFileExtract() {
@@ -363,16 +373,9 @@ export function useFileExtraction({
         substeps: SUBSTEPS,
         done: [...allDone],
       });
-      await new Promise((r) => setTimeout(r, 100));
 
       try {
-        setProgress((prev) => ({
-          ...prev,
-          step: `Analyzing ${i + 1}/${files.length}: ${file.name}`,
-          pct: basePct + Math.round(filePct * 0.4),
-          done: [...allDone, "Uploading file..."],
-        }));
-        const result = await extractFile(file);
+        const result = await extractFile(file, i, files.length, allDone);
 
         if (result.error) {
           allDone.push(`${file.name}: failed`);
@@ -383,18 +386,11 @@ export function useFileExtraction({
         }
 
         if (result.data) {
-          setProgress((prev) => ({
-            ...prev,
-            step: `Extracting ${i + 1}/${files.length}: ${file.name}`,
-            pct: basePct + Math.round(filePct * 0.75),
-            done: [...allDone, "Uploading file...", "AI analyzing document..."],
-          }));
-          await new Promise((r) => setTimeout(r, 50));
           const hadData = mergeExtracted(result.data);
           setProgress((prev) => ({
             ...prev,
             step: `Auto-filling ${i + 1}/${files.length}: ${file.name}`,
-            pct: basePct + Math.round(filePct * 0.95),
+            pct: basePct + Math.round(filePct * 0.97),
             done: [
               ...allDone,
               "Uploading file...",
@@ -402,7 +398,6 @@ export function useFileExtraction({
               "Extracting medical data...",
             ],
           }));
-          await new Promise((r) => setTimeout(r, 50));
           allDone.push(file.name);
           if (!hadData)
             setExtractError((prev) =>

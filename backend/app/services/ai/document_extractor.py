@@ -145,11 +145,15 @@ async def extract_medical_data(
         pdf_text = extract_pdf_text(file_path)
         if pdf_text:
             logger.info("PDF has embedded text (%d chars) — using fast text extraction", len(pdf_text))
-            raw_text = await call_text_extraction(pdf_text, last_provider_ref)
+            # Extraction and transcription-formatting both consume only pdf_text —
+            # run them concurrently to save an AI round-trip.
+            raw_text, formatted = await asyncio.gather(
+                call_text_extraction(pdf_text, last_provider_ref),
+                _format_ocr_transcription(pdf_text, last_provider_ref),
+            )
             result = parse_extraction(raw_text, ExtractedFields)
             if not result.has_any_data():
                 logger.warning("PDF text extraction returned no usable fields — text may be non-medical or too short")
-            formatted = await _format_ocr_transcription(pdf_text, last_provider_ref)
             return ExtractionResult(extracted=result, transcription=formatted)
 
         # Scanned/image PDF — OCR pages then use fast text extraction
@@ -232,8 +236,10 @@ async def extract_medical_data(
         ocr_text = tesseract_image(file_path)
         if ocr_text:
             logger.info("Image OCR (tesseract) extracted %d chars — using text extraction", len(ocr_text))
-            raw_text = await call_text_extraction(ocr_text, last_provider_ref)
-            formatted = await _format_ocr_transcription(ocr_text, last_provider_ref)
+            raw_text, formatted = await asyncio.gather(
+                call_text_extraction(ocr_text, last_provider_ref),
+                _format_ocr_transcription(ocr_text, last_provider_ref),
+            )
             return ExtractionResult(
                 extracted=parse_extraction(raw_text, ExtractedFields),
                 transcription=formatted,
@@ -242,8 +248,10 @@ async def extract_medical_data(
         # Fallback: cloud AI OCR
         ocr_text = await call_ocr(file_path, mime_type)
         if ocr_text:
-            raw_text = await call_text_extraction(ocr_text, last_provider_ref)
-            formatted = await _format_ocr_transcription(ocr_text, last_provider_ref)
+            raw_text, formatted = await asyncio.gather(
+                call_text_extraction(ocr_text, last_provider_ref),
+                _format_ocr_transcription(ocr_text, last_provider_ref),
+            )
             return ExtractionResult(
                 extracted=parse_extraction(raw_text, ExtractedFields),
                 transcription=formatted,

@@ -1,4 +1,4 @@
-import { apiRequest } from "../api-client";
+import { apiRequest, streamRequest } from "../api-client";
 import type {
   HealthRecordCreate,
   HealthRecordUpdate,
@@ -64,6 +64,26 @@ export function batchExtract(memberId: string, files: File[]) {
     method: "POST",
     body: formData,
     isFormData: true,
+  });
+}
+
+/**
+ * Stream extraction progress + result over SSE (Phase 2). Emits events:
+ * {stage:"secured"} → {stage:"extracting"} → {stage:"complete", extracted, ...}
+ * | {stage:"error", message}. The blocking extractFromDocument is retained as
+ * a fallback path for callers that don't stream.
+ */
+export function extractDocumentStream(
+  memberId: string,
+  file: File,
+  onEvent: (event: Record<string, unknown>) => void
+) {
+  const formData = new FormData();
+  formData.append("file", file);
+  return streamRequest(`/members/${memberId}/records/extract/stream`, {
+    body: formData,
+    isFormData: true,
+    onEvent,
   });
 }
 

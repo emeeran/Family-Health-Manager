@@ -21,6 +21,13 @@ from app.services.ai.document_extractor import EXTRACTION_PROMPT  # noqa: F401
 settings = get_settings()
 logger = logging.getLogger(__name__)
 
+# Extraction result cache: identical file bytes yield identical extracted
+# fields, so a re-upload or duplicate file is served instantly instead of
+# re-running OCR + the LLM pass. Bump EXTRACTION_CACHE_VERSION to invalidate
+# every cached extraction whenever the prompt or extraction logic changes.
+EXTRACTION_CACHE_TTL = 86400  # seconds (1 day)
+EXTRACTION_CACHE_VERSION = "1"
+
 _CLINICAL_SYSTEM_NOTE = (
     "You are a senior clinical reviewer AI, functioning as an attending physician "
     "conducting a thorough chart review. Your role is to produce professional clinical "
@@ -499,12 +506,59 @@ class AIService:
         from app.services.ai.document_extractor import classify_document
         return await classify_document(file_path, mime_type, self._call_ai)
 
-    async def extract_medical_data(self, file_path: str, mime_type: str):
-        """Extract structured medical data from a document file via vision AI."""
-        from app.services.ai.document_extractor import extract_medical_data
-        return await extract_medical_data(
-            self.db, file_path, mime_type, self._last_provider_ref
+    async def extract_medical_data(
+        self, file_path: str, mime_type: str, content_hash: str | None = None
+    ):
+        """Extract structured medical data from a document file via vision AI.
+
+        When *content_hash* is supplied, results are cached by content + version
+        so re-uploads or duplicate files are extracted instantly instead of
+        re-running OCR + the LLM pass. The version tag invalidates stale entries
+        when the prompt or extraction logic changes.
+        """
+        from app.services.ai.document_extractor import (
+            ExtractionResult,
+            extract_medical_data as _extract,
         )
+        from app.core.cache import cache
+
+        if content_hash:
+            key = f"extraction:{content_hash}:{EXTRACTION_CACHE_VERSION}"
+            try:
+                cached = await cache.get_async(key)
+            except Exception:
+                cached = None
+            if isinstance(cached, dict):
+                try:
+                    from app.schemas.health_record import ExtractedFields
+
+                    return ExtractionResult(
+                        extracted=ExtractedFields.model_validate_json(
+                            cached["extracted_json"]
+                        ),
+                        transcription=cached.get("transcription"),
+                    )
+                except Exception as exc:
+                    logger.warning("Extraction cache parse failed — re-extracting: %s", exc)
+
+        result = await _extract(self.db, file_path, mime_type, self._last_provider_ref)
+
+        # Cache only when extraction produced usable data and the hash is known.
+        if content_hash and result.extracted.has_any_data():
+            key = f"extraction:{content_hash}:{EXTRACTION_CACHE_VERSION}"
+            try:
+                await cache.set_async(
+                    key,
+                    {
+                        "extracted_json": result.extracted.model_dump_json(),
+                        "transcription": result.transcription,
+                    },
+                    ttl=EXTRACTION_CACHE_TTL,
+                )
+            except Exception:
+                pass  # non-fatal — caching failure must not break extraction
+
+        return result
 
     async def generate_consultation_summary(self, extracted_data: dict) -> str:
         """Generate a human-readable consultation summary from extracted fields.

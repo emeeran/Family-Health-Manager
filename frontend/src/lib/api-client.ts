@@ -159,15 +159,16 @@ export function streamRequest(
   path: string,
   options: {
     body?: unknown;
+    isFormData?: boolean;
     onEvent: (event: Record<string, unknown>) => void;
   },
   _isRetry = false
 ): { promise: Promise<void>; cancel: () => void } {
-  const { body, onEvent } = options;
+  const { body, isFormData = false, onEvent } = options;
   const url = `${API_BASE_URL}${path}`;
 
   const headers: Record<string, string> = {};
-  if (body) headers["Content-Type"] = "application/json";
+  if (body && !isFormData) headers["Content-Type"] = "application/json";
 
   const controller = new AbortController();
   // Distinguishes a user-initiated cancel (silent) from a genuine timeout
@@ -186,7 +187,7 @@ export function streamRequest(
       const response = await fetch(url, {
         method: "POST",
         headers,
-        body: body ? JSON.stringify(body) : undefined,
+        body: body ? (isFormData ? (body as FormData) : JSON.stringify(body)) : undefined,
         signal: controller.signal,
         credentials: "include",
       });

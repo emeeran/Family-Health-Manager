@@ -1,6 +1,7 @@
 """File storage abstraction."""
 import contextlib
 import hashlib
+import json
 import logging
 import shutil
 import subprocess
@@ -325,6 +326,119 @@ async def save_file_hashed(file: UploadFile) -> tuple[Path, str, str]:
         _safe_unlink(tmp_path)
 
     return final_path, content_hash, ext
+
+
+async def save_staged_secured(file: UploadFile) -> tuple[Path, str, str]:
+    """Stream an upload to encrypted-at-rest staging and return its content hash.
+
+    Validates MIME/size/magic-bytes, virus-scans the plaintext, computes the
+    SHA-256 of the plaintext (dedup + extraction-cache key), then Fernet-encrypts
+    to ``staging/<id>``. A sidecar ``staging/<id>.meta`` JSON records
+    ``{content_hash, ext, mime, original_name}`` so :func:`attach_staged_file`
+    can relocate the already-encrypted file to content-addressable storage
+    without re-hashing/re-encrypting.
+
+    Returns ``(staged_path, unique_filename, content_hash)``. This closes the
+    plaintext-staging window: previously a staged file sat as plaintext on disk
+    until attach (or for 24h if the upload was abandoned).
+    """
+    from app.core.encryption import encrypt_file
+
+    validate_file(file)
+
+    staging_dir = get_staging_dir()
+    staging_dir.mkdir(parents=True, exist_ok=True)
+
+    ext = Path(file.filename or "").suffix or ".bin"
+    unique_filename = f"{uuid.uuid4()}{ext}"
+    staged_path = staging_dir / unique_filename
+    _validate_storage_path(staged_path)
+
+    declared_mime = file.content_type or "application/octet-stream"
+
+    # 1. Stream to a plaintext temp, validating magic + size, hashing inline.
+    tmp_path = staging_dir / f"_tmp_{uuid.uuid4()}{ext}"
+    hasher = hashlib.sha256()
+    total_size = 0
+    magic_checked = False
+    try:
+        async with aiofiles.open(tmp_path, "wb") as f:
+            while True:
+                chunk = await file.read(CHUNK_SIZE)
+                if not chunk:
+                    break
+                if not magic_checked:
+                    if not _magic_matches(chunk, declared_mime):
+                        raise ValueError(
+                            f"File content does not match declared type {declared_mime}"
+                        )
+                    magic_checked = True
+                hasher.update(chunk)
+                await f.write(chunk)
+                total_size += len(chunk)
+
+        if total_size > MAX_FILE_SIZE:
+            raise ValueError(f"File size {total_size} exceeds maximum {MAX_FILE_SIZE}")
+
+        # 2. Virus-scan the plaintext before encryption.
+        if not scan_file(tmp_path):
+            raise ValueError("File failed virus scan")
+
+        content_hash = hasher.hexdigest()
+
+        # 3. Encrypt the plaintext temp → encrypted-at-rest staging file.
+        await encrypt_file(tmp_path, staged_path)
+    finally:
+        _safe_unlink(tmp_path)
+
+    # 4. Sidecar metadata so the attach step can finalize without re-work.
+    meta = {
+        "content_hash": content_hash,
+        "ext": ext,
+        "mime": declared_mime,
+        "original_name": file.filename,
+    }
+    try:
+        async with aiofiles.open(f"{staged_path}.meta", "w") as mf:
+            await mf.write(json.dumps(meta))
+    except Exception as exc:  # pragma: no cover - best-effort metadata
+        logger.warning("Failed to write staging sidecar for %s: %s", unique_filename, exc)
+
+    return staged_path, unique_filename, content_hash
+
+
+async def finalize_staged_to_content_addressed(
+    staged_encrypted_path: Path, content_hash: str, ext: str
+) -> tuple[Path, str]:
+    """Relocate an already-encrypted staged file to content-addressable storage.
+
+    Dedup-aware: if the destination already exists (same plaintext hash) the
+    staged copy is dropped and the existing encrypted file reused. No
+    re-encryption or re-hashing — the staged file is already Fernet-encrypted
+    and its plaintext hash is known. Returns ``(final_path, content_hash)``.
+    """
+    final_path = _content_hash_to_path(content_hash, ext)
+    if final_path.exists():
+        await aiofiles.os.remove(staged_encrypted_path)  # duplicate — reuse existing
+    else:
+        await aiofiles.os.rename(staged_encrypted_path, final_path)
+    return final_path, content_hash
+
+
+def _read_staging_meta(staging_file_id: str) -> dict | None:
+    """Read the staging sidecar metadata for a staged file, if present.
+
+    Returns ``None`` for legacy plaintext-staged files (created before Phase 0,
+    which have no sidecar) so the attach path can fall back to the old
+    optimize+hash+encrypt flow.
+    """
+    meta_path = get_staging_dir() / f"{staging_file_id}.meta"
+    if not meta_path.exists():
+        return None
+    try:
+        return json.loads(meta_path.read_text())
+    except (OSError, json.JSONDecodeError):
+        return None
 
 
 async def hash_existing_file(file_path: Path) -> str:
