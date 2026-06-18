@@ -62,8 +62,14 @@ async def _retry_request(fn, retries: int = 2, base_delay: float = 0.5):
             await asyncio.sleep(delay)
 
 
-async def call_ollama_text(prompt: str, model: str | None = None) -> str | None:
-    """Call local Ollama API for text generation — uses lighter model."""
+async def call_ollama_text(
+    prompt: str, model: str | None = None, fmt: str | None = None
+) -> str | None:
+    """Call local Ollama API for text generation — uses lighter model.
+
+    ``fmt`` enables grammar-constrained output (e.g. ``"json"``); used for
+    structured extraction to cut generation length and guarantee parseable JSON.
+    """
     if not settings.OLLAMA_LOCAL_URL:
         return None
     use_model = model or settings.OLLAMA_TEXT_MODEL
@@ -74,6 +80,8 @@ async def call_ollama_text(prompt: str, model: str | None = None) -> str | None:
         "stream": False,
         "options": {"num_ctx": 16384, "num_predict": 2048, "temperature": 0.3},
     }
+    if fmt:
+        payload["format"] = fmt
     timeout = _ollama_timeout(len(prompt))
 
     async def _do():
@@ -172,9 +180,12 @@ async def ollama_chat_stream(model: str, prompt: str) -> AsyncGenerator[str, Non
 
 
 async def call_ollama_vision(
-    b64_data: str, mime_type: str, extraction_prompt: str
+    b64_data: str, mime_type: str, extraction_prompt: str, fmt: str | None = None
 ) -> str | None:
-    """Call local Ollama API for vision extraction."""
+    """Call local Ollama API for vision extraction.
+
+    ``fmt`` enables grammar-constrained output (e.g. ``"json"``) for extraction.
+    """
     if not settings.OLLAMA_LOCAL_URL:
         return None
     url = f"{settings.OLLAMA_LOCAL_URL}/api/chat"
@@ -188,6 +199,8 @@ async def call_ollama_vision(
         "stream": False,
         "options": {"num_ctx": 8192, "num_predict": 4096, "temperature": 0.2},
     }
+    if fmt:
+        payload["format"] = fmt
     try:
         client = await get_ollama_client()
         resp = await client.post(

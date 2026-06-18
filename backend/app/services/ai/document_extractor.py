@@ -1,6 +1,7 @@
 """Document extraction — OCR, PDF handling, vision AI extraction, and parsing."""
 import asyncio
 import base64
+import functools
 import json
 import logging
 import re
@@ -18,6 +19,22 @@ from app.services.ai.providers.ollama import call_ollama_text, call_ollama_visio
 
 settings = get_settings()
 logger = logging.getLogger(__name__)
+
+
+def _fast_cloud_text_available() -> bool:
+    """True if any non-Ollama text provider has an API key configured.
+
+    When False, local Ollama is the only viable provider. The cosmetic
+    transcription-formatting call is then skipped, because the single-threaded
+    Ollama server serializes requests — a second call would roughly double the
+    already-large per-call latency. Raw OCR/text is used as the transcript.
+    """
+    return bool(
+        settings.OPENROUTER_API_KEY
+        or settings.GEMINI_API_KEY
+        or settings.GROQ_API_KEY
+        or settings.OPENAI_API_KEY
+    )
 
 
 @dataclass
@@ -56,7 +73,7 @@ IMPORTANT INSTRUCTIONS:
 10. existing_conditions: Extract ONLY conditions the document EXPLICITLY labels as pre-existing, chronic, or past medical history (e.g. a "PMH", "Known case of", or "History of" section). Do NOT infer these from the current visit's diagnosis. Comma-separated, uppercase, or null if none are explicitly stated.
 11. chief_complaint: The main reason for the visit / chief complaint (e.g. "Fever for 3 days", "Routine follow-up for T2DM"). Extract exactly as stated, including from handwritten notes.
 12. investigations: Any tests or investigations ordered, recommended, or mentioned (e.g. "CBC, HbA1c, Lipid profile, ECG"). Comma-separated.
-13. clinical_data: Include a transcription of any handwritten notes, advice, or instructions that don't fit into other fields. Preserve the original meaning even if exact words are uncertain.
+13. clinical_data: A CONCISE summary (under 150 words) of any handwritten notes, advice, or instructions that don't fit other fields. Do NOT copy the document verbatim — summarize. Preserve original meaning.
 14. VITALS: If the document records any vital signs or measurements, extract them. weight = numeric kg, height = numeric cm, blood_pressure = "systolic/diastolic" string e.g. "120/80" (mmHg), heart_rate = numeric bpm, temperature = numeric °F. Set a field to null if that vital is not present. Do not invent values.
 
 Return this exact JSON structure:
@@ -64,7 +81,7 @@ Return this exact JSON structure:
   "record_type": "doctor_visit" or null,
   "record_date": "2024-01-15" or null,
   "record_time": "10:30" or null,
-  "clinical_data": "all other relevant text, observations, notes — include transcribed handwritten content here" or null,
+  "clinical_data": "concise (<150 word) summary of other notes/advice" or null,
   "diagnosis": "extracted diagnosis" or null,
   "existing_conditions": "T2DM, HYPERTENSION, DEPRESSION" or null,
   "chief_complaint": "Fever for 3 days" or null,
@@ -147,10 +164,16 @@ async def extract_medical_data(
             logger.info("PDF has embedded text (%d chars) — using fast text extraction", len(pdf_text))
             # Extraction and transcription-formatting both consume only pdf_text —
             # run them concurrently to save an AI round-trip.
-            raw_text, formatted = await asyncio.gather(
-                call_text_extraction(pdf_text, last_provider_ref),
-                _format_ocr_transcription(pdf_text, last_provider_ref),
-            )
+            if _fast_cloud_text_available():
+                raw_text, formatted = await asyncio.gather(
+                    call_text_extraction(pdf_text, last_provider_ref),
+                    _format_ocr_transcription(pdf_text, last_provider_ref),
+                )
+            else:
+                # Ollama-only: skip the cosmetic transcription call (it would
+                # serialize behind extraction on the single-threaded server).
+                raw_text = await call_text_extraction(pdf_text, last_provider_ref)
+                formatted = pdf_text
             result = parse_extraction(raw_text, ExtractedFields)
             if not result.has_any_data():
                 logger.warning("PDF text extraction returned no usable fields — text may be non-medical or too short")
@@ -194,7 +217,11 @@ async def extract_medical_data(
                 chunk_result = parse_extraction(raw_text, ExtractedFields)
                 all_extracted = merge_extractions(all_extracted, chunk_result)
             if all_extracted.has_any_data():
-                formatted = await _format_ocr_transcription(ocr_text, last_provider_ref)
+                formatted = (
+                    await _format_ocr_transcription(ocr_text, last_provider_ref)
+                    if _fast_cloud_text_available()
+                    else ocr_text
+                )
                 return ExtractionResult(extracted=all_extracted, transcription=formatted)
             logger.warning("OCR text extraction returned no usable fields — falling back to vision AI")
         else:
@@ -245,10 +272,14 @@ async def extract_medical_data(
         ocr_text = await asyncio.to_thread(tesseract_image, file_path)
         if ocr_text and _ocr_quality(ocr_text) >= OCR_QUALITY_THRESHOLD:
             logger.info("Image OCR (tesseract) extracted %d chars — using text extraction", len(ocr_text))
-            raw_text, formatted = await asyncio.gather(
-                call_text_extraction(ocr_text, last_provider_ref),
-                _format_ocr_transcription(ocr_text, last_provider_ref),
-            )
+            if _fast_cloud_text_available():
+                raw_text, formatted = await asyncio.gather(
+                    call_text_extraction(ocr_text, last_provider_ref),
+                    _format_ocr_transcription(ocr_text, last_provider_ref),
+                )
+            else:
+                raw_text = await call_text_extraction(ocr_text, last_provider_ref)
+                formatted = ocr_text
             return ExtractionResult(
                 extracted=parse_extraction(raw_text, ExtractedFields),
                 transcription=formatted,
@@ -257,10 +288,14 @@ async def extract_medical_data(
         # Tesseract produced nothing usable — try cloud AI OCR
         ocr_text = await call_ocr(file_path, mime_type)
         if ocr_text and _ocr_quality(ocr_text) >= OCR_QUALITY_THRESHOLD:
-            raw_text, formatted = await asyncio.gather(
-                call_text_extraction(ocr_text, last_provider_ref),
-                _format_ocr_transcription(ocr_text, last_provider_ref),
-            )
+            if _fast_cloud_text_available():
+                raw_text, formatted = await asyncio.gather(
+                    call_text_extraction(ocr_text, last_provider_ref),
+                    _format_ocr_transcription(ocr_text, last_provider_ref),
+                )
+            else:
+                raw_text = await call_text_extraction(ocr_text, last_provider_ref)
+                formatted = ocr_text
             return ExtractionResult(
                 extracted=parse_extraction(raw_text, ExtractedFields),
                 transcription=formatted,
@@ -791,7 +826,9 @@ async def call_text_extraction(pdf_text: str, last_provider_ref: list) -> str | 
         (call_openrouter_text, "OpenRouter text"),
         (call_groq_text, "Groq text"),
         (call_gemini_text, "Gemini text"),
-        (call_ollama_text, "Ollama text"),
+        # Grammar-constrain Ollama to JSON — halves generation length and
+        # guarantees parseable output on the slow CPU-only path.
+        (functools.partial(call_ollama_text, fmt="json"), "Ollama text"),
         (call_openai_text, "OpenAI text"),
     ]
 
@@ -964,7 +1001,7 @@ async def call_vision_provider_from_b64(
         (call_openrouter_vision, "_call_openrouter_vision"),
         (call_gemini_vision, "_call_gemini_vision"),
         (call_groq_vision, "_call_groq_vision"),
-        (call_ollama_vision, "_call_ollama_vision"),
+        (functools.partial(call_ollama_vision, fmt="json"), "_call_ollama_vision"),
         (call_openai_vision, "_call_openai_vision"),
     ]
     MAX_RESPONSE_CHARS = 4096
