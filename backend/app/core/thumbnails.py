@@ -1,4 +1,5 @@
 """Thumbnail generation for attachments."""
+import asyncio
 import logging
 from pathlib import Path
 from uuid import UUID
@@ -14,8 +15,8 @@ THUMBNAIL_WIDTH = 300
 THUMBNAIL_FORMAT = "WEBP"
 
 
-async def generate_image_thumbnail(source_path: Path, dest_path: Path) -> Path:
-    """Generate a thumbnail for an image file using Pillow."""
+def _make_image_thumbnail_sync(source_path: Path, dest_path: Path) -> Path:
+    """Blocking core: render an image thumbnail with Pillow."""
     from PIL import Image
 
     img = Image.open(source_path)
@@ -24,8 +25,17 @@ async def generate_image_thumbnail(source_path: Path, dest_path: Path) -> Path:
     return dest_path
 
 
-async def generate_pdf_thumbnail(source_path: Path, dest_path: Path) -> Path:
-    """Generate a thumbnail from the first page of a PDF using PyMuPDF."""
+async def generate_image_thumbnail(source_path: Path, dest_path: Path) -> Path:
+    """Generate a thumbnail for an image file using Pillow.
+
+    The blocking PIL work runs in a worker thread so it does not freeze the
+    event loop (this runs in a FastAPI BackgroundTask).
+    """
+    return await asyncio.to_thread(_make_image_thumbnail_sync, source_path, dest_path)
+
+
+def _make_pdf_thumbnail_sync(source_path: Path, dest_path: Path) -> Path:
+    """Blocking core: render a PDF first-page thumbnail with PyMuPDF + Pillow."""
     import fitz  # PyMuPDF
 
     doc = fitz.open(str(source_path))
@@ -47,6 +57,15 @@ async def generate_pdf_thumbnail(source_path: Path, dest_path: Path) -> Path:
 
     doc.close()
     return dest_path
+
+
+async def generate_pdf_thumbnail(source_path: Path, dest_path: Path) -> Path:
+    """Generate a thumbnail from the first page of a PDF using PyMuPDF.
+
+    The blocking PyMuPDF/PIL work runs in a worker thread so it does not
+    freeze the event loop (this runs in a FastAPI BackgroundTask).
+    """
+    return await asyncio.to_thread(_make_pdf_thumbnail_sync, source_path, dest_path)
 
 
 async def generate_thumbnail(

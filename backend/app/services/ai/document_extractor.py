@@ -238,8 +238,11 @@ async def extract_medical_data(
         return ExtractionResult(extracted=all_extracted, transcription=transcription)
 
     if mime_type.startswith("image/"):
-        # Try local tesseract first (fast, free)
-        ocr_text = tesseract_image(file_path)
+        # Try local tesseract first (fast, free). Offloaded to a worker thread —
+        # tesseract is a blocking subprocess (+ PIL preprocess) that would
+        # otherwise freeze the event loop (measured ~0.7s stall per image),
+        # starving the SSE heartbeat and all concurrent requests.
+        ocr_text = await asyncio.to_thread(tesseract_image, file_path)
         if ocr_text and _ocr_quality(ocr_text) >= OCR_QUALITY_THRESHOLD:
             logger.info("Image OCR (tesseract) extracted %d chars — using text extraction", len(ocr_text))
             raw_text, formatted = await asyncio.gather(

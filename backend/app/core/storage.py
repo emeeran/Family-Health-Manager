@@ -1,4 +1,5 @@
 """File storage abstraction."""
+import asyncio
 import contextlib
 import hashlib
 import json
@@ -141,7 +142,11 @@ async def _store_plaintext_file(
     """
     from app.core.encryption import encrypt_file
 
-    optimized = optimize_pdf(src_plaintext) if mime == "application/pdf" else src_plaintext
+    optimized = (
+        await asyncio.to_thread(optimize_pdf, src_plaintext)
+        if mime == "application/pdf"
+        else src_plaintext
+    )
     try:
         content_hash = await hash_existing_file(optimized)
         final_path = _content_hash_to_path(content_hash, ext)
