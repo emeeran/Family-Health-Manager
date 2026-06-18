@@ -8,6 +8,7 @@ import { Badge } from "@/components/ui/badge";
 import { Plus, X } from "lucide-react";
 import type { FormValues } from "@/components/records/record-form-utils";
 import type { ProviderResponse } from "@/lib/types/provider";
+import { sortedProviders, stripProviderTitle } from "@/lib/provider-utils";
 
 interface StepVisitDetailsProps {
   providers: ProviderResponse[];
@@ -73,9 +74,9 @@ export const StepVisitDetails = memo(function StepVisitDetails({
               }}
             >
               <option value="">Select {providerLabel.toLowerCase()}...</option>
-              {providers.map((p) => (
+              {sortedProviders(providers).map((p) => (
                 <option key={p.id} value={p.id}>
-                  {p.name}
+                  {stripProviderTitle(p.name)}
                   {p.speciality ? ` - ${p.speciality}` : ""}
                 </option>
               ))}

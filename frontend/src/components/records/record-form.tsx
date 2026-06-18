@@ -24,6 +24,7 @@ import { DynamicTable } from "./dynamic-table";
 import { MedicationSyncDialog } from "./medication-sync-dialog";
 import { useRecordFormState } from "./use-record-form-state";
 import { RECORD_TYPE_OPTIONS, timeAgo } from "./record-form-utils";
+import { sortedProviders, stripProviderTitle } from "@/lib/provider-utils";
 import type { RecordType } from "@/lib/types/enums";
 import type { ProviderResponse } from "@/lib/types/provider";
 import type { HealthRecordResponse } from "@/lib/types/health-record";
@@ -503,9 +504,9 @@ export function RecordForm({
                 }}
               >
                 <option value="">Select {isDoctorVisit ? "consultant" : "provider"}...</option>
-                {providerList.map((p) => (
+                {sortedProviders(providerList).map((p) => (
                   <option key={p.id} value={p.id}>
-                    {p.name}
+                    {stripProviderTitle(p.name)}
                     {p.speciality ? ` - ${p.speciality}` : ""}
                   </option>
                 ))}

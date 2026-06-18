@@ -55,6 +55,7 @@
 }
 
 :root {
+  color-scheme: light;
   --brand-primary: #1a2b42;
   --brand-accent: #ff6b35;
   --background: #f8f7f5;
@@ -98,6 +99,7 @@
 }
 
 .dark {
+  color-scheme: dark;
   --brand-primary: #5c7a99;
   --brand-accent: #ffa050;
   --background: #3d3834;

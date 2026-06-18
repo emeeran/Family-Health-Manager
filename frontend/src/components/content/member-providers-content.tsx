@@ -20,6 +20,7 @@ import { formatDate } from "@/lib/utils";
 import type { ProviderAssignmentResponse } from "@/lib/types/provider-assignment";
 import type { ProviderResponse } from "@/lib/types/provider";
 import type { FamilyMemberResponse } from "@/lib/types/member";
+import { sortedProviders, stripProviderTitle } from "@/lib/provider-utils";
 
 interface MemberProvidersContentProps {
   assignments: ProviderAssignmentResponse[];
@@ -112,9 +113,9 @@ export function MemberProvidersContent({
                     <SelectValue placeholder="Select a provider" />
                   </SelectTrigger>
                   <SelectContent>
-                    {availableProviders.map((p) => (
+                    {sortedProviders(availableProviders).map((p) => (
                       <SelectItem key={p.id} value={p.id}>
-                        {p.name}
+                        {stripProviderTitle(p.name)}
                         {p.speciality ? ` - ${p.speciality}` : ""}
                       </SelectItem>
                     ))}

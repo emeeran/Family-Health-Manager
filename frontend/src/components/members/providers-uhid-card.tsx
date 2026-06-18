@@ -19,6 +19,7 @@ import { listProviders } from "@/lib/api/providers";
 import { createAssignment, updateUhid } from "@/lib/api/provider-assignments";
 import type { ProviderResponse } from "@/lib/types/provider";
 import type { ProviderAssignmentResponse } from "@/lib/types/provider-assignment";
+import { sortedProviders, stripProviderTitle } from "@/lib/provider-utils";
 
 interface ProvidersUhidCardProps {
   memberId: string;
@@ -116,9 +117,9 @@ export const ProvidersUhidCard = memo(function ProvidersUhidCard({
                 <SelectValue placeholder="Select provider" />
               </SelectTrigger>
               <SelectContent>
-                {available.map((p) => (
+                {sortedProviders(available).map((p) => (
                   <SelectItem key={p.id} value={p.id}>
-                    {p.name}
+                    {stripProviderTitle(p.name)}
                     {p.speciality ? ` (${p.speciality})` : ""}
                   </SelectItem>
                 ))}

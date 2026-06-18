@@ -27,6 +27,7 @@ import { useNavigate } from "react-router-dom";
 import type { GeneratedInsight } from "@/lib/api/members";
 
 import type { ProviderResponse } from "@/lib/types/provider";
+import { sortedProviders, stripProviderTitle } from "@/lib/provider-utils";
 import { useVerificationPolling } from "@/lib/hooks/use-verification-polling";
 
 export interface PreConsultationCardProps {
@@ -276,15 +277,15 @@ export const PreConsultationCard = memo(function PreConsultationCard({
               <SelectTrigger className="w-full">
                 <SelectValue placeholder="Select a doctor (optional)">
                   {selectedProvider
-                    ? `${selectedProvider.name}${selectedProvider.speciality ? ` — ${selectedProvider.speciality}` : ""}`
+                    ? `${stripProviderTitle(selectedProvider.name)}${selectedProvider.speciality ? ` — ${selectedProvider.speciality}` : ""}`
                     : undefined}
                 </SelectValue>
               </SelectTrigger>
               <SelectContent>
                 <SelectItem value="__none__">General visit (no specific doctor)</SelectItem>
-                {providers.map((p) => (
+                {sortedProviders(providers).map((p) => (
                   <SelectItem key={p.id} value={p.id}>
-                    {p.name}
+                    {stripProviderTitle(p.name)}
                     {p.speciality ? ` — ${p.speciality}` : ""}
                   </SelectItem>
                 ))}
