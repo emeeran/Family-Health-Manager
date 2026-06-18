@@ -1,5 +1,4 @@
 import { useState, useRef, useCallback, useEffect } from "react";
-import { useLocation } from "react-router-dom";
 import { Plus, X, FileText, Users, Stethoscope, CalendarClock } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { MemberFormSheet } from "@/components/members/member-form-sheet";
@@ -16,12 +15,11 @@ interface QuickAddOption {
   colorDot: string;
 }
 
-/** Default position: 24px from bottom-right corner */
+/** Default position: 24px from the bottom-LEFT corner. pos.x/pos.y are left/bottom offsets. */
 const DEFAULT_POS = { x: 24, y: 24 };
 const FAB_SIZE = 48; // h-12 w-12 in px
 
 export function UniversalQuickAdd() {
-  const location = useLocation();
   const [open, setOpen] = useState(false);
   const [memberSheetOpen, setMemberSheetOpen] = useState(false);
   const [providerSheetOpen, setProviderSheetOpen] = useState(false);
@@ -31,7 +29,7 @@ export function UniversalQuickAdd() {
   // ── Draggable state ──
   const [pos, setPos] = useState(() => {
     try {
-      const saved = localStorage.getItem("fab-position");
+      const saved = localStorage.getItem("fab-position-v2");
       return saved ? JSON.parse(saved) : DEFAULT_POS;
     } catch {
       return DEFAULT_POS;
@@ -70,7 +68,8 @@ export function UniversalQuickAdd() {
     if (!hasMoved.current && Math.abs(dx) < 4 && Math.abs(dy) < 4) return;
     hasMoved.current = true;
 
-    const newX = dragStart.current.px - dx;
+    // pos.x is a left offset (drag right → increase); pos.y a bottom offset (drag up → increase)
+    const newX = dragStart.current.px + dx;
     const newY = dragStart.current.py - dy;
 
     // Clamp to viewport
@@ -85,7 +84,7 @@ export function UniversalQuickAdd() {
     if (hasMoved.current) {
       // Persist position
       try {
-        localStorage.setItem("fab-position", JSON.stringify(pos));
+        localStorage.setItem("fab-position-v2", JSON.stringify(pos));
       } catch {
         // ignore quota errors
       }
@@ -98,12 +97,6 @@ export function UniversalQuickAdd() {
       dragging.current = false;
     };
   }, []);
-
-  // Hide on the chat page (the floating button collides with the chat input).
-  // IMPORTANT: this guard must stay *after* every hook above. Returning earlier
-  // would skip the useCallback/useEffect calls and break the Rules of Hooks
-  // ("Rendered fewer hooks than expected") when navigating to/from /chat.
-  if (location.pathname === "/chat") return null;
 
   const options: QuickAddOption[] = [
     {
@@ -169,7 +162,7 @@ export function UniversalQuickAdd() {
             "cursor-grab active:cursor-grabbing"
           )}
           style={{
-            right: pos.x,
+            left: pos.x,
             bottom: pos.y,
           }}
           aria-label="Quick add (drag to reposition)"
@@ -187,8 +180,8 @@ export function UniversalQuickAdd() {
               isOnLeft ? "items-start" : "items-end"
             )}
             style={{
-              right: isOnLeft ? undefined : pos.x,
               left: isOnLeft ? pos.x : undefined,
+              right: isOnLeft ? undefined : window.innerWidth - pos.x - FAB_SIZE,
               bottom: pos.y,
             }}
           >
