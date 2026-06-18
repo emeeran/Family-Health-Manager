@@ -547,6 +547,16 @@ export function RecordFormWizard({
           value={uploadedFiles.map((f) => f.name).join(",")}
         />
       )}
+      {/* These fields' inputs live inside step 0/1, which unmount when the user
+          reaches the Review step. Mirror them here (reactive via watch) so the
+          native form action always submits current values regardless of step. */}
+      <input type="hidden" name="record_type" value={recordType ?? ""} />
+      <input type="hidden" name="record_date" value={watch("record_date") ?? ""} />
+      <input type="hidden" name="record_time" value={watch("record_time") ?? ""} />
+      <input type="hidden" name="provider_id" value={watch("provider_id") ?? ""} />
+      <input type="hidden" name="diagnosis" value={watch("diagnosis") ?? ""} />
+      <input type="hidden" name="next_review_date" value={watch("next_review_date") ?? ""} />
+      <input type="hidden" name="tags" value={JSON.stringify(tags.length > 0 ? tags : null)} />
 
       {/* Stepper */}
       <Stepper

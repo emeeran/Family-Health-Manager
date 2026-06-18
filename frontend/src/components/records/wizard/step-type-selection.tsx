@@ -39,7 +39,6 @@ export const StepTypeSelection = memo(function StepTypeSelection({
         <div className="grid gap-2 md:grid-cols-2">
           <div className="space-y-0.5">
             <Label className="text-xs">Record Type</Label>
-            <input type="hidden" name="record_type" value={recordType ?? ""} />
             <Select
               value={recordType ?? ""}
               onValueChange={(v) => {
