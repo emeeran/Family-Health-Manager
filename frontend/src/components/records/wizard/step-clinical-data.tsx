@@ -1,4 +1,5 @@
 import { memo, useMemo } from "react";
+import type { UseFormRegister } from "react-hook-form";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { TypeSpecificFields } from "@/components/records/type-specific-fields";
@@ -6,6 +7,7 @@ import { DynamicTable } from "@/components/records/dynamic-table";
 import { getConfig, getTables } from "@/lib/record-type-configs";
 import type { ExtractionBatch } from "@/lib/extraction-store";
 import type { RecordType } from "@/lib/types/enums";
+import type { FormValues } from "@/components/records/record-form-utils";
 import type { RecordTypeConfig } from "@/lib/record-type-configs";
 
 interface StepClinicalDataProps {
@@ -21,7 +23,7 @@ interface StepClinicalDataProps {
   onNotesChange: (value: string) => void;
   isDoctorVisit: boolean;
   clinicalDataRef: React.RefObject<HTMLInputElement | null>;
-  register: any;
+  register: UseFormRegister<FormValues>;
   errors?: Record<string, string>;
   medicineSuggestions?: string[];
 }

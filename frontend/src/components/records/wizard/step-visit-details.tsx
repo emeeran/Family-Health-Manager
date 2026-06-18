@@ -1,15 +1,17 @@
 import { memo } from "react";
+import type { UseFormRegister } from "react-hook-form";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Badge } from "@/components/ui/badge";
 import { Plus, X } from "lucide-react";
+import type { FormValues } from "@/components/records/record-form-utils";
 import type { ProviderResponse } from "@/lib/types/provider";
 
 interface StepVisitDetailsProps {
   providers: ProviderResponse[];
-  register: any;
+  register: UseFormRegister<FormValues>;
   isDoctorVisit: boolean;
   showProviderSelect: boolean;
   onAddProvider: () => void;

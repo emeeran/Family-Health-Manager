@@ -156,6 +156,9 @@ export function useRecordFormState({
     record: record ?? null,
     recordType,
     providerList,
+    // useFileExtraction consumes only setValue/getValues; the pared formState is
+    // sufficient, so the partial object uses a deliberate type-escape.
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
     form: { ...form, formState: { errors, isDirty } } as any,
     customValues,
     setCustomValues,

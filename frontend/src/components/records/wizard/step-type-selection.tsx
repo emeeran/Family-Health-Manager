@@ -1,4 +1,5 @@
 import { memo } from "react";
+import type { UseFormRegister } from "react-hook-form";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import {
@@ -8,13 +9,13 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { RECORD_TYPE_OPTIONS } from "@/components/records/record-form-utils";
+import { RECORD_TYPE_OPTIONS, type FormValues } from "@/components/records/record-form-utils";
 import type { RecordType } from "@/lib/types/enums";
 
 interface StepTypeSelectionProps {
   recordType: RecordType | undefined;
   onRecordTypeChange: (type: RecordType) => void;
-  register: any;
+  register: UseFormRegister<FormValues>;
   errors: Record<string, { message?: string }>;
   uploadSection?: React.ReactNode;
   nlSection?: React.ReactNode;
