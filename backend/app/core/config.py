@@ -61,6 +61,15 @@ class Settings(BaseSettings):
     OLLAMA_TEXT_MODEL: str = "medgemma"
     OLLAMA_TIMEOUT: int = 90  # seconds — per-call timeout for Ollama requests
 
+    # Cloud provider models (configurable so they can be swapped without code
+    # edits). OpenRouter defaults to FREE-tier models (the ":free" suffix) to
+    # avoid 402 "payment required" on paid models — they're rate-limited, but
+    # the provider race tolerates a throttled contender. Override any in .env.
+    OPENROUTER_TEXT_MODEL: str = "meta-llama/llama-3.3-70b-instruct:free"
+    OPENROUTER_VISION_MODEL: str = "google/gemma-4-31b-it:free"
+    GEMINI_TEXT_MODEL: str = "gemini-2.5-flash"
+    GEMINI_VISION_MODEL: str = "gemini-2.5-flash"
+
     # Storage
     STORAGE_PATH: str = "./data/attachments"
     STORAGE_BACKEND: str = "local"

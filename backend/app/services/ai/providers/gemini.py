@@ -9,10 +9,11 @@ settings = get_settings()
 logger = logging.getLogger(__name__)
 
 
-async def call_gemini_text(prompt: str, model: str = "gemini-2.5-flash") -> str | None:
+async def call_gemini_text(prompt: str, model: str | None = None) -> str | None:
     """Call Google Gemini for text-based generation."""
     if not settings.GEMINI_API_KEY:
         return None
+    model = model or settings.GEMINI_TEXT_MODEL
     url = (
         f"https://generativelanguage.googleapis.com/v1beta/"
         f"models/{model}:generateContent"
@@ -40,7 +41,7 @@ async def call_gemini_vision(
         return None
     url = (
         "https://generativelanguage.googleapis.com/v1beta/"
-        "models/gemini-2.5-flash:generateContent"
+        f"models/{settings.GEMINI_VISION_MODEL}:generateContent"
     )
     payload = {
         "contents": [{
@@ -70,7 +71,7 @@ async def call_gemini_ocr(
     )
     url = (
         "https://generativelanguage.googleapis.com/v1beta/"
-        "models/gemini-2.5-flash:generateContent"
+        f"models/{settings.GEMINI_VISION_MODEL}:generateContent"
     )
     payload = {
         "contents": [{

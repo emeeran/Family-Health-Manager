@@ -8,10 +8,11 @@ settings = get_settings()
 logger = logging.getLogger(__name__)
 
 
-async def call_openrouter_text(prompt: str, model: str = "deepseek/deepseek-v4-flash") -> str | None:
+async def call_openrouter_text(prompt: str, model: str | None = None) -> str | None:
     """Call OpenRouter API for text-based generation."""
     if not settings.OPENROUTER_API_KEY:
         return None
+    model = model or settings.OPENROUTER_TEXT_MODEL
     url = "https://openrouter.ai/api/v1/chat/completions"
     payload = {
         "model": model,
@@ -41,7 +42,7 @@ async def call_openrouter_vision(
         return None
     url = "https://openrouter.ai/api/v1/chat/completions"
     payload = {
-        "model": "google/gemini-2.5-flash-preview:thinking",
+        "model": settings.OPENROUTER_VISION_MODEL,
         "messages": [{
             "role": "user",
             "content": [
