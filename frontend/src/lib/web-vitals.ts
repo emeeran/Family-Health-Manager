@@ -22,6 +22,7 @@ interface MetricPayload {
 function logMetric(metric: MetricPayload): void {
   const icon =
     metric.rating === "good" ? "✅" : metric.rating === "needs-improvement" ? "⚠️" : "❌";
+  // eslint-disable-next-line no-console -- intentional dev metrics logging
   console.debug(
     `[Web Vitals] ${icon} ${metric.name}: ${metric.value.toFixed(0)}ms (${metric.rating})`
   );

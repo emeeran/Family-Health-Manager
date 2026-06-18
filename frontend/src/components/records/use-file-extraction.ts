@@ -31,20 +31,6 @@ interface UploadedFile {
   stagingId: string;
 }
 
-interface ExtractionState {
-  extracting: boolean;
-  extractError: string | null;
-  progress: {
-    step: string;
-    pct: number;
-    substeps: string[];
-    done: string[];
-  };
-  uploadedFiles: UploadedFile[];
-  stagingFileIds: string[];
-  recentBatches: import("@/lib/extraction-store").ExtractionBatch[];
-}
-
 interface UseFileExtractionArgs {
   memberId?: string;
   record?: { clinical_data?: string; tags?: string[] | null } | null;
@@ -65,11 +51,8 @@ export function useFileExtraction({
   recordType,
   providerList,
   form,
-  customValues,
   setCustomValues,
-  tableData,
   setTableData,
-  setNotes,
   setExtractedFields,
 }: UseFileExtractionArgs) {
   const { setValue, getValues } = form;

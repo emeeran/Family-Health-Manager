@@ -143,9 +143,7 @@ export const AiAssistantTab = memo(function AiAssistantTab({ data }: AiAssistant
     provider_assignments,
     latest_insight,
     latest_preconsult_note,
-    drug_interactions,
     preventive_recommendations,
-    vaccinations,
   } = data;
 
   const [insight, setInsight] = useState<GeneratedInsight | null>(

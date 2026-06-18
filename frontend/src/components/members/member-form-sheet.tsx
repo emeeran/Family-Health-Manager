@@ -1,4 +1,3 @@
-import { useNavigate } from "react-router-dom";
 import {
   Sheet,
   SheetContent,
@@ -17,8 +16,6 @@ interface MemberFormSheetProps {
 }
 
 export function MemberFormSheet({ open, onOpenChange }: MemberFormSheetProps) {
-  const navigate = useNavigate();
-
   async function action(prevState: unknown, formData: FormData) {
     const heightStr = formData.get("height_cm") as string;
     const weightStr = formData.get("weight_kg") as string;

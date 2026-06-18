@@ -2,7 +2,6 @@ import { useState, useEffect } from "react";
 import { useSearchParams } from "react-router-dom";
 import { AiToolsSubPage } from "@/components/ai-tools/ai-tools-layout";
 import { Button } from "@/components/ui/button";
-import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Eye, Loader2, Sparkles, RefreshCw } from "lucide-react";
 import { listRecords, backfillSummaries, regenerateSummary } from "@/lib/api/records";
