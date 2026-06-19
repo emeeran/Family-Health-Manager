@@ -3,6 +3,7 @@
 Scans a member's records for potential duplicates using multiple criteria,
 groups them, and supports merging duplicate groups into a single record.
 """
+
 import json
 import logging
 from uuid import UUID
@@ -115,6 +116,7 @@ class DedupService:
         Returns dict matching DedupResponse schema with proper types.
         """
         from app.schemas.health_record import DuplicateRecordItem, DuplicateGroup
+
         # Load all non-deleted records with attachments and provider eagerly loaded
         result = await self.db.execute(
             select(HealthRecord)
@@ -191,7 +193,10 @@ class DedupService:
                 # Criterion 3: Similar content (medicine names or lab tests)
                 med_sim = _jaccard(rd_a["medicine_names"], rd_b["medicine_names"])
                 lab_sim = _jaccard(rd_a["lab_test_names"], rd_b["lab_test_names"])
-                if med_sim >= CONTENT_SIMILARITY_THRESHOLD or lab_sim >= CONTENT_SIMILARITY_THRESHOLD:
+                if (
+                    med_sim >= CONTENT_SIMILARITY_THRESHOLD
+                    or lab_sim >= CONTENT_SIMILARITY_THRESHOLD
+                ):
                     score += 1
                     reasons.append("similar_content")
 
@@ -239,18 +244,20 @@ class DedupService:
             record_items = []
             for mid in members:
                 rec = record_data[mid]["record"]
-                record_items.append(DuplicateRecordItem(
-                    id=rec.id,
-                    record_type=rec.record_type,
-                    record_date=rec.record_date,
-                    diagnosis=rec.diagnosis,
-                    provider_name=rec.provider.name if rec.provider else None,
-                    provider_id=rec.provider_id,
-                    prescription_text=rec.prescription_text,
-                    has_attachments=len(rec.attachments) > 0,
-                    attachment_count=len(rec.attachments),
-                    created_at=rec.created_at,
-                ))
+                record_items.append(
+                    DuplicateRecordItem(
+                        id=rec.id,
+                        record_type=rec.record_type,
+                        record_date=rec.record_date,
+                        diagnosis=rec.diagnosis,
+                        provider_name=rec.provider.name if rec.provider else None,
+                        provider_id=rec.provider_id,
+                        prescription_text=rec.prescription_text,
+                        has_attachments=len(rec.attachments) > 0,
+                        attachment_count=len(rec.attachments),
+                        created_at=rec.created_at,
+                    )
+                )
 
             # Recommend keeper: most attachments, then longest clinical_data
             recommended = max(
@@ -261,19 +268,26 @@ class DedupService:
                 ),
             )
 
-            groups.append(DuplicateGroup(
-                records=record_items,
-                recommended_keeper_id=UUID(recommended),
-                match_reasons=sorted(group_reasons),
-                score=group_max_score,
-            ))
+            groups.append(
+                DuplicateGroup(
+                    records=record_items,
+                    recommended_keeper_id=UUID(recommended),
+                    match_reasons=sorted(group_reasons),
+                    score=group_max_score,
+                )
+            )
 
         # Sort groups by score desc, then by number of records desc
         groups.sort(key=lambda g: (g.score, len(g.records)), reverse=True)
 
-        return {"groups": [g.model_dump(mode="json") for g in groups], "total_records_scanned": total_scanned}
+        return {
+            "groups": [g.model_dump(mode="json") for g in groups],
+            "total_records_scanned": total_scanned,
+        }
 
-    async def merge_records(self, member_id: UUID, keeper_id: UUID, loser_ids: list[UUID]) -> HealthRecord:
+    async def merge_records(
+        self, member_id: UUID, keeper_id: UUID, loser_ids: list[UUID]
+    ) -> HealthRecord:
         """Merge loser records into keeper. Moves attachments, merges tags, soft-deletes losers."""
         # Load keeper with attachments
         result = await self.db.execute(
@@ -316,9 +330,17 @@ class DedupService:
             # Merge tags
             if loser.tags:
                 try:
-                    loser_tags = json.loads(loser.tags) if isinstance(loser.tags, str) else loser.tags
-                    keeper_tags = json.loads(keeper.tags) if keeper.tags and isinstance(keeper.tags, str) else (json.loads(keeper.tags) if keeper.tags else [])
-                    merged = list(set(keeper_tags + (loser_tags if isinstance(loser_tags, list) else [])))
+                    loser_tags = (
+                        json.loads(loser.tags) if isinstance(loser.tags, str) else loser.tags
+                    )
+                    keeper_tags = (
+                        json.loads(keeper.tags)
+                        if keeper.tags and isinstance(keeper.tags, str)
+                        else (json.loads(keeper.tags) if keeper.tags else [])
+                    )
+                    merged = list(
+                        set(keeper_tags + (loser_tags if isinstance(loser_tags, list) else []))
+                    )
                     keeper.tags = json.dumps(merged) if merged else keeper.tags
                 except (json.JSONDecodeError, ValueError, TypeError):
                     pass

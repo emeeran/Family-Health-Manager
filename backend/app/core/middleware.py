@@ -1,4 +1,5 @@
 """Custom middleware for the FastAPI application."""
+
 import uuid
 from collections.abc import Callable, Awaitable
 from starlette.middleware.base import BaseHTTPMiddleware

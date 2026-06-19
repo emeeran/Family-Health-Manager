@@ -1,4 +1,5 @@
 """Fetch available models from each AI provider's API."""
+
 import asyncio
 import logging
 from collections.abc import Awaitable, Callable
@@ -64,7 +65,7 @@ async def _fetch_gemini(client: httpx.AsyncClient) -> list[str]:
         name = m.get("name", "")
         # Strip "models/" prefix returned by the API
         if name.startswith("models/"):
-            name = name[len("models/"):]
+            name = name[len("models/") :]
         if name:
             models.append(name)
     return sorted(models)
@@ -100,8 +101,7 @@ async def fetch_available_models() -> dict[str, list[str]]:
 
     async with httpx.AsyncClient(timeout=10) as client:
         tasks = {
-            pid: asyncio.create_task(fetcher(client))
-            for pid, fetcher in provider_fetchers.items()
+            pid: asyncio.create_task(fetcher(client)) for pid, fetcher in provider_fetchers.items()
         }
         results = await asyncio.gather(*tasks.values(), return_exceptions=True)
 

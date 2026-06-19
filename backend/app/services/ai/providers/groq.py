@@ -1,4 +1,5 @@
 """Groq API provider."""
+
 import logging
 
 from app.core.provider_keys import resolve_provider_api_key
@@ -7,7 +8,9 @@ from app.services.ai.base import get_cloud_client, retry_with_backoff
 logger = logging.getLogger(__name__)
 
 
-async def call_groq_text(prompt: str, model: str = "meta-llama/llama-4-scout-17b-16e-instruct") -> str | None:
+async def call_groq_text(
+    prompt: str, model: str = "meta-llama/llama-4-scout-17b-16e-instruct"
+) -> str | None:
     """Call Groq API for text-based generation."""
     api_key = await resolve_provider_api_key("groq")
     if not api_key:
@@ -33,9 +36,7 @@ async def call_groq_text(prompt: str, model: str = "meta-llama/llama-4-scout-17b
     return data["choices"][0]["message"]["content"]
 
 
-async def call_groq_vision(
-    b64_data: str, mime_type: str, extraction_prompt: str
-) -> str | None:
+async def call_groq_vision(b64_data: str, mime_type: str, extraction_prompt: str) -> str | None:
     """Call Groq API for vision extraction."""
     api_key = await resolve_provider_api_key("groq")
     if not api_key:
@@ -43,15 +44,20 @@ async def call_groq_vision(
     url = "https://api.groq.com/openai/v1/chat/completions"
     payload = {
         "model": "meta-llama/llama-4-scout-17b-16e-instruct",
-        "messages": [{
-            "role": "user",
-            "content": [
-                {"type": "text", "text": extraction_prompt},
-                {"type": "image_url", "image_url": {
-                    "url": f"data:{mime_type};base64,{b64_data}",
-                }},
-            ],
-        }],
+        "messages": [
+            {
+                "role": "user",
+                "content": [
+                    {"type": "text", "text": extraction_prompt},
+                    {
+                        "type": "image_url",
+                        "image_url": {
+                            "url": f"data:{mime_type};base64,{b64_data}",
+                        },
+                    },
+                ],
+            }
+        ],
         "temperature": 0.1,
     }
     headers = {

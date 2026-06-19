@@ -1,4 +1,5 @@
 """Health alert service — CRUD for proactive health notifications."""
+
 import logging
 from datetime import date
 from uuid import UUID
@@ -47,9 +48,7 @@ class HealthAlertService:
         await self.db.flush()
         return alert
 
-    async def batch_check_duplicates(
-        self, member_id: UUID
-    ) -> set[tuple[str, date]]:
+    async def batch_check_duplicates(self, member_id: UUID) -> set[tuple[str, date]]:
         """Return set of (test_name, date) tuples for existing undismissed alerts.
 
         Used to batch-check duplicates and avoid N+1 queries in anomaly detection.

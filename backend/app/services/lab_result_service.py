@@ -1,4 +1,5 @@
 """Lab result service — sync and query lab results from structured clinical_data."""
+
 import logging
 from datetime import date
 from uuid import UUID
@@ -44,16 +45,18 @@ class LabResultService:
             if not test_name or not result_val:
                 continue
 
-            self.db.add(LabResult(
-                family_member_id=member_id,
-                health_record_id=record_id,
-                test_name=test_name,
-                result=result_val,
-                units=t.get("units", ""),
-                ref_value=t.get("ref_value", ""),
-                note=t.get("note", ""),
-                record_date=record_date,
-            ))
+            self.db.add(
+                LabResult(
+                    family_member_id=member_id,
+                    health_record_id=record_id,
+                    test_name=test_name,
+                    result=result_val,
+                    units=t.get("units", ""),
+                    ref_value=t.get("ref_value", ""),
+                    note=t.get("note", ""),
+                    record_date=record_date,
+                )
+            )
             inserted += 1
 
         if inserted:

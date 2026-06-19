@@ -1,4 +1,5 @@
 """Member health history and trends router — BMI, HbA1c, lab trends, dashboard."""
+
 import asyncio
 import json
 import logging
@@ -16,7 +17,11 @@ from app.models.base import Household, HealthRecord, RecordType
 from app.models.provider import ProviderAssignment
 from app.schemas.family_member import FamilyMemberResponse
 from app.schemas.provider_assignment import ProviderAssignmentResponse
-from app.services.health_score_service import compute_health_score, get_conditions_count, extract_hba1c_history
+from app.services.health_score_service import (
+    compute_health_score,
+    get_conditions_count,
+    extract_hba1c_history,
+)
 from app.services.member_service import MemberService
 
 logger = logging.getLogger(__name__)
@@ -57,12 +62,14 @@ async def get_bmi_history(
         try:
             data = json.loads(r.clinical_data) if r.clinical_data else {}
             if isinstance(data, dict) and "bmi" in data:
-                history.append({
-                    "date": r.record_date.isoformat(),
-                    "bmi": data["bmi"],
-                    "height_cm": data.get("height_cm"),
-                    "weight_kg": data.get("weight_kg"),
-                })
+                history.append(
+                    {
+                        "date": r.record_date.isoformat(),
+                        "bmi": data["bmi"],
+                        "height_cm": data.get("height_cm"),
+                        "weight_kg": data.get("weight_kg"),
+                    }
+                )
         except (json.JSONDecodeError, ValueError):
             continue
 
@@ -82,7 +89,9 @@ async def get_hba1c_history(
         select(HealthRecord)
         .where(
             HealthRecord.family_member_id == member_id,
-            HealthRecord.record_type.in_([RecordType.BLOOD_GLUCOSE, RecordType.DOCTOR_VISIT, RecordType.LAB_REPORT]),
+            HealthRecord.record_type.in_(
+                [RecordType.BLOOD_GLUCOSE, RecordType.DOCTOR_VISIT, RecordType.LAB_REPORT]
+            ),
             HealthRecord.is_deleted.is_(False),
         )
         .order_by(HealthRecord.record_date.asc())
@@ -148,7 +157,7 @@ async def get_lab_trends_interpretation(
         '- "direction": "improving", "worsening", or "stable"\n'
         '- "latest_status": "normal", "elevated", "low", or "critical"\n'
         '- "interpretation": one sentence clinical comment\n\n'
-        'Return ONLY a JSON array. No markdown, no code fences.'
+        "Return ONLY a JSON array. No markdown, no code fences."
     )
 
     try:
@@ -158,6 +167,7 @@ async def get_lab_trends_interpretation(
         return {"trends": [], "interpretation": "AI service unavailable."}
 
     import re
+
     cleaned = re.sub(r"```json\s*", "", response or "")
     cleaned = re.sub(r"```\s*", "", cleaned).strip()
 
@@ -217,8 +227,10 @@ async def get_member_dashboard(
     conditions_count = get_conditions_count(member.medical_history_summary)
 
     today = date.today()
-    age = today.year - member.date_of_birth.year - (
-        (today.month, today.day) < (member.date_of_birth.month, member.date_of_birth.day)
+    age = (
+        today.year
+        - member.date_of_birth.year
+        - ((today.month, today.day) < (member.date_of_birth.month, member.date_of_birth.day))
     )
 
     recent_records = list(recent_records_result.scalars().all())

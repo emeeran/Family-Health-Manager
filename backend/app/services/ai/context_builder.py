@@ -1,4 +1,5 @@
 """Context builder — constructs AI prompts from patient records and member data."""
+
 import asyncio
 import json
 import logging
@@ -27,17 +28,17 @@ async def build_member_context(
     db: AsyncSession, member_id: UUID, fmt_date, comprehensive: bool = False
 ) -> str:
     """Build comprehensive medical history context for AI prompt."""
-    result = await db.execute(
-        select(FamilyMember).where(FamilyMember.id == member_id)
-    )
+    result = await db.execute(select(FamilyMember).where(FamilyMember.id == member_id))
     member = result.scalar_one_or_none()
     if not member:
         return ""
 
     # --- Patient Profile ---
     today = date.today()
-    age = today.year - member.date_of_birth.year - (
-        (today.month, today.day) < (member.date_of_birth.month, member.date_of_birth.day)
+    age = (
+        today.year
+        - member.date_of_birth.year
+        - ((today.month, today.day) < (member.date_of_birth.month, member.date_of_birth.day))
     )
     context = f"Patient: {member.first_name} {member.last_name} (Age: {age})\n"
     context += f"Date of Birth: {fmt_date(member.date_of_birth)}\n"
@@ -109,24 +110,12 @@ async def build_member_context(
 
     # Start parallel queries for enrichment data
     med_summary_task = asyncio.create_task(build_medication_summary(db, member_id))
-    lab_results_task = asyncio.create_task(
-        _build_lab_results_summary(db, member_id, fmt_date)
-    )
-    vaccinations_task = asyncio.create_task(
-        _build_vaccination_summary(db, member_id, fmt_date)
-    )
-    reminders_task = asyncio.create_task(
-        _build_reminder_summary(db, member_id, fmt_date)
-    )
-    providers_task = asyncio.create_task(
-        _build_provider_summary(db, member_id)
-    )
-    alerts_task = asyncio.create_task(
-        _build_health_alerts_summary(db, member_id)
-    )
-    attachments_task = asyncio.create_task(
-        _build_attachment_summary(db, member_id)
-    )
+    lab_results_task = asyncio.create_task(_build_lab_results_summary(db, member_id, fmt_date))
+    vaccinations_task = asyncio.create_task(_build_vaccination_summary(db, member_id, fmt_date))
+    reminders_task = asyncio.create_task(_build_reminder_summary(db, member_id, fmt_date))
+    providers_task = asyncio.create_task(_build_provider_summary(db, member_id))
+    alerts_task = asyncio.create_task(_build_health_alerts_summary(db, member_id))
+    attachments_task = asyncio.create_task(_build_attachment_summary(db, member_id))
 
     # Aggregate across records for summary sections
     all_diagnoses: list[str] = []
@@ -267,8 +256,7 @@ async def build_medication_summary(db: AsyncSession, member_id: UUID) -> str:
     #    DOCTOR_VISIT records are already fully handled by MedicationService above,
     #    so we exclude them to avoid the redundant query.
     result = await db.execute(
-        select(HealthRecord.clinical_data, HealthRecord.prescription_text)
-        .where(
+        select(HealthRecord.clinical_data, HealthRecord.prescription_text).where(
             HealthRecord.family_member_id == member_id,
             HealthRecord.record_type != RecordType.DOCTOR_VISIT,
             HealthRecord.is_deleted.is_(False),
@@ -304,6 +292,7 @@ async def build_medication_summary(db: AsyncSession, member_id: UUID) -> str:
         # Free-text prescriptions (handle multiple separators)
         if prescription_text:
             import re as _re
+
             for line in _re.split(r"[;\n]+", prescription_text):
                 line = line.strip()
                 if not line or len(line) < 3:
@@ -326,9 +315,7 @@ async def build_medication_summary(db: AsyncSession, member_id: UUID) -> str:
 # ---------------------------------------------------------------------------
 
 
-async def _build_lab_results_summary(
-    db: AsyncSession, member_id: UUID, fmt_date
-) -> str:
+async def _build_lab_results_summary(db: AsyncSession, member_id: UUID, fmt_date) -> str:
     """Build structured lab results from the dedicated lab_results table."""
     result = await db.execute(
         select(LabResult)
@@ -353,9 +340,7 @@ async def _build_lab_results_summary(
     return "\n".join(lines)
 
 
-async def _build_vaccination_summary(
-    db: AsyncSession, member_id: UUID, fmt_date
-) -> str:
+async def _build_vaccination_summary(db: AsyncSession, member_id: UUID, fmt_date) -> str:
     """Build vaccination / immunisation history."""
     result = await db.execute(
         select(Vaccination)
@@ -380,9 +365,7 @@ async def _build_vaccination_summary(
     return "\n".join(lines)
 
 
-async def _build_reminder_summary(
-    db: AsyncSession, member_id: UUID, fmt_date
-) -> str:
+async def _build_reminder_summary(db: AsyncSession, member_id: UUID, fmt_date) -> str:
     """Build active reminders and upcoming appointments."""
     result = await db.execute(
         select(Reminder)
@@ -409,9 +392,7 @@ async def _build_reminder_summary(
     return "\n".join(lines)
 
 
-async def _build_provider_summary(
-    db: AsyncSession, member_id: UUID
-) -> str:
+async def _build_provider_summary(db: AsyncSession, member_id: UUID) -> str:
     """Build full provider directory with specialties and UHIDs."""
     # Join providers → assignments for this member
     result = await db.execute(
@@ -439,9 +420,7 @@ async def _build_provider_summary(
     return "\n".join(lines)
 
 
-async def _build_health_alerts_summary(
-    db: AsyncSession, member_id: UUID
-) -> str:
+async def _build_health_alerts_summary(db: AsyncSession, member_id: UUID) -> str:
     """Build active (non-dismissed) health alerts for the member."""
     result = await db.execute(
         select(HealthAlert)
@@ -497,9 +476,7 @@ async def _build_health_alerts_summary(
     return "\n".join(lines)
 
 
-async def _build_attachment_summary(
-    db: AsyncSession, member_id: UUID
-) -> str:
+async def _build_attachment_summary(db: AsyncSession, member_id: UUID) -> str:
     """Build metadata summary of file attachments linked to member's records."""
     from app.models.base import HealthRecord as HR
 
@@ -526,9 +503,7 @@ async def _build_attachment_summary(
     return "\n".join(lines)
 
 
-async def build_household_context(
-    db: AsyncSession, household_id: UUID, fmt_date
-) -> str:
+async def build_household_context(db: AsyncSession, household_id: UUID, fmt_date) -> str:
     """Build health context for an entire household (all members + recent records)."""
     # Fetch all active members
     members_result = await db.execute(
@@ -634,9 +609,7 @@ def build_lab_trends_from_records(records: list) -> str:
                 for kw, canonical in KEY_TESTS.items():
                     if kw in name:
                         date_str = str(r.record_date)
-                        trends.setdefault(canonical, []).append(
-                            (date_str, result, note)
-                        )
+                        trends.setdefault(canonical, []).append((date_str, result, note))
                         break
 
     if not trends:
@@ -728,9 +701,7 @@ def summarize_clinical_data(raw: str | None) -> str:
 
 async def build_record_context(db: AsyncSession, record_id: UUID, fmt_date) -> str:
     """Build context from health record."""
-    result = await db.execute(
-        select(HealthRecord).where(HealthRecord.id == record_id)
-    )
+    result = await db.execute(select(HealthRecord).where(HealthRecord.id == record_id))
     record = result.scalar_one_or_none()
     if not record:
         return ""

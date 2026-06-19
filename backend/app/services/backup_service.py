@@ -1,4 +1,5 @@
 """Backup and restore service."""
+
 import io
 import json
 import logging
@@ -166,7 +167,8 @@ class BackupService:
 
         if not zipfile.is_zipfile(file_path):
             return BackupValidationResponse(
-                validation_id=validation_id, valid=False,
+                validation_id=validation_id,
+                valid=False,
                 errors=["Not a valid ZIP archive"],
             )
 
@@ -180,7 +182,9 @@ class BackupService:
 
             if errors:
                 return BackupValidationResponse(
-                    validation_id=validation_id, valid=False, errors=errors,
+                    validation_id=validation_id,
+                    valid=False,
+                    errors=errors,
                 )
 
             # Parse manifest
@@ -197,8 +201,10 @@ class BackupService:
             except Exception as exc:
                 errors.append(f"Invalid data.json: {exc}")
                 return BackupValidationResponse(
-                    validation_id=validation_id, valid=False,
-                    manifest=manifest, errors=errors,
+                    validation_id=validation_id,
+                    valid=False,
+                    manifest=manifest,
+                    errors=errors,
                 )
 
             # Check attachment files exist in ZIP
@@ -208,8 +214,11 @@ class BackupService:
 
         if errors:
             return BackupValidationResponse(
-                validation_id=validation_id, valid=False,
-                manifest=manifest, warnings=warnings, errors=errors,
+                validation_id=validation_id,
+                valid=False,
+                manifest=manifest,
+                warnings=warnings,
+                errors=errors,
             )
 
         # Stage the file for import
@@ -219,8 +228,10 @@ class BackupService:
         file_path.rename(staged_path)
 
         return BackupValidationResponse(
-            validation_id=validation_id, valid=True,
-            manifest=manifest, warnings=warnings,
+            validation_id=validation_id,
+            valid=True,
+            manifest=manifest,
+            warnings=warnings,
         )
 
     # ── Import ─────────────────────────────────────────────────────
@@ -249,16 +260,34 @@ class BackupService:
                     await self._delete_household_data(household_id)
 
                 # Import in dependency order
-                await self._import_members(household_id, data.members, mode, id_maps, imported, skipped, errors)
-                await self._import_providers(household_id, data.providers, mode, id_maps, imported, skipped, errors)
-                await self._import_assignments(data.provider_assignments, mode, id_maps, imported, skipped, errors)
-                await self._import_records(data.health_records, mode, id_maps, imported, skipped, errors)
-                await self._import_attachments(data.attachments, mode, id_maps, zf, imported, skipped, errors)
-                await self._import_insights(data.ai_insights, mode, id_maps, imported, skipped, errors)
-                await self._import_conversations(household_id, data.conversations, mode, id_maps, imported, skipped, errors)
+                await self._import_members(
+                    household_id, data.members, mode, id_maps, imported, skipped, errors
+                )
+                await self._import_providers(
+                    household_id, data.providers, mode, id_maps, imported, skipped, errors
+                )
+                await self._import_assignments(
+                    data.provider_assignments, mode, id_maps, imported, skipped, errors
+                )
+                await self._import_records(
+                    data.health_records, mode, id_maps, imported, skipped, errors
+                )
+                await self._import_attachments(
+                    data.attachments, mode, id_maps, zf, imported, skipped, errors
+                )
+                await self._import_insights(
+                    data.ai_insights, mode, id_maps, imported, skipped, errors
+                )
+                await self._import_conversations(
+                    household_id, data.conversations, mode, id_maps, imported, skipped, errors
+                )
                 await self._import_messages(data.messages, mode, id_maps, imported, skipped, errors)
-                await self._import_reminders(household_id, data.reminders, mode, id_maps, imported, skipped, errors)
-                await self._import_notifications(data.notifications, mode, id_maps, imported, skipped, errors)
+                await self._import_reminders(
+                    household_id, data.reminders, mode, id_maps, imported, skipped, errors
+                )
+                await self._import_notifications(
+                    data.notifications, mode, id_maps, imported, skipped, errors
+                )
 
                 await self.db.flush()
 
@@ -271,8 +300,12 @@ class BackupService:
             if staged_path.exists():
                 staged_path.unlink()
 
-        logger.info("Backup import complete for household %s: imported=%s, skipped=%s, errors=%d",
-                     household_id, imported, len(errors))
+        logger.info(
+            "Backup import complete for household %s: imported=%s, skipped=%s, errors=%d",
+            household_id,
+            imported,
+            len(errors),
+        )
         return BackupImportResponse(
             imported=imported,
             skipped=skipped,
@@ -307,9 +340,15 @@ class BackupService:
                     if p.exists():
                         p.unlink(missing_ok=True)
 
-                await self.db.execute(delete(AIInsight).where(AIInsight.health_record_id.in_(record_ids)))
-                await self.db.execute(delete(Attachment).where(Attachment.health_record_id.in_(record_ids)))
-                await self.db.execute(delete(HealthRecord).where(HealthRecord.family_member_id.in_(member_ids)))
+                await self.db.execute(
+                    delete(AIInsight).where(AIInsight.health_record_id.in_(record_ids))
+                )
+                await self.db.execute(
+                    delete(Attachment).where(Attachment.health_record_id.in_(record_ids))
+                )
+                await self.db.execute(
+                    delete(HealthRecord).where(HealthRecord.family_member_id.in_(member_ids))
+                )
 
             # Get conversation IDs
             conv_result = await self.db.execute(
@@ -317,12 +356,22 @@ class BackupService:
             )
             conv_ids = [row[0] for row in conv_result.all()]
             if conv_ids:
-                await self.db.execute(delete(AIInsight).where(AIInsight.conversation_id.in_(conv_ids)))
+                await self.db.execute(
+                    delete(AIInsight).where(AIInsight.conversation_id.in_(conv_ids))
+                )
                 await self.db.execute(delete(Message).where(Message.conversation_id.in_(conv_ids)))
-                await self.db.execute(delete(Conversation).where(Conversation.household_id == household_id))
+                await self.db.execute(
+                    delete(Conversation).where(Conversation.household_id == household_id)
+                )
 
-            await self.db.execute(delete(ProviderAssignment).where(ProviderAssignment.family_member_id.in_(member_ids)))
-            await self.db.execute(delete(FamilyMember).where(FamilyMember.household_id == household_id))
+            await self.db.execute(
+                delete(ProviderAssignment).where(
+                    ProviderAssignment.family_member_id.in_(member_ids)
+                )
+            )
+            await self.db.execute(
+                delete(FamilyMember).where(FamilyMember.household_id == household_id)
+            )
 
         # Reminder-scoped
         reminder_result = await self.db.execute(
@@ -330,7 +379,9 @@ class BackupService:
         )
         reminder_ids = [row[0] for row in reminder_result.all()]
         if reminder_ids:
-            await self.db.execute(delete(Notification).where(Notification.reminder_id.in_(reminder_ids)))
+            await self.db.execute(
+                delete(Notification).where(Notification.reminder_id.in_(reminder_ids))
+            )
         await self.db.execute(delete(Reminder).where(Reminder.household_id == household_id))
 
         await self.db.execute(delete(Provider).where(Provider.household_id == household_id))
@@ -371,26 +422,32 @@ class BackupService:
                         id_maps.setdefault("members", {})[m.id] = m.id
                         continue
                 new_id = self._new_id(mode, m.id, "members", id_maps)
-                self.db.add(FamilyMember(
-                    id=new_id, household_id=household_id,
-                    first_name=m.first_name, last_name=m.last_name,
-                    date_of_birth=m.date_of_birth, gender=m.gender,
-                    relationship_type=m.relationship_type,
-                    medical_history_summary=m.medical_history_summary,
-                    is_active=m.is_active, created_at=m.created_at,
-                ))
+                self.db.add(
+                    FamilyMember(
+                        id=new_id,
+                        household_id=household_id,
+                        first_name=m.first_name,
+                        last_name=m.last_name,
+                        date_of_birth=m.date_of_birth,
+                        gender=m.gender,
+                        relationship_type=m.relationship_type,
+                        medical_history_summary=m.medical_history_summary,
+                        is_active=m.is_active,
+                        created_at=m.created_at,
+                    )
+                )
                 imported.members += 1
             except Exception as exc:
                 errors.append(f"Member {m.first_name} {m.last_name}: {exc}")
 
-    async def _import_providers(self, household_id, items, mode, id_maps, imported, skipped, errors):
+    async def _import_providers(
+        self, household_id, items, mode, id_maps, imported, skipped, errors
+    ):
         # Batch lookup for merge mode to avoid N+1 queries
         existing_provider_ids: set = set()
         if mode == "merge" and items:
             provider_ids = [p.id for p in items]
-            result = await self.db.execute(
-                select(Provider.id).where(Provider.id.in_(provider_ids))
-            )
+            result = await self.db.execute(select(Provider.id).where(Provider.id.in_(provider_ids)))
             existing_provider_ids = {row[0] for row in result.all()}
 
         for p in items:
@@ -401,11 +458,17 @@ class BackupService:
                         id_maps.setdefault("providers", {})[p.id] = p.id
                         continue
                 new_id = self._new_id(mode, p.id, "providers", id_maps)
-                self.db.add(Provider(
-                    id=new_id, household_id=household_id,
-                    name=p.name, speciality=p.speciality,
-                    phone=p.phone, address=p.address, created_at=p.created_at,
-                ))
+                self.db.add(
+                    Provider(
+                        id=new_id,
+                        household_id=household_id,
+                        name=p.name,
+                        speciality=p.speciality,
+                        phone=p.phone,
+                        address=p.address,
+                        created_at=p.created_at,
+                    )
+                )
                 imported.providers += 1
             except Exception as exc:
                 errors.append(f"Provider {p.name}: {exc}")
@@ -430,10 +493,15 @@ class BackupService:
                         id_maps.setdefault("assignments", {})[a.id] = a.id
                         continue
                 new_id = self._new_id(mode, a.id, "assignments", id_maps)
-                self.db.add(ProviderAssignment(
-                    id=new_id, provider_id=provider_id,
-                    family_member_id=member_id, uhid=a.uhid, created_at=a.created_at,
-                ))
+                self.db.add(
+                    ProviderAssignment(
+                        id=new_id,
+                        provider_id=provider_id,
+                        family_member_id=member_id,
+                        uhid=a.uhid,
+                        created_at=a.created_at,
+                    )
+                )
                 imported.provider_assignments += 1
             except Exception as exc:
                 errors.append(f"ProviderAssignment {a.id}: {exc}")
@@ -451,21 +519,32 @@ class BackupService:
         for r in items:
             try:
                 member_id = self._map_id("members", r.family_member_id, id_maps)
-                provider_id = self._map_id("providers", r.provider_id, id_maps) if r.provider_id else None
+                provider_id = (
+                    self._map_id("providers", r.provider_id, id_maps) if r.provider_id else None
+                )
                 if mode == "merge":
                     if r.id in existing_ids:
                         skipped.health_records += 1
                         id_maps.setdefault("records", {})[r.id] = r.id
                         continue
                 new_id = self._new_id(mode, r.id, "records", id_maps)
-                self.db.add(HealthRecord(
-                    id=new_id, family_member_id=member_id, provider_id=provider_id,
-                    record_type=r.record_type, record_date=r.record_date,
-                    record_time=r.record_time, clinical_data=r.clinical_data,
-                    diagnosis=r.diagnosis, prescription_text=r.prescription_text,
-                    next_review_date=r.next_review_date, is_deleted=r.is_deleted,
-                    created_at=r.created_at, updated_at=r.updated_at,
-                ))
+                self.db.add(
+                    HealthRecord(
+                        id=new_id,
+                        family_member_id=member_id,
+                        provider_id=provider_id,
+                        record_type=r.record_type,
+                        record_date=r.record_date,
+                        record_time=r.record_time,
+                        clinical_data=r.clinical_data,
+                        diagnosis=r.diagnosis,
+                        prescription_text=r.prescription_text,
+                        next_review_date=r.next_review_date,
+                        is_deleted=r.is_deleted,
+                        created_at=r.created_at,
+                        updated_at=r.updated_at,
+                    )
+                )
                 imported.health_records += 1
             except Exception as exc:
                 errors.append(f"HealthRecord {r.id}: {exc}")
@@ -478,9 +557,7 @@ class BackupService:
         existing_ids: set = set()
         if mode == "merge" and items:
             all_ids = [a.id for a in items]
-            result = await self.db.execute(
-                select(Attachment.id).where(Attachment.id.in_(all_ids))
-            )
+            result = await self.db.execute(select(Attachment.id).where(Attachment.id.in_(all_ids)))
             existing_ids = set(result.scalars().all())
 
         for a in items:
@@ -504,12 +581,17 @@ class BackupService:
                     with zf.open(a.file_name_in_zip) as src, open(new_path, "wb") as dst:
                         dst.write(src.read())
 
-                self.db.add(Attachment(
-                    id=new_id, health_record_id=record_id,
-                    file_path=str(new_path), file_name=a.file_name,
-                    mime_type=a.mime_type, file_size=a.file_size,
-                    uploaded_at=a.uploaded_at,
-                ))
+                self.db.add(
+                    Attachment(
+                        id=new_id,
+                        health_record_id=record_id,
+                        file_path=str(new_path),
+                        file_name=a.file_name,
+                        mime_type=a.mime_type,
+                        file_size=a.file_size,
+                        uploaded_at=a.uploaded_at,
+                    )
+                )
                 imported.attachments += 1
             except Exception as exc:
                 errors.append(f"Attachment {a.file_name}: {exc}")
@@ -519,31 +601,44 @@ class BackupService:
         existing_ids: set = set()
         if mode == "merge" and items:
             all_ids = [i.id for i in items]
-            result = await self.db.execute(
-                select(AIInsight.id).where(AIInsight.id.in_(all_ids))
-            )
+            result = await self.db.execute(select(AIInsight.id).where(AIInsight.id.in_(all_ids)))
             existing_ids = set(result.scalars().all())
 
         for i in items:
             try:
-                record_id = self._map_id("records", i.health_record_id, id_maps) if i.health_record_id else None
-                conv_id = self._map_id("conversations", i.conversation_id, id_maps) if i.conversation_id else None
+                record_id = (
+                    self._map_id("records", i.health_record_id, id_maps)
+                    if i.health_record_id
+                    else None
+                )
+                conv_id = (
+                    self._map_id("conversations", i.conversation_id, id_maps)
+                    if i.conversation_id
+                    else None
+                )
                 if mode == "merge":
                     if i.id in existing_ids:
                         skipped.ai_insights += 1
                         continue
                 new_id = self._new_id(mode, i.id, "insights", id_maps)
-                self.db.add(AIInsight(
-                    id=new_id, health_record_id=record_id,
-                    conversation_id=conv_id, prompt=i.prompt,
-                    response=i.response, provider_used=i.provider_used,
-                    generated_at=i.generated_at,
-                ))
+                self.db.add(
+                    AIInsight(
+                        id=new_id,
+                        health_record_id=record_id,
+                        conversation_id=conv_id,
+                        prompt=i.prompt,
+                        response=i.response,
+                        provider_used=i.provider_used,
+                        generated_at=i.generated_at,
+                    )
+                )
                 imported.ai_insights += 1
             except Exception as exc:
                 errors.append(f"AIInsight {i.id}: {exc}")
 
-    async def _import_conversations(self, household_id, items, mode, id_maps, imported, skipped, errors):
+    async def _import_conversations(
+        self, household_id, items, mode, id_maps, imported, skipped, errors
+    ):
         # Batch lookup for merge mode to avoid N+1 queries
         existing_ids: set = set()
         if mode == "merge" and items:
@@ -555,18 +650,28 @@ class BackupService:
 
         for c in items:
             try:
-                member_id = self._map_id("members", c.family_member_id, id_maps) if c.family_member_id else None
+                member_id = (
+                    self._map_id("members", c.family_member_id, id_maps)
+                    if c.family_member_id
+                    else None
+                )
                 if mode == "merge":
                     if c.id in existing_ids:
                         skipped.conversations += 1
                         id_maps.setdefault("conversations", {})[c.id] = c.id
                         continue
                 new_id = self._new_id(mode, c.id, "conversations", id_maps)
-                self.db.add(Conversation(
-                    id=new_id, household_id=household_id,
-                    family_member_id=member_id, scope=c.scope,
-                    title=c.title, created_at=c.created_at, updated_at=c.updated_at,
-                ))
+                self.db.add(
+                    Conversation(
+                        id=new_id,
+                        household_id=household_id,
+                        family_member_id=member_id,
+                        scope=c.scope,
+                        title=c.title,
+                        created_at=c.created_at,
+                        updated_at=c.updated_at,
+                    )
+                )
                 imported.conversations += 1
             except Exception as exc:
                 errors.append(f"Conversation {c.id}: {exc}")
@@ -576,9 +681,7 @@ class BackupService:
         existing_ids: set = set()
         if mode == "merge" and items:
             all_ids = [m.id for m in items]
-            result = await self.db.execute(
-                select(Message.id).where(Message.id.in_(all_ids))
-            )
+            result = await self.db.execute(select(Message.id).where(Message.id.in_(all_ids)))
             existing_ids = set(result.scalars().all())
 
         for m in items:
@@ -589,41 +692,58 @@ class BackupService:
                         skipped.messages += 1
                         continue
                 new_id = self._new_id(mode, m.id, "messages", id_maps)
-                self.db.add(Message(
-                    id=new_id, conversation_id=conv_id,
-                    role=m.role, content=m.content, created_at=m.created_at,
-                ))
+                self.db.add(
+                    Message(
+                        id=new_id,
+                        conversation_id=conv_id,
+                        role=m.role,
+                        content=m.content,
+                        created_at=m.created_at,
+                    )
+                )
                 imported.messages += 1
             except Exception as exc:
                 errors.append(f"Message {m.id}: {exc}")
 
-    async def _import_reminders(self, household_id, items, mode, id_maps, imported, skipped, errors):
+    async def _import_reminders(
+        self, household_id, items, mode, id_maps, imported, skipped, errors
+    ):
         # Batch lookup for merge mode to avoid N+1 queries
         existing_ids: set = set()
         if mode == "merge" and items:
             all_ids = [r.id for r in items]
-            result = await self.db.execute(
-                select(Reminder.id).where(Reminder.id.in_(all_ids))
-            )
+            result = await self.db.execute(select(Reminder.id).where(Reminder.id.in_(all_ids)))
             existing_ids = set(result.scalars().all())
 
         for r in items:
             try:
-                member_id = self._map_id("members", r.family_member_id, id_maps) if r.family_member_id else None
+                member_id = (
+                    self._map_id("members", r.family_member_id, id_maps)
+                    if r.family_member_id
+                    else None
+                )
                 if mode == "merge":
                     if r.id in existing_ids:
                         skipped.reminders += 1
                         id_maps.setdefault("reminders", {})[r.id] = r.id
                         continue
                 new_id = self._new_id(mode, r.id, "reminders", id_maps)
-                self.db.add(Reminder(
-                    id=new_id, household_id=household_id,
-                    family_member_id=member_id, reminder_type=r.reminder_type,
-                    title=r.title, description=r.description,
-                    schedule_type=r.schedule_type, schedule_interval=r.schedule_interval,
-                    start_datetime=r.start_datetime, end_datetime=r.end_datetime,
-                    is_active=r.is_active, created_at=r.created_at,
-                ))
+                self.db.add(
+                    Reminder(
+                        id=new_id,
+                        household_id=household_id,
+                        family_member_id=member_id,
+                        reminder_type=r.reminder_type,
+                        title=r.title,
+                        description=r.description,
+                        schedule_type=r.schedule_type,
+                        schedule_interval=r.schedule_interval,
+                        start_datetime=r.start_datetime,
+                        end_datetime=r.end_datetime,
+                        is_active=r.is_active,
+                        created_at=r.created_at,
+                    )
+                )
                 imported.reminders += 1
             except Exception as exc:
                 errors.append(f"Reminder {r.title}: {exc}")
@@ -648,18 +768,26 @@ class BackupService:
                 new_id = self._new_id(mode, n.id, "notifications", id_maps)
                 # Need household_id for notification
                 # Get it from the reminder's household
-                self.db.add(Notification(
-                    id=new_id, reminder_id=reminder_id,
-                    household_id=(await self._get_reminder_household(reminder_id)),
-                    title=n.title, message=n.message,
-                    is_read=n.is_read, created_at=n.created_at, read_at=n.read_at,
-                ))
+                self.db.add(
+                    Notification(
+                        id=new_id,
+                        reminder_id=reminder_id,
+                        household_id=(await self._get_reminder_household(reminder_id)),
+                        title=n.title,
+                        message=n.message,
+                        is_read=n.is_read,
+                        created_at=n.created_at,
+                        read_at=n.read_at,
+                    )
+                )
                 imported.notifications += 1
             except Exception as exc:
                 errors.append(f"Notification {n.id}: {exc}")
 
     async def _get_reminder_household(self, reminder_id: UUID) -> UUID:
-        result = await self.db.execute(select(Reminder.household_id).where(Reminder.id == reminder_id))
+        result = await self.db.execute(
+            select(Reminder.household_id).where(Reminder.id == reminder_id)
+        )
         row = result.first()
         if row:
             return row[0]
@@ -687,7 +815,9 @@ class BackupService:
         )
         return list(result.scalars().all())
 
-    async def _load_assignments(self, member_ids: set, provider_ids: set) -> list[ProviderAssignment]:
+    async def _load_assignments(
+        self, member_ids: set, provider_ids: set
+    ) -> list[ProviderAssignment]:
         if not member_ids:
             return []
         result = await self.db.execute(
@@ -728,9 +858,7 @@ class BackupService:
     async def _load_messages(self, conv_ids: set) -> list[Message]:
         if not conv_ids:
             return []
-        result = await self.db.execute(
-            select(Message).where(Message.conversation_id.in_(conv_ids))
-        )
+        result = await self.db.execute(select(Message).where(Message.conversation_id.in_(conv_ids)))
         return list(result.scalars().all())
 
     async def _load_reminders(self, household_id: UUID) -> list[Reminder]:

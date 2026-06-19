@@ -3,6 +3,7 @@
 Cross-checks chatbot responses and AI-generated insights against the health
 context using a different AI provider than the one that generated the original.
 """
+
 import json
 import logging
 from datetime import datetime, timezone
@@ -189,17 +190,13 @@ class VerificationService:
                 insight.verification_claims_checked = parsed.get("claims_checked", 0)
                 insight.verification_summary = (parsed.get("summary") or "")[:500]
                 warnings = parsed.get("warnings", [])
-                insight.verification_warnings_json = (
-                    json.dumps(warnings) if warnings else None
-                )
+                insight.verification_warnings_json = json.dumps(warnings) if warnings else None
             else:
                 insight.verification_status = "failed"
                 insight.verification_summary = "Could not parse verification response"
 
         except Exception as exc:
-            logger.warning(
-                "Insight verification failed for %s: %s", insight.id, exc
-            )
+            logger.warning("Insight verification failed for %s: %s", insight.id, exc)
             insight.verification_status = "failed"
             insight.verification_summary = str(exc)[:500]
 
@@ -260,6 +257,7 @@ class VerificationService:
 
         # Strip markdown fences
         import re
+
         cleaned = re.sub(r"```json\s*", "", raw)
         cleaned = re.sub(r"```\s*", "", cleaned).strip()
 

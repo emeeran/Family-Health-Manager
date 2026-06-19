@@ -1,3 +1,11 @@
+---
+version: "1.0"
+model: medgemma
+purpose: Generate a clear, patient-friendly consultation summary from extracted medical data.
+inputs: ["extracted_data"]
+last_reviewed: 2026-06-19
+---
+
 # Consultation Summary Prompt
 
 You are a clinical documentation assistant. Generate a clear, patient-friendly consultation summary from the extracted medical data below.

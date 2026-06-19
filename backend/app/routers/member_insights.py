@@ -1,4 +1,5 @@
 """Member AI insights router — generate and retrieve health insights."""
+
 import json
 import logging
 from datetime import datetime, timezone
@@ -51,6 +52,7 @@ async def generate_member_insights(
 
     try:
         from app.services.insight_service import spawn_insight_verification_task
+
         context = await ai_service._build_member_context(member_id, comprehensive=True)
         spawn_insight_verification_task(insight.id, context)
     except Exception:
@@ -66,9 +68,13 @@ async def generate_member_insights(
             "claims_checked": insight.verification_claims_checked,
             "verifier_provider": insight.verification_verifier,
             "summary": insight.verification_summary,
-            "warnings": json.loads(insight.verification_warnings_json) if insight.verification_warnings_json else None,
+            "warnings": json.loads(insight.verification_warnings_json)
+            if insight.verification_warnings_json
+            else None,
             "verified_at": insight.verification_at.isoformat() if insight.verification_at else None,
-        } if insight.verification_status != "pending" or insight.verification_at else {"status": "pending"},
+        }
+        if insight.verification_status != "pending" or insight.verification_at
+        else {"status": "pending"},
     }
 
 
@@ -134,12 +140,26 @@ async def get_latest_insight(
                 "claims_checked": existing.verification_claims_checked,
                 "verifier_provider": existing.verification_verifier,
                 "summary": existing.verification_summary,
-                "warnings": json.loads(existing.verification_warnings_json) if existing.verification_warnings_json else None,
-                "verified_at": existing.verification_at.isoformat() if existing.verification_at else None,
-            } if existing.verification_status != "pending" or existing.verification_at else {"status": "pending" if (datetime.now(timezone.utc) - existing.generated_at.replace(tzinfo=timezone.utc)).total_seconds() < 300 else "unverifiable"},
+                "warnings": json.loads(existing.verification_warnings_json)
+                if existing.verification_warnings_json
+                else None,
+                "verified_at": existing.verification_at.isoformat()
+                if existing.verification_at
+                else None,
+            }
+            if existing.verification_status != "pending" or existing.verification_at
+            else {
+                "status": "pending"
+                if (
+                    datetime.now(timezone.utc) - existing.generated_at.replace(tzinfo=timezone.utc)
+                ).total_seconds()
+                < 300
+                else "unverifiable"
+            },
         }
 
     from app.services.ai_service import AIService
+
     ai_service = AIService(db, household_id=household.id)
     prompt = COMPREHENSIVE_INSIGHT_PROMPT
     try:

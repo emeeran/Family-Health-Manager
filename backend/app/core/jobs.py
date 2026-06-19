@@ -1,4 +1,5 @@
 """Scheduled background jobs for the health tracker."""
+
 import asyncio
 import json
 import logging
@@ -88,15 +89,18 @@ async def check_ai_providers():
         tasks: list[asyncio.Task] = []
 
         if openai_key:
+
             async def _openai():
                 resp = await client.get(
                     "https://api.openai.com/v1/models",
                     headers={"Authorization": f"Bearer {openai_key}"},
                 )
                 return resp.status_code == 200
+
             tasks.append(asyncio.create_task(_check("OpenAI", _openai())))
 
         if gemini_key:
+
             async def _gemini():
                 resp = await client.post(
                     "https://generativelanguage.googleapis.com/v1beta/"
@@ -105,34 +109,41 @@ async def check_ai_providers():
                     headers={"x-goog-api-key": gemini_key},
                 )
                 return resp.status_code == 200
+
             tasks.append(asyncio.create_task(_check("Gemini", _gemini())))
 
         if groq_key:
+
             async def _groq():
                 resp = await client.get(
                     "https://api.groq.com/openai/v1/models",
                     headers={"Authorization": f"Bearer {groq_key}"},
                 )
                 return resp.status_code == 200
+
             tasks.append(asyncio.create_task(_check("Groq", _groq())))
 
         if openrouter_key:
+
             async def _openrouter():
                 resp = await client.get(
                     "https://openrouter.ai/api/v1/models",
                     headers={"Authorization": f"Bearer {openrouter_key}"},
                 )
                 return resp.status_code == 200
+
             tasks.append(asyncio.create_task(_check("OpenRouter", _openrouter())))
 
         # Ollama (local)
         if ollama_url:
+
             async def _ollama():
                 resp = await client.get(f"{ollama_url}/api/tags")
                 if resp.status_code != 200:
                     return False
                 model_names = [m["name"] for m in resp.json().get("models", [])]
                 return any(settings.OLLAMA_MODEL in m for m in model_names)
+
             tasks.append(asyncio.create_task(_check("Ollama", _ollama())))
 
         if not tasks:
@@ -235,8 +246,12 @@ async def detect_anomalies():
                         if out_of_range:
                             logger.warning(
                                 "Anomaly detected: %s = %s (ref: %s) — %s [record %s, date %s]",
-                                test_name, result_val, ref_val, direction,
-                                record.id, record.record_date,
+                                test_name,
+                                result_val,
+                                ref_val,
+                                direction,
+                                record.id,
+                                record.record_date,
                             )
                             # Check in-memory instead of per-test DB query
                             existing = existing_alerts.get(record.family_member_id, set())
@@ -246,7 +261,11 @@ async def detect_anomalies():
                             existing.add((test_name, record.record_date))
 
                             created_count += 1
-                            severity = AlertSeverity.CRITICAL if direction == "HIGH" else AlertSeverity.WARNING
+                            severity = (
+                                AlertSeverity.CRITICAL
+                                if direction == "HIGH"
+                                else AlertSeverity.WARNING
+                            )
                             await alert_svc.create_alert(
                                 household_id=record.family_member.household_id,
                                 member_id=record.family_member_id,
@@ -309,6 +328,7 @@ async def verify_file_integrity():
         try:
             # Check attachments with content_hash set
             from app.models.base import Attachment
+
             att_result = await db.execute(
                 select(Attachment).where(Attachment.content_hash.isnot(None))
             )
@@ -320,14 +340,13 @@ async def verify_file_integrity():
             for att in attachments:
                 file_path = Path(att.file_path)
                 if not file_path.exists():
-                    logger.warning(
-                        "Integrity check: file missing for attachment %s", att.id
-                    )
+                    logger.warning("Integrity check: file missing for attachment %s", att.id)
                     failed += 1
                     continue
 
                 try:
                     from app.core.storage import stream_plaintext
+
                     hasher = hashlib.sha256()
                     # Hash the PLAINTEXT (decrypt first when encrypted) so it
                     # matches the content_hash recorded at upload/migration.
@@ -338,23 +357,20 @@ async def verify_file_integrity():
                     if actual_hash != att.content_hash:
                         expected_prefix = (att.content_hash or "")[:12]
                         logger.error(
-                            "Integrity check FAILED for attachment %s: "
-                            "expected %s, got %s",
-                            att.id, expected_prefix, actual_hash[:12],
+                            "Integrity check FAILED for attachment %s: expected %s, got %s",
+                            att.id,
+                            expected_prefix,
+                            actual_hash[:12],
                         )
                         failed += 1
                     else:
                         verified += 1
                 except Exception:
                     failed += 1
-                    logger.exception(
-                        "Integrity check error for attachment %s", att.id
-                    )
+                    logger.exception("Integrity check error for attachment %s", att.id)
 
             if failed:
-                logger.warning(
-                    "File integrity check: %d verified, %d FAILED", verified, failed
-                )
+                logger.warning("File integrity check: %d verified, %d FAILED", verified, failed)
             else:
                 logger.info("File integrity check: %d files verified OK", verified)
 
@@ -380,7 +396,9 @@ async def backup_database():
     last_run = state.get("last_run")
     if last_run:
         try:
-            elapsed = (datetime.now(timezone.utc) - datetime.fromisoformat(last_run)).total_seconds()
+            elapsed = (
+                datetime.now(timezone.utc) - datetime.fromisoformat(last_run)
+            ).total_seconds()
         except ValueError:
             elapsed = interval  # corrupt timestamp → treat as due
         if elapsed < interval:
@@ -559,11 +577,13 @@ def list_backup_archives() -> list[dict]:
             st = p.stat()
         except OSError:
             continue
-        out.append({
-            "name": p.name,
-            "size_bytes": st.st_size,
-            "created_at": datetime.fromtimestamp(st.st_mtime, tz=timezone.utc).isoformat(),
-        })
+        out.append(
+            {
+                "name": p.name,
+                "size_bytes": st.st_size,
+                "created_at": datetime.fromtimestamp(st.st_mtime, tz=timezone.utc).isoformat(),
+            }
+        )
     return out
 
 
@@ -585,6 +605,7 @@ def apply_retention(keep_max: int) -> None:
 
 def get_backup_status() -> dict:
     """Storage overview for the Data tab."""
+
     def _dir_size(path: Path) -> int:
         if not path.exists():
             return 0
@@ -633,7 +654,10 @@ async def get_backup_config() -> tuple[str, int]:
                 data = json.loads(hh.settings_json)
                 schedule = data.get("backup_schedule", "off")
                 keep_max = int(data.get("backup_keep_max", 10))
-                return (schedule if schedule in ("off", "daily", "weekly") else "off", max(1, keep_max))
+                return (
+                    schedule if schedule in ("off", "daily", "weekly") else "off",
+                    max(1, keep_max),
+                )
     except Exception:
         logger.exception("Could not read backup config; defaulting to off")
     return ("off", 10)
@@ -660,9 +684,7 @@ async def migrate_attachments_to_encrypted() -> dict:
     migrated = 0
     failed = 0
     async with SessionLocal() as db:
-        result = await db.execute(
-            select(Attachment).where(Attachment.encrypted.is_(False))
-        )
+        result = await db.execute(select(Attachment).where(Attachment.encrypted.is_(False)))
         attachments = list(result.scalars().all())
         if not attachments:
             return {"migrated": 0, "failed": 0}
@@ -675,9 +697,7 @@ async def migrate_attachments_to_encrypted() -> dict:
                 continue
             try:
                 ext = old_path.suffix or ".bin"
-                new_path, new_hash = await _store_plaintext_file(
-                    old_path, ext, att.mime_type
-                )
+                new_path, new_hash = await _store_plaintext_file(old_path, ext, att.mime_type)
                 # Round-trip verify before committing the row.
                 plain = await decrypt_file(new_path)
                 if hashlib.sha256(plain).hexdigest() != new_hash:
@@ -698,7 +718,5 @@ async def migrate_attachments_to_encrypted() -> dict:
                 logger.exception("attachment migration: failed for %s", att.id)
                 failed += 1
 
-    logger.info(
-        "attachment migration complete: %d migrated, %d failed", migrated, failed
-    )
+    logger.info("attachment migration complete: %d migrated, %d failed", migrated, failed)
     return {"migrated": migrated, "failed": failed}

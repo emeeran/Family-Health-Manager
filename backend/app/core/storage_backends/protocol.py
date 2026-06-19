@@ -1,4 +1,5 @@
 """Storage backend protocol definition."""
+
 from pathlib import Path
 from collections.abc import AsyncGenerator
 from typing import Protocol, runtime_checkable
@@ -8,9 +9,7 @@ from typing import Protocol, runtime_checkable
 class StorageBackend(Protocol):
     """Protocol defining the interface for storage backends."""
 
-    async def put(
-        self, content_hash: str, ext: str, data: bytes, encrypt: bool = False
-    ) -> Path:
+    async def put(self, content_hash: str, ext: str, data: bytes, encrypt: bool = False) -> Path:
         """Store data at a content-addressable path.
 
         Args:

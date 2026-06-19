@@ -1,4 +1,5 @@
 """Pre-consultation notes router — generate and retrieve doctor visit discussion points."""
+
 import json
 import logging
 from datetime import date, datetime, timezone
@@ -70,7 +71,13 @@ async def _get_provider_specialty_context(
     return specialty_section, specialty_focus
 
 
-async def _build_preconsult_prompt(member_id: UUID, provider_id: UUID | None, symptoms: str | None, household_id: UUID, db: AsyncSession) -> str:
+async def _build_preconsult_prompt(
+    member_id: UUID,
+    provider_id: UUID | None,
+    symptoms: str | None,
+    household_id: UUID,
+    db: AsyncSession,
+) -> str:
     """Build the full pre-consultation prompt with overdue context and specialty tailoring."""
     overdue_result = await db.execute(
         select(HealthRecord)
@@ -136,6 +143,7 @@ async def generate_pre_consultation_note(
 
         try:
             from app.services.insight_service import spawn_insight_verification_task
+
             context = await ai_service._build_member_context(member_id, comprehensive=True)
             spawn_insight_verification_task(insight.id, context)
         except Exception:
@@ -154,9 +162,13 @@ async def generate_pre_consultation_note(
             "claims_checked": insight.verification_claims_checked,
             "verifier_provider": insight.verification_verifier,
             "summary": insight.verification_summary,
-            "warnings": json.loads(insight.verification_warnings_json) if insight.verification_warnings_json else None,
+            "warnings": json.loads(insight.verification_warnings_json)
+            if insight.verification_warnings_json
+            else None,
             "verified_at": insight.verification_at.isoformat() if insight.verification_at else None,
-        } if insight.verification_status != "pending" or insight.verification_at else {"status": "pending"},
+        }
+        if insight.verification_status != "pending" or insight.verification_at
+        else {"status": "pending"},
     }
 
 
@@ -194,9 +206,22 @@ async def get_latest_pre_consultation_note(
                 "claims_checked": insight.verification_claims_checked,
                 "verifier_provider": insight.verification_verifier,
                 "summary": insight.verification_summary,
-                "warnings": json.loads(insight.verification_warnings_json) if insight.verification_warnings_json else None,
-                "verified_at": insight.verification_at.isoformat() if insight.verification_at else None,
-            } if insight.verification_status != "pending" or insight.verification_at else {"status": "pending" if (datetime.now(timezone.utc) - insight.generated_at.replace(tzinfo=timezone.utc)).total_seconds() < 300 else "unverifiable"},
+                "warnings": json.loads(insight.verification_warnings_json)
+                if insight.verification_warnings_json
+                else None,
+                "verified_at": insight.verification_at.isoformat()
+                if insight.verification_at
+                else None,
+            }
+            if insight.verification_status != "pending" or insight.verification_at
+            else {
+                "status": "pending"
+                if (
+                    datetime.now(timezone.utc) - insight.generated_at.replace(tzinfo=timezone.utc)
+                ).total_seconds()
+                < 300
+                else "unverifiable"
+            },
         },
     }
 

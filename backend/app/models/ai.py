@@ -32,17 +32,16 @@ class AIInsight(Base):
     response: Mapped[str] = mapped_column(Text, nullable=False)
     provider_used: Mapped[str] = mapped_column(String(50), nullable=False)
     generated_at: Mapped[datetime] = mapped_column(
-        DateTime, default=lambda: datetime.now(timezone.utc), server_default="CURRENT_TIMESTAMP", nullable=False
+        DateTime,
+        default=lambda: datetime.now(timezone.utc),
+        server_default="CURRENT_TIMESTAMP",
+        nullable=False,
     )
 
     # Verification fields — cross-checked by a different AI provider
-    verification_status: Mapped[str] = mapped_column(
-        String(20), nullable=False, default="pending"
-    )
+    verification_status: Mapped[str] = mapped_column(String(20), nullable=False, default="pending")
     verification_warnings_json: Mapped[str | None] = mapped_column(Text, nullable=True)
-    verification_claims_checked: Mapped[int] = mapped_column(
-        Integer, default=0, nullable=False
-    )
+    verification_claims_checked: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
     verification_verifier: Mapped[str | None] = mapped_column(String(50), nullable=True)
     verification_summary: Mapped[str | None] = mapped_column(String(500), nullable=True)
     verification_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)

@@ -1,4 +1,5 @@
 """Smart search router — NL-powered record search."""
+
 import json
 import logging
 from datetime import date
@@ -61,12 +62,15 @@ async def smart_search_records(
     # Only use AI for queries that look like natural language (>3 words or contains special patterns)
     words = query.split()
     use_ai = len(words) > 3 or any(
-        kw in query.lower() for kw in ["last", "recent", "latest", "this week", "this month", "all", "'s"]
+        kw in query.lower()
+        for kw in ["last", "recent", "latest", "this week", "this month", "all", "'s"]
     )
 
     if use_ai:
         try:
-            member_list = ", ".join(f"{m.first_name} {m.last_name} ({m.relationship_type.value})" for m in members)
+            member_list = ", ".join(
+                f"{m.first_name} {m.last_name} ({m.relationship_type.value})" for m in members
+            )
             ai_service = AIService(db, household_id=household.id)
             parsed = await ai_service.parse_search_query(query, member_list)
             if parsed:
@@ -92,7 +96,8 @@ async def smart_search_records(
         if filters.get("member_name"):
             name = filters["member_name"].lower()
             member_ids = [
-                m.id for m in members
+                m.id
+                for m in members
                 if name in f"{m.first_name} {m.last_name}".lower()
                 or name in m.relationship_type.value.lower()
             ]
@@ -111,13 +116,17 @@ async def smart_search_records(
 
         if filters.get("date_from"):
             try:
-                stmt = stmt.where(HealthRecord.record_date >= date.fromisoformat(filters["date_from"]))
+                stmt = stmt.where(
+                    HealthRecord.record_date >= date.fromisoformat(filters["date_from"])
+                )
             except ValueError:
                 pass
 
         if filters.get("date_to"):
             try:
-                stmt = stmt.where(HealthRecord.record_date <= date.fromisoformat(filters["date_to"]))
+                stmt = stmt.where(
+                    HealthRecord.record_date <= date.fromisoformat(filters["date_to"])
+                )
             except ValueError:
                 pass
 
@@ -165,13 +174,15 @@ async def smart_search_records(
             except (json.JSONDecodeError, ValueError):
                 preview = r.clinical_data[:60]
 
-        results.append(SmartSearchResult(
-            id=str(r.id),
-            member_name=member_map.get(str(r.family_member_id), "Unknown"),
-            record_type=r.record_type.value,
-            record_date=r.record_date.isoformat(),
-            diagnosis=r.diagnosis,
-            preview=preview,
-        ))
+        results.append(
+            SmartSearchResult(
+                id=str(r.id),
+                member_name=member_map.get(str(r.family_member_id), "Unknown"),
+                record_type=r.record_type.value,
+                record_date=r.record_date.isoformat(),
+                diagnosis=r.diagnosis,
+                preview=preview,
+            )
+        )
 
     return SmartSearchResponse(results=results, ai_powered=ai_powered)

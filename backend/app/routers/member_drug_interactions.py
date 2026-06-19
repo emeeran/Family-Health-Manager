@@ -1,4 +1,5 @@
 """Drug interaction checking router — AI-powered medication interaction analysis."""
+
 import json
 import logging
 from datetime import datetime, timezone, timedelta
@@ -62,6 +63,7 @@ async def get_latest_drug_interactions(
             pass
 
     from app.services.ai_service import AIService
+
     ai_service = AIService(db, household_id=household.id)
     try:
         interactions = await ai_service.check_drug_interactions(medications)
@@ -76,7 +78,11 @@ async def get_latest_drug_interactions(
         logger.error("Drug interaction check failed: %s", exc)
         interactions = []
 
-    return {"interactions": interactions, "medications_checked": len(medications), "cached_at": None}
+    return {
+        "interactions": interactions,
+        "medications_checked": len(medications),
+        "cached_at": None,
+    }
 
 
 @router.get("/{member_id}/drug-interactions")

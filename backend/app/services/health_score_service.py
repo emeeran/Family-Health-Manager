@@ -1,4 +1,5 @@
 """Health score computation — shared across routers and services."""
+
 from __future__ import annotations
 
 import json
@@ -65,7 +66,11 @@ def compute_health_score(
     # 3. Lab compliance (0-20) — are recent labs within reference range?
     lab_score = 10  # neutral: no lab data
     lab_label = "No recent lab data"
-    lab_records = [r for r in recent_records if r.record_type in (RecordType.LAB_REPORT, RecordType.BLOOD_GLUCOSE)]
+    lab_records = [
+        r
+        for r in recent_records
+        if r.record_type in (RecordType.LAB_REPORT, RecordType.BLOOD_GLUCOSE)
+    ]
     if lab_records:
         normal_count = 0
         abnormal_count = 0
@@ -76,7 +81,12 @@ def compute_health_score(
                     for t in parsed.get(key) or []:
                         if isinstance(t, dict):
                             note = (t.get("note") or "").lower()
-                            if "critical" in note or "high" in note or "elevated" in note or "low" in note:
+                            if (
+                                "critical" in note
+                                or "high" in note
+                                or "elevated" in note
+                                or "low" in note
+                            ):
                                 abnormal_count += 1
                             elif "normal" in note or "well" in note:
                                 normal_count += 1
@@ -129,7 +139,11 @@ def compute_health_score(
         except (ValueError, json.JSONDecodeError):
             pass
     missing = 15 - profile_score
-    profile_label = f"Complete ({', '.join(profile_items)})" if profile_score >= 15 else f"Missing {missing} pts of data"
+    profile_label = (
+        f"Complete ({', '.join(profile_items)})"
+        if profile_score >= 15
+        else f"Missing {missing} pts of data"
+    )
     total += profile_score
     breakdown["profile_completeness"] = {"score": profile_score, "max": 15, "label": profile_label}
 
@@ -187,10 +201,12 @@ def extract_hba1c_history(records: list) -> list[dict]:
             if not isinstance(data, dict):
                 continue
             if "hba1c_value" in data:
-                history.append({
-                    "date": r.record_date.isoformat(),
-                    "hba1c_value": float(data["hba1c_value"]),
-                })
+                history.append(
+                    {
+                        "date": r.record_date.isoformat(),
+                        "hba1c_value": float(data["hba1c_value"]),
+                    }
+                )
                 continue
             for key in ("lab_results", "tests"):
                 lab_list = data.get(key)
@@ -200,16 +216,23 @@ def extract_hba1c_history(records: list) -> list[dict]:
                     if not isinstance(test, dict):
                         continue
                     name = (test.get("test_name") or "").lower()
-                    if "hba1c" in name or "glycated" in name or "glycosylated" in name or "a1c" in name:
+                    if (
+                        "hba1c" in name
+                        or "glycated" in name
+                        or "glycosylated" in name
+                        or "a1c" in name
+                    ):
                         result_str = test.get("result", "")
                         match = re.search(r"(\d+\.?\d*)", str(result_str))
                         if match:
                             val = float(match.group(1))
                             if 3.0 <= val <= 15.0:
-                                history.append({
-                                    "date": r.record_date.isoformat(),
-                                    "hba1c_value": val,
-                                })
+                                history.append(
+                                    {
+                                        "date": r.record_date.isoformat(),
+                                        "hba1c_value": val,
+                                    }
+                                )
                                 break
                 else:
                     continue

@@ -1,4 +1,5 @@
 """Medication tracking router — active medications, refill reminders, and CRUD operations."""
+
 import json
 import logging
 from datetime import date
@@ -26,6 +27,7 @@ router = APIRouter(prefix="/members/{member_id}/medications", tags=["Medications
 
 class MedicationInput(BaseModel):
     """Single prescription row."""
+
     type: str = Field("", description="Tab/Cap/Inj/etc")
     medicine: str = Field(..., min_length=1, description="Medicine name + strength")
     dosage: str = Field("", description="e.g. 1-1-1")
@@ -36,6 +38,7 @@ class MedicationInput(BaseModel):
 
 class MedicationUpdate(BaseModel):
     """Update an existing prescription by index in its record."""
+
     record_id: UUID = Field(..., description="Source health record ID")
     prescription_index: int = Field(..., description="Index in prescriptions array")
     data: MedicationInput = Field(...)
@@ -43,23 +46,27 @@ class MedicationUpdate(BaseModel):
 
 class MedicationDelete(BaseModel):
     """Delete a prescription by record + index."""
+
     record_id: UUID = Field(..., description="Source health record ID")
     prescription_index: int = Field(..., description="Index in prescriptions array")
 
 
 class MedicationBulkDelete(BaseModel):
     """Delete multiple prescriptions across records."""
+
     items: list[MedicationDelete] = Field(..., description="List of prescriptions to delete")
 
 
 class MedicationDiffRequest(BaseModel):
     """Request body for medication diff computation."""
+
     prescriptions: list[dict] = Field(..., description="New prescriptions to compare")
     record_id: str | None = Field(None, description="Source record ID for context")
 
 
 class MedicationApplyRequest(BaseModel):
     """Request body for applying medication sync changes."""
+
     apply_added: list[str] = Field(default_factory=list, description="Medicine names to add")
     apply_updated: list[str] = Field(default_factory=list, description="Medicine names to update")
     apply_removed: list[str] = Field(default_factory=list, description="Medicine names to remove")
@@ -140,12 +147,14 @@ async def add_medication(
     await _verify_member(household.id, member_id, db)
 
     rx = body.model_dump()
-    clinical_data = json.dumps({
-        "_type": "structured",
-        "_version": 1,
-        "_recordType": "doctor_visit",
-        "prescriptions": [rx],
-    })
+    clinical_data = json.dumps(
+        {
+            "_type": "structured",
+            "_version": 1,
+            "_recordType": "doctor_visit",
+            "prescriptions": [rx],
+        }
+    )
 
     record = HealthRecord(
         family_member_id=member_id,
@@ -188,11 +197,11 @@ async def update_medication(
     try:
         parsed = json.loads(record.clinical_data)
         if not isinstance(parsed, dict):
-             raise HTTPException(status_code=400, detail="Cannot edit unstructured record")
+            raise HTTPException(status_code=400, detail="Cannot edit unstructured record")
 
         prescriptions = parsed.get("prescriptions", [])
         if not isinstance(prescriptions, list):
-             raise HTTPException(status_code=400, detail="Record has no prescriptions list")
+            raise HTTPException(status_code=400, detail="Record has no prescriptions list")
 
         if body.prescription_index < 0 or body.prescription_index >= len(prescriptions):
             raise HTTPException(status_code=400, detail="Invalid prescription index")
@@ -229,7 +238,7 @@ async def delete_medication(
 
         prescriptions = parsed.get("prescriptions", [])
         if not isinstance(prescriptions, list):
-             raise HTTPException(status_code=400, detail="Record has no prescriptions list")
+            raise HTTPException(status_code=400, detail="Record has no prescriptions list")
 
         if body.prescription_index < 0 or body.prescription_index >= len(prescriptions):
             raise HTTPException(status_code=400, detail="Invalid prescription index")
@@ -259,7 +268,11 @@ async def bulk_delete_medications(
     """Delete multiple prescriptions across records in one request."""
     logger.info("bulk-delete: received %d items for member %s", len(body.items), member_id)
     for item in body.items:
-        logger.info("bulk-delete: item record_id=%s prescription_index=%d", item.record_id, item.prescription_index)
+        logger.info(
+            "bulk-delete: item record_id=%s prescription_index=%d",
+            item.record_id,
+            item.prescription_index,
+        )
 
     await _verify_member(household.id, member_id, db)
 
@@ -278,7 +291,9 @@ async def bulk_delete_medications(
             continue
 
         if not record:
-            logger.warning("bulk-delete: record %s not found for member %s", record_id_str, member_id)
+            logger.warning(
+                "bulk-delete: record %s not found for member %s", record_id_str, member_id
+            )
             continue
         if not record.clinical_data:
             logger.warning("bulk-delete: record %s has no clinical_data", record_id_str)
@@ -294,7 +309,8 @@ async def bulk_delete_medications(
             if not isinstance(prescriptions, list) or not prescriptions:
                 logger.warning(
                     "bulk-delete: record %s has no prescriptions list (clinical_data keys: %s)",
-                    record_id_str, list(parsed.keys()),
+                    record_id_str,
+                    list(parsed.keys()),
                 )
                 continue
 
@@ -305,7 +321,9 @@ async def bulk_delete_medications(
                 else:
                     logger.warning(
                         "bulk-delete: index %d out of range [0, %d) for record %s",
-                        idx, len(prescriptions), record_id_str,
+                        idx,
+                        len(prescriptions),
+                        record_id_str,
                     )
 
             record.clinical_data = _rebuild_clinical_data(parsed, prescriptions)

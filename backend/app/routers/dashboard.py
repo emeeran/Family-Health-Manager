@@ -1,4 +1,5 @@
 """Dashboard router — household-level dashboard endpoints."""
+
 from __future__ import annotations
 
 import asyncio
@@ -89,7 +90,8 @@ async def get_member_comparison(
             select(
                 Vaccination.family_member_id,
                 func.count().label("vaccination_count"),
-            ).where(
+            )
+            .where(
                 Vaccination.family_member_id.in_(member_ids),
             )
             .group_by(Vaccination.family_member_id)
@@ -120,6 +122,7 @@ async def get_member_comparison(
 
     # Build per-member medication lists from batched doctor_visit records
     import json as _json
+
     member_medications: dict[str, list[dict]] = {}
     for r in med_records_result.scalars().all():
         if not r.clinical_data:
@@ -169,20 +172,22 @@ async def get_member_comparison(
             member, conditions_count, meds, recent_records, age
         )
 
-        comparison.append({
-            "member_id": str(member.id),
-            "first_name": member.first_name,
-            "last_name": member.last_name,
-            "age": age,
-            "gender": member.gender.value if hasattr(member.gender, "value") else member.gender,
-            "bmi": bmi,
-            "health_score": health_score,
-            "score_breakdown": score_breakdown,
-            "medication_count": len(meds),
-            "total_records": record_counts.get(str(member.id), 0),
-            "vaccination_count": vacc_counts.get(str(member.id), 0),
-            "active_conditions_count": conditions_count,
-        })
+        comparison.append(
+            {
+                "member_id": str(member.id),
+                "first_name": member.first_name,
+                "last_name": member.last_name,
+                "age": age,
+                "gender": member.gender.value if hasattr(member.gender, "value") else member.gender,
+                "bmi": bmi,
+                "health_score": health_score,
+                "score_breakdown": score_breakdown,
+                "medication_count": len(meds),
+                "total_records": record_counts.get(str(member.id), 0),
+                "vaccination_count": vacc_counts.get(str(member.id), 0),
+                "active_conditions_count": conditions_count,
+            }
+        )
 
     return comparison
 
@@ -247,12 +252,14 @@ async def get_member_risk_assessment(
         score_val = details.get("score", 0)
         max_val = details.get("max", 0)
         if score_val < max_val:
-            risk_factors.append({
-                "category": category,
-                "score": score_val,
-                "max": max_val,
-                "label": details.get("label", ""),
-            })
+            risk_factors.append(
+                {
+                    "category": category,
+                    "score": score_val,
+                    "max": max_val,
+                    "label": details.get("label", ""),
+                }
+            )
 
     # Check for overdue vaccinations
     overdue_vacc = await db.execute(
@@ -264,12 +271,14 @@ async def get_member_risk_assessment(
     )
     overdue_vacc_count = overdue_vacc.scalar() or 0
     if overdue_vacc_count > 0:
-        risk_factors.append({
-            "category": "overdue_vaccinations",
-            "score": 0,
-            "max": overdue_vacc_count,
-            "label": f"{overdue_vacc_count} overdue vaccination booster(s)",
-        })
+        risk_factors.append(
+            {
+                "category": "overdue_vaccinations",
+                "score": 0,
+                "max": overdue_vacc_count,
+                "label": f"{overdue_vacc_count} overdue vaccination booster(s)",
+            }
+        )
 
     # Check for overdue follow-ups
     overdue_followups = await db.execute(
@@ -282,12 +291,14 @@ async def get_member_risk_assessment(
     )
     overdue_fup_count = overdue_followups.scalar() or 0
     if overdue_fup_count > 0:
-        risk_factors.append({
-            "category": "overdue_followups",
-            "score": 0,
-            "max": overdue_fup_count,
-            "label": f"{overdue_fup_count} overdue follow-up(s)",
-        })
+        risk_factors.append(
+            {
+                "category": "overdue_followups",
+                "score": 0,
+                "max": overdue_fup_count,
+                "label": f"{overdue_fup_count} overdue follow-up(s)",
+            }
+        )
 
     # Sort risk factors: lower relative score first (worse categories)
     risk_factors.sort(key=lambda f: f["score"] / f["max"] if f["max"] > 0 else 1)

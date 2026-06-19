@@ -1,4 +1,5 @@
 """Security utilities for password hashing and JWT handling."""
+
 import hashlib
 import secrets as _secrets
 from datetime import datetime, timedelta, timezone
@@ -32,6 +33,7 @@ async def revoke_token_persist(token: str, db: AsyncSession) -> None:
         exp = datetime.fromtimestamp(payload["exp"], tz=timezone.utc)
         if jti:
             from app.models.revoked_token import RevokedToken
+
             db.add(RevokedToken(jti=jti, expires_at=exp))
             await db.flush()
     except (JWTError, KeyError):
@@ -43,6 +45,7 @@ async def _is_revoked(jti: str | None, db: AsyncSession) -> bool:
     if not jti:
         return False
     from app.models.revoked_token import RevokedToken
+
     result = await db.execute(select(RevokedToken).where(RevokedToken.jti == jti))
     return result.scalar_one_or_none() is not None
 
@@ -105,7 +108,6 @@ def validate_password_strength(password: str) -> bool:
     return has_upper and has_digit and has_special
 
 
-
 def _hash_token(token: str) -> str:
     """SHA-256 hash of a refresh token for database storage."""
     return hashlib.sha256(token.encode()).hexdigest()
@@ -146,9 +148,7 @@ async def verify_and_rotate_refresh_token(
     from app.models.refresh_token import RefreshToken
 
     token_hash = _hash_token(raw_token)
-    result = await db.execute(
-        select(RefreshToken).where(RefreshToken.token_hash == token_hash)
-    )
+    result = await db.execute(select(RefreshToken).where(RefreshToken.token_hash == token_hash))
     stored = result.scalar_one_or_none()
 
     if not stored:
@@ -164,21 +164,25 @@ async def verify_and_rotate_refresh_token(
     if stored.revoked_at is not None:
         # Revoke entire family for this user (tokens created before this one)
         await db.execute(
-            select(RefreshToken)
-            .where(
+            select(RefreshToken).where(
                 RefreshToken.user_id == stored.user_id,
                 RefreshToken.created_at <= stored.created_at,
                 RefreshToken.revoked_at.is_(None),
             )
         )
-        family = (await db.execute(
-            select(RefreshToken)
-            .where(
-                RefreshToken.user_id == stored.user_id,
-                RefreshToken.created_at <= stored.created_at,
-                RefreshToken.revoked_at.is_(None),
+        family = (
+            (
+                await db.execute(
+                    select(RefreshToken).where(
+                        RefreshToken.user_id == stored.user_id,
+                        RefreshToken.created_at <= stored.created_at,
+                        RefreshToken.revoked_at.is_(None),
+                    )
+                )
             )
-        )).scalars().all()
+            .scalars()
+            .all()
+        )
         for t in family:
             t.revoked_at = now
         await db.flush()
@@ -233,13 +237,9 @@ async def prune_expired_tokens(db: AsyncSession) -> int:
     now = datetime.now(timezone.utc)
 
     # Prune expired refresh tokens
-    result = await db.execute(
-        delete(RefreshToken).where(RefreshToken.expires_at <= now)
-    )
+    result = await db.execute(delete(RefreshToken).where(RefreshToken.expires_at <= now))
 
     # Prune expired revoked access tokens
-    await db.execute(
-        delete(RevokedToken).where(RevokedToken.expires_at <= now)
-    )
+    await db.execute(delete(RevokedToken).where(RevokedToken.expires_at <= now))
     await db.flush()
     return result.rowcount

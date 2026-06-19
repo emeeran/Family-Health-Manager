@@ -1,4 +1,5 @@
 """Main FastAPI application entry point."""
+
 from datetime import datetime, timezone
 from contextlib import asynccontextmanager
 import logging
@@ -82,6 +83,7 @@ settings = get_settings()
 if settings.APP_ENV == "production":
     try:
         import pythonjsonlogger.jsonformatter  # noqa: F401
+
         _config["formatters"]["json"] = {
             "class": "pythonjsonlogger.jsonformatter.JsonFormatter",
             "format": "%(asctime)s %(levelname)s %(name)s %(message)s",
@@ -110,22 +112,23 @@ async def lifespan(app: FastAPI):
 
     # Sweep orphaned staging files from crashed sessions
     from app.core.storage import sweep_orphaned_staging
+
     await sweep_orphaned_staging()
 
     # Ensure Ollama is running and models are available
     from app.core.ollama_service import ensure_ollama_ready
+
     ollama_ok = await ensure_ollama_ready()
     if ollama_ok:
         logger.info("Ollama ready — primary AI provider: %s", settings.OLLAMA_MODEL)
     else:
-        logger.warning(
-            "Ollama not available — will fall back to cloud providers if configured"
-        )
+        logger.warning("Ollama not available — will fall back to cloud providers if configured")
 
     # Token pruning — clean up expired refresh and revoked tokens daily
     async def _prune_tokens():
         from app.core.database import SessionLocal
         from app.core.security import prune_expired_tokens
+
         async with SessionLocal() as db:
             count = await prune_expired_tokens(db)
             await db.commit()
@@ -149,14 +152,27 @@ async def lifespan(app: FastAPI):
     # Shutdown
     await stop_scheduler()
     from app.core.redis import close_redis
+
     await close_redis()
     from app.core.database import engine
+
     await engine.dispose()
     logger.info("Shutting down application...")
+
 
 app = FastAPI(
     title=settings.APP_NAME,
     version=settings.APP_VERSION,
+    description=(
+        "Self-hosted, privacy-first family health record manager with AI-powered "
+        "document extraction, medication tracking, and conversational health Q&A. "
+        "Local-first via Ollama with optional cloud provider fallbacks."
+    ),
+    contact={"name": "Family Health Manager"},
+    license_info={
+        "name": "MIT License",
+        "url": "https://opensource.org/licenses/MIT",
+    },
     lifespan=lifespan,
     docs_url=None if settings.APP_ENV == "production" else "/docs",
     redoc_url=None if settings.APP_ENV == "production" else "/redoc",
@@ -189,10 +205,16 @@ auth_rate_limiter = RateLimiter(limit=10, window_seconds=60)  # Stricter for aut
 
 # Performance optimization (#22): set of paths and prefixes that never need rate limiting.
 # Using a frozenset for O(1) membership checks and a tuple of prefixes for startswith checks.
-_RATE_LIMIT_SKIP_PATHS = frozenset({
-    "/health", "/health/detail", "/",
-    "/docs", "/openapi.json", "/redoc",
-})
+_RATE_LIMIT_SKIP_PATHS = frozenset(
+    {
+        "/health",
+        "/health/detail",
+        "/",
+        "/docs",
+        "/openapi.json",
+        "/redoc",
+    }
+)
 _RATE_LIMIT_SKIP_PREFIXES = ("/static/", "/assets/", "/favicon")
 
 
@@ -218,7 +240,11 @@ async def rate_limit_middleware(request: Request, call_next):
             if int(content_length) > limit:
                 return JSONResponse(
                     status_code=413,
-                    content={"status_code": 413, "error": "payload_too_large", "message": f"Request body exceeds {limit // (1024*1024)}MB limit"},
+                    content={
+                        "status_code": 413,
+                        "error": "payload_too_large",
+                        "message": f"Request body exceeds {limit // (1024 * 1024)}MB limit",
+                    },
                 )
         except (ValueError, TypeError):
             pass
@@ -272,11 +298,13 @@ async def validation_exception_handler(_request: Request, exc: RequestValidation
     # Strip the 'input' field to avoid leaking sensitive data (passwords, etc.)
     details = []
     for error in exc.errors():
-        details.append({
-            "loc": error.get("loc", []),
-            "msg": error.get("msg", ""),
-            "type": error.get("type", ""),
-        })
+        details.append(
+            {
+                "loc": error.get("loc", []),
+                "msg": error.get("msg", ""),
+                "type": error.get("type", ""),
+            }
+        )
     return JSONResponse(
         status_code=422,
         content={
@@ -293,7 +321,10 @@ async def generic_exception_handler(request: Request, exc: Exception):
     """Catch-all for unhandled exceptions."""
     logger.error(
         "Unhandled exception on %s %s: %s",
-        request.method, request.url.path, exc, exc_info=True,
+        request.method,
+        request.url.path,
+        exc,
+        exc_info=True,
     )
     return JSONResponse(
         status_code=500,
@@ -366,6 +397,7 @@ async def health_detail(
     # DB check
     try:
         from sqlalchemy import text
+
         await db.execute(text("SELECT 1"))
         checks["database"] = "ok"
     except Exception:
@@ -386,6 +418,7 @@ async def health_detail(
     # Ollama check
     try:
         import httpx as _httpx
+
         async with _httpx.AsyncClient(timeout=5) as _client:
             _resp = await _client.get(f"{settings.OLLAMA_LOCAL_URL}/api/tags")
             if _resp.status_code == 200:
@@ -393,7 +426,9 @@ async def health_detail(
                 _has_model = any(settings.OLLAMA_MODEL in m for m in _models)
                 checks["ollama"] = {
                     "server": "ok",
-                    "model": settings.OLLAMA_MODEL if _has_model else f"{settings.OLLAMA_MODEL} (not pulled)",
+                    "model": settings.OLLAMA_MODEL
+                    if _has_model
+                    else f"{settings.OLLAMA_MODEL} (not pulled)",
                     "available_models": _models,
                 }
             else:
@@ -402,4 +437,11 @@ async def health_detail(
         checks["ollama"] = {"server": "not_running", "model": settings.OLLAMA_MODEL}
 
     overall = "ok" if checks.get("database") == "ok" else "degraded"
-    return {"status": overall, "checks": checks}
+    # Surface degradation as 503 so load balancers / systemd notice and don't
+    # route traffic to an unhealthy instance. A reachable-but-degraded app still
+    # returns the full body for operators inspecting the response.
+    status_code = 200 if overall == "ok" else 503
+    return JSONResponse(
+        status_code=status_code,
+        content={"status": overall, "checks": checks},
+    )

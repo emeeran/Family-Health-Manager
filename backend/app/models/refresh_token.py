@@ -19,4 +19,6 @@ class RefreshToken(Base):
     expires_at: Mapped[datetime] = mapped_column(DateTime, nullable=False)
     created_at: Mapped[datetime] = mapped_column(DateTime, nullable=False)
     revoked_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
-    replaced_by: Mapped[str | None] = mapped_column(String(36), ForeignKey("refresh_tokens.id"), nullable=True)
+    replaced_by: Mapped[str | None] = mapped_column(
+        String(36), ForeignKey("refresh_tokens.id"), nullable=True
+    )

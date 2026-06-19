@@ -1,4 +1,4 @@
-# Design — Family Health Tracker
+# Design — Family Health Manager
 
 > Phase p4 — Architecture design derived from `docs/02-spec/SPEC.md` and `docs/03-review/REVIEW.md`.
 
@@ -179,7 +179,7 @@ graph TD
 
 | Responsibility | Details |
 |----------------|---------|
-| FastAPI app instantiation | `app = FastAPI(title="Family Health Tracker")` |
+| FastAPI app instantiation | `app = FastAPI(title="Family Health Manager")` |
 | CORS middleware | Configured for frontend origin |
 | Authentication middleware | JWT cookie extraction, user context |
 | Rate limiting middleware | 100 req/min per session |
@@ -623,7 +623,7 @@ engine = create_engine(
 graph TB
     subgraph "User's Server"
         subgraph "Docker Compose Stack"
-            subgraph "app (Family Health Tracker)"
+            subgraph "app (Family Health Manager)"
                 FastAPI[FastAPI App<br/>Port 8000]
                 Storage[Volume: /data<br/>Attachments, DB]
             end

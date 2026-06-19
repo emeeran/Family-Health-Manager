@@ -1,4 +1,5 @@
 """Smart Report router — generate and retrieve comprehensive health insight per member."""
+
 import json
 import logging
 from datetime import datetime, timezone
@@ -67,9 +68,13 @@ async def generate_smart_report(
             "claims_checked": insight.verification_claims_checked,
             "verifier_provider": insight.verification_verifier,
             "summary": insight.verification_summary,
-            "warnings": json.loads(insight.verification_warnings_json) if insight.verification_warnings_json else None,
+            "warnings": json.loads(insight.verification_warnings_json)
+            if insight.verification_warnings_json
+            else None,
             "verified_at": insight.verification_at.isoformat() if insight.verification_at else None,
-        } if insight.verification_status != "pending" or insight.verification_at else {"status": "pending"},
+        }
+        if insight.verification_status != "pending" or insight.verification_at
+        else {"status": "pending"},
     }
 
 
@@ -107,9 +112,22 @@ async def get_latest_smart_report(
                 "claims_checked": insight.verification_claims_checked,
                 "verifier_provider": insight.verification_verifier,
                 "summary": insight.verification_summary,
-                "warnings": json.loads(insight.verification_warnings_json) if insight.verification_warnings_json else None,
-                "verified_at": insight.verification_at.isoformat() if insight.verification_at else None,
-            } if insight.verification_status != "pending" or insight.verification_at else {"status": "pending" if (datetime.now(timezone.utc) - insight.generated_at.replace(tzinfo=timezone.utc)).total_seconds() < 300 else "unverifiable"},
+                "warnings": json.loads(insight.verification_warnings_json)
+                if insight.verification_warnings_json
+                else None,
+                "verified_at": insight.verification_at.isoformat()
+                if insight.verification_at
+                else None,
+            }
+            if insight.verification_status != "pending" or insight.verification_at
+            else {
+                "status": "pending"
+                if (
+                    datetime.now(timezone.utc) - insight.generated_at.replace(tzinfo=timezone.utc)
+                ).total_seconds()
+                < 300
+                else "unverifiable"
+            },
         },
     }
 

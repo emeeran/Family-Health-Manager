@@ -17,7 +17,9 @@ class FamilyMember(Base):
     __tablename__ = "family_members"
 
     id: Mapped[UUID] = mapped_column(primary_key=True, default=uuid4)
-    household_id: Mapped[UUID] = mapped_column(ForeignKey("households.id", ondelete="CASCADE"), nullable=False, index=True)
+    household_id: Mapped[UUID] = mapped_column(
+        ForeignKey("households.id", ondelete="CASCADE"), nullable=False, index=True
+    )
     first_name: Mapped[str] = mapped_column(String(50), nullable=False)
     last_name: Mapped[str] = mapped_column(String(50), nullable=False)
     date_of_birth: Mapped[date] = mapped_column(Date, nullable=False)
@@ -38,7 +40,12 @@ class FamilyMember(Base):
     emergency_contact_phone: Mapped[str | None] = mapped_column(String(30), nullable=True)
     notes: Mapped[str | None] = mapped_column(Text, nullable=True)
     is_active: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False, index=True)
-    created_at: Mapped[datetime] = mapped_column(DateTime, default=lambda: datetime.now(timezone.utc), server_default="CURRENT_TIMESTAMP", nullable=False)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime,
+        default=lambda: datetime.now(timezone.utc),
+        server_default="CURRENT_TIMESTAMP",
+        nullable=False,
+    )
 
     household: Mapped["Household"] = relationship(back_populates="members")
     health_records: Mapped[list["HealthRecord"]] = relationship(
@@ -49,6 +56,12 @@ class FamilyMember(Base):
     )
     conversations: Mapped[list["Conversation"]] = relationship(back_populates="family_member")
     reminders: Mapped[list["Reminder"]] = relationship(back_populates="family_member")
-    vaccinations: Mapped[list["Vaccination"]] = relationship(back_populates="family_member", cascade="all, delete-orphan")
-    medications: Mapped[list["Medication"]] = relationship(back_populates="family_member", cascade="all, delete-orphan")
-    lab_results: Mapped[list["LabResult"]] = relationship(back_populates="family_member", cascade="all, delete-orphan")
+    vaccinations: Mapped[list["Vaccination"]] = relationship(
+        back_populates="family_member", cascade="all, delete-orphan"
+    )
+    medications: Mapped[list["Medication"]] = relationship(
+        back_populates="family_member", cascade="all, delete-orphan"
+    )
+    lab_results: Mapped[list["LabResult"]] = relationship(
+        back_populates="family_member", cascade="all, delete-orphan"
+    )

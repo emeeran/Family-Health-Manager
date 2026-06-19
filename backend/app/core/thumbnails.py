@@ -1,4 +1,5 @@
 """Thumbnail generation for attachments."""
+
 import asyncio
 import logging
 from pathlib import Path
@@ -98,9 +99,7 @@ async def generate_thumbnail(
         logger.info("Generated thumbnail for %s at %s", content_hash[:12], dest_path)
         return dest_path
     except Exception:
-        logger.warning(
-            "Failed to generate thumbnail for %s", file_path, exc_info=True
-        )
+        logger.warning("Failed to generate thumbnail for %s", file_path, exc_info=True)
         return None
 
 
@@ -139,9 +138,7 @@ async def generate_thumbnail_background(
             .values(thumbnail_path=str(thumb_path))
         )
         await db.commit()
-        logger.info(
-            "Background thumbnail saved for attachment %s", attachment_id
-        )
+        logger.info("Background thumbnail saved for attachment %s", attachment_id)
     except Exception:
         # Gracefully handle all errors — thumbnail generation is non-critical
         logger.warning(

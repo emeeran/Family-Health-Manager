@@ -1,4 +1,5 @@
 """Attachment router."""
+
 import aiofiles
 from pathlib import Path
 from uuid import UUID
@@ -33,7 +34,10 @@ async def upload_attachment(
 
     try:
         attachment = await service.upload_attachment(
-            record_id, file, household.id, background_tasks=background_tasks,
+            record_id,
+            file,
+            household.id,
+            background_tasks=background_tasks,
         )
     except ValueError as e:
         raise HTTPException(status_code=404, detail=str(e))

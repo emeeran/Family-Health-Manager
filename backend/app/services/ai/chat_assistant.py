@@ -1,4 +1,5 @@
 """Chat assistant — chat and chat_stream methods with conversation history."""
+
 import asyncio
 import json
 import logging
@@ -71,6 +72,7 @@ async def chat_stream(
     - {"stage":"complete","assistant_message":{...}}
     - {"stage":"error","message":"..."}
     """
+
     def sse(data: dict) -> str:
         return json.dumps(data)
 
@@ -83,40 +85,42 @@ async def chat_stream(
     db.add(user_msg)
     await db.flush()
 
-    yield sse({
-        "stage": "user_message",
-        "id": str(user_msg.id),
-        "content": user_message,
-        "created_at": user_msg.created_at.isoformat(),
-    })
+    yield sse(
+        {
+            "stage": "user_message",
+            "id": str(user_msg.id),
+            "content": user_message,
+            "created_at": user_msg.created_at.isoformat(),
+        }
+    )
 
     # Build health context and start history query in parallel
     health_context = ""
-    history_task = asyncio.create_task(
-        _get_conversation_history(db, conversation_id, limit=10)
-    )
+    history_task = asyncio.create_task(_get_conversation_history(db, conversation_id, limit=10))
     if member_id:
         cache_key = str(member_id)
         if not _base.get_cache(cache_key):
             yield sse({"stage": "context", "message": "Loading health context..."})
-            _base.put_cache(cache_key, await build_member_context(
-                db, member_id, fmt_date, comprehensive=True
-            ))
+            _base.put_cache(
+                cache_key, await build_member_context(db, member_id, fmt_date, comprehensive=True)
+            )
         health_context = _base.get_cache(cache_key) or ""
     elif household_id:
         cache_key = f"hh:{household_id}"
         if not _base.get_cache(cache_key):
             yield sse({"stage": "context", "message": "Loading health context..."})
-            _base.put_cache(cache_key, await build_household_context(
-                db, household_id, fmt_date
-            ))
+            _base.put_cache(cache_key, await build_household_context(db, household_id, fmt_date))
         health_context = _base.get_cache(cache_key) or ""
 
     history = await history_task
     full_context = f"{health_context}\n{history}" if health_context else history
 
     system_note = _CLINICAL_SYSTEM_NOTE.format(today=fmt_date(date.today()))
-    full_prompt = f"{system_note}{full_context}\n\nUser: {user_message}\n\nAssistant:" if full_context else user_message
+    full_prompt = (
+        f"{system_note}{full_context}\n\nUser: {user_message}\n\nAssistant:"
+        if full_context
+        else user_message
+    )
 
     full_response = ""
     provider = ""
@@ -136,7 +140,9 @@ async def chat_stream(
             async for chunk in ollama_chat_stream(model, full_prompt):
                 await queue.put((label, chunk))
         except Exception as exc:
-            logger.warning("Ollama streaming model %s failed: %s", label, _base.exc_description(exc))
+            logger.warning(
+                "Ollama streaming model %s failed: %s", label, _base.exc_description(exc)
+            )
         finally:
             await queue.put(None)
 
@@ -217,19 +223,21 @@ async def chat_stream(
     db.add(insight)
     await db.flush()
 
-    yield sse({
-        "stage": "complete",
-        "assistant_message": {
-            "id": str(assistant_msg.id),
-            "conversation_id": str(conversation_id),
-            "role": "assistant",
-            "content": full_response,
-            "created_at": assistant_msg.created_at.isoformat(),
-            "disclaimer": "This is not medical advice. Consult a healthcare professional.",
-        },
-        "provider": provider,
-        "health_context": health_context,
-    })
+    yield sse(
+        {
+            "stage": "complete",
+            "assistant_message": {
+                "id": str(assistant_msg.id),
+                "conversation_id": str(conversation_id),
+                "role": "assistant",
+                "content": full_response,
+                "created_at": assistant_msg.created_at.isoformat(),
+                "disclaimer": "This is not medical advice. Consult a healthcare professional.",
+            },
+            "provider": provider,
+            "health_context": health_context,
+        }
+    )
 
 
 async def chat(
@@ -258,16 +266,17 @@ async def chat(
         if member_id:
             cache_key = str(member_id)
             if not _base.get_cache(cache_key):
-                _base.put_cache(cache_key, await build_member_context(
-                    db, member_id, fmt_date, comprehensive=True
-                ))
+                _base.put_cache(
+                    cache_key,
+                    await build_member_context(db, member_id, fmt_date, comprehensive=True),
+                )
             ctx = _base.get_cache(cache_key) or ""
         elif household_id:
             cache_key = f"hh:{household_id}"
             if not _base.get_cache(cache_key):
-                _base.put_cache(cache_key, await build_household_context(
-                    db, household_id, fmt_date
-                ))
+                _base.put_cache(
+                    cache_key, await build_household_context(db, household_id, fmt_date)
+                )
             ctx = _base.get_cache(cache_key) or ""
         return ctx
 
@@ -299,7 +308,9 @@ async def chat(
     return user_msg, assistant_msg, provider, health_context
 
 
-async def _get_conversation_history(db: AsyncSession, conversation_id: UUID, limit: int = 10) -> str:
+async def _get_conversation_history(
+    db: AsyncSession, conversation_id: UUID, limit: int = 10
+) -> str:
     """Get recent conversation history, with short-lived cache."""
     import time
 
@@ -329,11 +340,10 @@ async def _get_conversation_history(db: AsyncSession, conversation_id: UUID, lim
     return history
 
 
-async def _race_providers(
-    prompt: str, providers: list[tuple]
-) -> tuple[str, str]:
+async def _race_providers(prompt: str, providers: list[tuple]) -> tuple[str, str]:
     """Race multiple providers in parallel — return the first successful result."""
     import asyncio
+
     tasks: dict[asyncio.Task, str] = {}
     for provider_fn, label in providers:
         task = asyncio.create_task(provider_fn(prompt))

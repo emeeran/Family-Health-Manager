@@ -1,4 +1,5 @@
 """Database engine and session management."""
+
 import logging
 import time
 from collections.abc import AsyncGenerator
@@ -20,7 +21,11 @@ def get_async_connection_url(db_url: str) -> str:
     return db_url
 
 
-connect_args = {"check_same_thread": False, "timeout": 30} if settings.DATABASE_URL.startswith("sqlite") else {}
+connect_args = (
+    {"check_same_thread": False, "timeout": 30}
+    if settings.DATABASE_URL.startswith("sqlite")
+    else {}
+)
 pool_kwargs = {}
 if not settings.DATABASE_URL.startswith("sqlite"):
     pool_kwargs = {
@@ -41,6 +46,7 @@ engine = create_async_engine(
 
 # Enable WAL mode for SQLite — allows concurrent reads during writes
 if settings.DATABASE_URL.startswith("sqlite"):
+
     @event.listens_for(engine.sync_engine, "connect")
     def set_sqlite_pragma(dbapi_connection, connection_record):
         cursor = dbapi_connection.cursor()
@@ -56,6 +62,7 @@ if settings.DATABASE_URL.startswith("sqlite"):
         # writes (e.g. login's refresh-token insert) and break existing
         # installs. Postgres enforces FKs natively regardless.
         cursor.close()
+
 
 # ---------------------------------------------------------------------------
 # Performance optimization (#19): slow query logging
@@ -85,6 +92,7 @@ if not _is_test_env:
                     elapsed_ms,
                     stmt_preview,
                 )
+
 
 SessionLocal = async_sessionmaker(
     bind=engine,
@@ -132,6 +140,7 @@ async def create_tables():
         # fallback patch here if needed for the SQLite dev workflow.
         # -----------------------------------------------------------------
         import sqlalchemy.inspection as sa_inspect
+
         with sync_engine.connect() as conn:
             inspector = sa_inspect.inspect(sync_engine)
             if "users" in inspector.get_table_names():

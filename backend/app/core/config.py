@@ -1,4 +1,5 @@
 """Application configuration via pydantic-settings."""
+
 import logging
 from functools import lru_cache
 from pydantic_settings import BaseSettings, SettingsConfigDict
@@ -18,7 +19,7 @@ class Settings(BaseSettings):
     # Application
     APP_ENV: str = "development"
     APP_NAME: str = "DAWNSTAR Family Health Keeper"
-    APP_VERSION: str = "1.0.0"
+    APP_VERSION: str = "1.0.4"
     DEBUG: bool = False
 
     # Security
@@ -101,14 +102,17 @@ class Settings(BaseSettings):
             if not self.HEALTH_CHECK_SECRET:
                 raise ValueError(
                     "HEALTH_CHECK_SECRET must be set in production! "
-                    "Generate one with: python -c \"import secrets; print(secrets.token_urlsafe(24))\""
+                    'Generate one with: python -c "import secrets; print(secrets.token_urlsafe(24))"'
                 )
             if not self.REDIS_URL:
                 logger.warning(
                     "REDIS_URL not set — rate limiting and cache will use "
                     "in-memory fallback (per-process; use 1 worker or add Redis)"
                 )
-            logger.info("Running in PRODUCTION mode (db=%s)", "postgresql" if self.DATABASE_URL.startswith("postgresql") else "sqlite")
+            logger.info(
+                "Running in PRODUCTION mode (db=%s)",
+                "postgresql" if self.DATABASE_URL.startswith("postgresql") else "sqlite",
+            )
 
 
 @lru_cache

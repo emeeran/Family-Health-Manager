@@ -1,4 +1,5 @@
 """Database integrity check + maintenance router (Data tab)."""
+
 import logging
 
 from fastapi import APIRouter, Depends, HTTPException

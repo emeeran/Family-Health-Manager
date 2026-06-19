@@ -1,4 +1,4 @@
-# Requirements — Family Health Tracker
+# Requirements — Family Health Manager
 
 > Phase p1 — Functional and non-functional requirements derived from `docs/00-domain/DOMAIN.md`.
 > All clarifications from Section 4 of DOMAIN.md have been resolved and baked in below.

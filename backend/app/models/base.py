@@ -4,6 +4,7 @@ Model classes are defined in domain-specific files under app/models/.
 They are re-exported here for backward compatibility with existing imports:
     from app.models.base import User, Household, ...
 """
+
 import enum
 from sqlalchemy.orm import DeclarativeBase
 

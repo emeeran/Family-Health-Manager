@@ -1,4 +1,5 @@
 """Health record schemas."""
+
 import json
 from pydantic import BaseModel, Field, ConfigDict, model_validator, field_validator
 from datetime import datetime, date, time
@@ -51,11 +52,15 @@ class HealthRecordResponse(BaseModel):
     prescription_text: str | None = Field(None, description="Prescription notes")
     next_review_date: date | None = Field(None, description="Next review date")
     summary: str | None = Field(None, description="AI-generated consultation summary")
-    transcription_report: str | None = Field(None, description="AI-generated medical records transcription report")
+    transcription_report: str | None = Field(
+        None, description="AI-generated medical records transcription report"
+    )
     is_deleted: bool = Field(..., description="Soft-delete flag")
     created_at: datetime = Field(..., description="Creation timestamp")
     updated_at: datetime = Field(..., description="Last update timestamp")
-    attachments: list[AttachmentResponse] = Field(default_factory=list, description="File attachments")
+    attachments: list[AttachmentResponse] = Field(
+        default_factory=list, description="File attachments"
+    )
 
     # Parsed once from the raw tags column (JSON text → list[str])
     tags: list[str] | None = Field(None, description="Record tags")
@@ -96,12 +101,16 @@ class ExtractedFields(BaseModel):
     record_type: RecordType | None = Field(None, description="Detected record type")
     record_date: date | None = Field(None, description="Date found in document")
     record_time: time | None = Field(None, description="Time found in document")
-    clinical_data: str | None = Field(None, description="Extracted clinical data/notes", max_length=50000)
+    clinical_data: str | None = Field(
+        None, description="Extracted clinical data/notes", max_length=50000
+    )
     diagnosis: str | None = Field(None, description="Extracted diagnosis")
     existing_conditions: str | None = Field(None, description="Existing/chronic conditions found")
     chief_complaint: str | None = Field(None, description="Chief complaint / reason for visit")
     investigations: str | None = Field(None, description="Investigations ordered or recommended")
-    prescription_text: str | None = Field(None, description="Extracted prescription (text fallback)")
+    prescription_text: str | None = Field(
+        None, description="Extracted prescription (text fallback)"
+    )
     provider_name: str | None = Field(None, description="Provider name found")
     next_review_date: date | None = Field(None, description="Next review/follow-up date")
     prescriptions: list[dict] | None = Field(None, description="Structured prescription rows")
@@ -159,7 +168,9 @@ class ExtractionResponse(BaseModel):
     extracted: ExtractedFields = Field(..., description="AI-extracted fields")
     confidence: str = Field("medium", description="Extraction confidence: high/medium/low")
     verification: dict | None = Field(None, description="Cross-verification result (if available)")
-    transcription: str | None = Field(None, description="Raw OCR/text transcription of the document")
+    transcription: str | None = Field(
+        None, description="Raw OCR/text transcription of the document"
+    )
 
 
 class TimelineResponse(BaseModel):
@@ -177,9 +188,13 @@ class BatchExtractionItemSchema(BaseModel):
     staging_file_id: str | None = Field(None, description="Staging file reference")
     extracted: ExtractedFields | None = Field(None, description="AI-extracted fields")
     transcription: str | None = Field(None, description="Raw OCR/text transcription")
-    is_duplicate: bool = Field(False, description="Whether this is a duplicate of an existing record")
+    is_duplicate: bool = Field(
+        False, description="Whether this is a duplicate of an existing record"
+    )
     duplicate_of_id: str | None = Field(None, description="ID of the record this duplicates")
-    duplicate_of_diagnosis: str | None = Field(None, description="Diagnosis of the duplicate record")
+    duplicate_of_diagnosis: str | None = Field(
+        None, description="Diagnosis of the duplicate record"
+    )
     error: str | None = Field(None, description="Error message if extraction failed")
     verification: dict | None = Field(None, description="Cross-verification result (if available)")
 
@@ -187,13 +202,17 @@ class BatchExtractionItemSchema(BaseModel):
 class BatchExtractionResponse(BaseModel):
     """Response from batch extraction endpoint."""
 
-    extractions: list[BatchExtractionItemSchema] = Field(..., description="Extraction results per file")
+    extractions: list[BatchExtractionItemSchema] = Field(
+        ..., description="Extraction results per file"
+    )
 
 
 class BatchDeleteRequest(BaseModel):
     """Request body for batch-delete endpoint."""
 
-    record_ids: list[str] = Field(..., min_length=1, max_length=500, description="Record IDs to delete")
+    record_ids: list[str] = Field(
+        ..., min_length=1, max_length=500, description="Record IDs to delete"
+    )
 
 
 class CheckFilenamesRequest(BaseModel):
@@ -205,7 +224,9 @@ class CheckFilenamesRequest(BaseModel):
 class CheckFilenamesResponse(BaseModel):
     """Response from check-filenames endpoint."""
 
-    existing: list[str] = Field(default_factory=list, description="Filenames that already have records")
+    existing: list[str] = Field(
+        default_factory=list, description="Filenames that already have records"
+    )
 
 
 class DuplicateRecordItem(BaseModel):
@@ -243,4 +264,6 @@ class MergeRequest(BaseModel):
     """Request to merge duplicate records."""
 
     keeper_id: UUID = Field(..., description="Record to keep")
-    loser_ids: list[UUID] = Field(..., min_length=1, description="Records to merge into keeper and delete")
+    loser_ids: list[UUID] = Field(
+        ..., min_length=1, description="Records to merge into keeper and delete"
+    )

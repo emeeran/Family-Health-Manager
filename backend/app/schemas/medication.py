@@ -1,4 +1,5 @@
 """Medication schemas."""
+
 from pydantic import BaseModel, Field, ConfigDict
 from datetime import datetime, date
 from uuid import UUID

@@ -4,7 +4,7 @@
 
 ## Context
 
-The Family Health Tracker application requires:
+The Family Health Manager application requires:
 - Encrypted storage of sensitive health data at rest (NFR-003)
 - Single-household deployment (v1 scope)
 - Zero-config deployment via Docker Compose (NFR-009)

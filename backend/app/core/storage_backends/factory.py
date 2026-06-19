@@ -1,4 +1,5 @@
 """Storage backend factory."""
+
 import logging
 
 from app.core.config import get_settings
@@ -19,6 +20,7 @@ def get_storage_backend():
 
     if backend_name == "local":
         from app.core.storage_backends.local import LocalStorageBackend
+
         _backend_instance = LocalStorageBackend()
     else:
         raise ValueError(f"Unknown storage backend: {backend_name}")

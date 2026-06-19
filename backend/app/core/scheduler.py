@@ -11,12 +11,14 @@ acquire an exclusive ``fcntl`` file lock on startup; only the worker that wins
 the lock actually starts the scheduler. The lock is per-process and is released
 automatically on crash/exit, so a restarted worker re-acquires it cleanly.
 """
+
 import asyncio
 import logging
 from pathlib import Path
 
 try:  # POSIX-only; the deployment target is Linux.
     import fcntl
+
     _HAS_FCNTL = True
 except ImportError:  # pragma: no cover — Windows/dev without fcntl
     fcntl = None

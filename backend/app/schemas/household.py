@@ -1,4 +1,5 @@
 """Household schemas."""
+
 from typing import Literal
 from pydantic import BaseModel, Field, ConfigDict
 from datetime import datetime
@@ -53,4 +54,6 @@ class HouseholdResponse(BaseModel):
     name: str = Field(..., description="Household name")
     primary_user_id: UUID = Field(..., description="Primary user ID")
     created_at: datetime = Field(..., description="Creation timestamp")
-    settings: FeatureSettings = Field(default_factory=FeatureSettings, description="Feature settings")
+    settings: FeatureSettings = Field(
+        default_factory=FeatureSettings, description="Feature settings"
+    )

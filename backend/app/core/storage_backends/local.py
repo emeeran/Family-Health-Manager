@@ -5,6 +5,7 @@ When ``decrypt=True``, ``stream()`` now decrypts on-the-fly using the chunked
 wire format defined in ``encryption.py`` instead of loading the entire file
 into memory before yielding the first byte.
 """
+
 import logging
 import struct
 from pathlib import Path
@@ -35,9 +36,7 @@ class LocalStorageBackend:
         shard_dir.mkdir(parents=True, exist_ok=True)
         return shard_dir / f"{content_hash}{ext}"
 
-    async def put(
-        self, content_hash: str, ext: str, data: bytes, encrypt: bool = False
-    ) -> Path:
+    async def put(self, content_hash: str, ext: str, data: bytes, encrypt: bool = False) -> Path:
         """Store data at a content-addressable path.
 
         When *encrypt* is ``True`` the data is written in the chunked wire
@@ -104,9 +103,7 @@ class LocalStorageBackend:
         async with aiofiles.open(file_path, "rb") as f:
             return await f.read()
 
-    async def stream(
-        self, file_path: Path, decrypt: bool = False
-    ) -> AsyncGenerator[bytes, None]:
+    async def stream(self, file_path: Path, decrypt: bool = False) -> AsyncGenerator[bytes, None]:
         """Stream file content in chunks.
 
         #10 Performance: when *decrypt* is ``True``, each encrypted chunk is

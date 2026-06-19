@@ -1,4 +1,5 @@
 """Ollama service manager — auto-start and health check."""
+
 import asyncio
 import logging
 import shutil
@@ -77,7 +78,8 @@ async def start_ollama() -> bool:
     logger.info("Starting Ollama server via '%s serve'...", ollama_bin)
     try:
         _process = await asyncio.create_subprocess_exec(
-            ollama_bin, "serve",
+            ollama_bin,
+            "serve",
             stdout=asyncio.subprocess.DEVNULL,
             stderr=asyncio.subprocess.DEVNULL,
         )

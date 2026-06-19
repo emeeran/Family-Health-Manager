@@ -9,6 +9,7 @@ Performance optimizations (#23):
 - Progress logging every 10 files
 - Per-file error handling (one failure does not stop the migration)
 """
+
 import asyncio
 import hashlib
 import logging
@@ -102,9 +103,7 @@ async def _migrate_single_attachment(
             try:
                 from app.core.thumbnails import generate_thumbnail
 
-                thumb = await generate_thumbnail(
-                    expected_path, content_hash, att.mime_type
-                )
+                thumb = await generate_thumbnail(expected_path, content_hash, att.mime_type)
                 if thumb:
                     att.thumbnail_path = str(thumb)
                     stats["thumbnailed"] += 1
@@ -180,9 +179,7 @@ async def migrate_all(encrypt: bool = False) -> dict:
 
             processed += len(batch)
             if processed % _PROGRESS_LOG_INTERVAL < _MAX_CONCURRENT_MIGRATIONS:
-                logger.info(
-                    "Migration: %d/%d files processed", processed, total
-                )
+                logger.info("Migration: %d/%d files processed", processed, total)
 
         await db.commit()
 
@@ -193,4 +190,4 @@ async def migrate_all(encrypt: bool = False) -> dict:
 if __name__ == "__main__":
     logging.basicConfig(level=logging.INFO)
     result = asyncio.run(migrate_all(encrypt=False))
-    print(f"Migration result: {result}")
+    logger.info("Migration result: %s", result)

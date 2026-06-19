@@ -1,4 +1,5 @@
 """Models module initialization."""
+
 from app.models.base import (
     Base,
     User,

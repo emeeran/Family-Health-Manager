@@ -1,4 +1,5 @@
 """Google Gemini AI provider."""
+
 import logging
 
 
@@ -16,10 +17,7 @@ async def call_gemini_text(prompt: str, model: str | None = None) -> str | None:
     if not api_key:
         return None
     model = model or settings.GEMINI_TEXT_MODEL
-    url = (
-        f"https://generativelanguage.googleapis.com/v1beta/"
-        f"models/{model}:generateContent"
-    )
+    url = f"https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent"
     payload = {
         "contents": [{"parts": [{"text": prompt}]}],
         "generationConfig": {"temperature": 0.1},
@@ -35,9 +33,7 @@ async def call_gemini_text(prompt: str, model: str | None = None) -> str | None:
     return data["candidates"][0]["content"]["parts"][0]["text"]
 
 
-async def call_gemini_vision(
-    b64_data: str, mime_type: str, extraction_prompt: str
-) -> str | None:
+async def call_gemini_vision(b64_data: str, mime_type: str, extraction_prompt: str) -> str | None:
     """Call Google Gemini API for vision extraction."""
     api_key = await resolve_provider_api_key("gemini")
     if not api_key:
@@ -47,12 +43,14 @@ async def call_gemini_vision(
         f"models/{settings.GEMINI_VISION_MODEL}:generateContent"
     )
     payload = {
-        "contents": [{
-            "parts": [
-                {"text": extraction_prompt},
-                {"inline_data": {"mime_type": mime_type, "data": b64_data}},
-            ]
-        }],
+        "contents": [
+            {
+                "parts": [
+                    {"text": extraction_prompt},
+                    {"inline_data": {"mime_type": mime_type, "data": b64_data}},
+                ]
+            }
+        ],
         "generationConfig": {"temperature": 0.1},
     }
     client = await get_cloud_client()
@@ -62,9 +60,7 @@ async def call_gemini_vision(
     return data["candidates"][0]["content"]["parts"][0]["text"]
 
 
-async def call_gemini_ocr(
-    b64_data: str, mime_type: str
-) -> str | None:
+async def call_gemini_ocr(b64_data: str, mime_type: str) -> str | None:
     """Use Google Gemini to OCR an image to text."""
     api_key = await resolve_provider_api_key("gemini")
     if not api_key:
@@ -78,12 +74,14 @@ async def call_gemini_ocr(
         f"models/{settings.GEMINI_VISION_MODEL}:generateContent"
     )
     payload = {
-        "contents": [{
-            "parts": [
-                {"text": ocr_prompt},
-                {"inline_data": {"mime_type": mime_type, "data": b64_data}},
-            ]
-        }],
+        "contents": [
+            {
+                "parts": [
+                    {"text": ocr_prompt},
+                    {"inline_data": {"mime_type": mime_type, "data": b64_data}},
+                ]
+            }
+        ],
         "generationConfig": {"temperature": 0.1},
     }
     client = await get_cloud_client()
