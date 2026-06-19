@@ -67,9 +67,19 @@ class HealthRecordService:
         )
         self.db.add(record)
         await self.db.flush()
-        # Refresh with provider and attachments eagerly loaded for response serialization
-        await self.db.refresh(record, ["provider", "attachments"])
-        return record
+        # Re-fetch with provider + attachments eagerly loaded so FastAPI's
+        # synchronous response serialization never triggers a lazy load
+        # (which raises MissingGreenlet under async SQLAlchemy; refresh() with
+        # relationship names is not sufficient for this).
+        loaded = await self.db.execute(
+            select(HealthRecord)
+            .options(
+                joinedload(HealthRecord.provider),
+                joinedload(HealthRecord.attachments),
+            )
+            .where(HealthRecord.id == record.id)
+        )
+        return loaded.unique().scalar_one()
 
     async def get_record(self, member_id: UUID, record_id: UUID) -> HealthRecord:
         """Get record by ID, ensuring member access."""
