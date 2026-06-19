@@ -1,4 +1,5 @@
 """AI router."""
+
 import logging
 import time
 
@@ -16,7 +17,9 @@ from app.models.base import Household
 
 class ExplainRequest(BaseModel):
     """Validated request body for /ai/explain."""
+
     prompt: str = Field("Explain these health records", max_length=2000)
+
 
 logger = logging.getLogger(__name__)
 
@@ -114,6 +117,7 @@ async def get_ai_status(
     def _friendly_error(exc: Exception) -> str:
         """Translate provider HTTP errors into user-friendly messages."""
         import httpx
+
         if isinstance(exc, httpx.HTTPStatusError):
             status = exc.response.status_code
             messages = {
@@ -137,47 +141,132 @@ async def get_ai_status(
         try:
             if prov.id == "ollama":
                 from app.services.ai.providers.ollama import call_ollama_text
+
                 start = time.monotonic()
                 result = await call_ollama_text(test_prompt, model=model or None)
                 elapsed = time.monotonic() - start
-                providers.append({"name": label, "id": prov.id, "model": model, "available": bool(result), "response_ms": round(elapsed * 1000)})
+                providers.append(
+                    {
+                        "name": label,
+                        "id": prov.id,
+                        "model": model,
+                        "available": bool(result),
+                        "response_ms": round(elapsed * 1000),
+                    }
+                )
             elif prov.id == "gemini":
                 if not await is_provider_configured("gemini"):
-                    providers.append({"name": label, "id": prov.id, "model": model, "available": False, "error": "No API key"})
+                    providers.append(
+                        {
+                            "name": label,
+                            "id": prov.id,
+                            "model": model,
+                            "available": False,
+                            "error": "No API key",
+                        }
+                    )
                     continue
                 from app.services.ai.providers.gemini import call_gemini_text
+
                 start = time.monotonic()
                 result = await call_gemini_text(test_prompt, model=model)
                 elapsed = time.monotonic() - start
-                providers.append({"name": label, "id": prov.id, "model": model, "available": bool(result), "response_ms": round(elapsed * 1000)})
+                providers.append(
+                    {
+                        "name": label,
+                        "id": prov.id,
+                        "model": model,
+                        "available": bool(result),
+                        "response_ms": round(elapsed * 1000),
+                    }
+                )
             elif prov.id == "openrouter":
                 if not await is_provider_configured("openrouter"):
-                    providers.append({"name": label, "id": prov.id, "model": model, "available": False, "error": "No API key"})
+                    providers.append(
+                        {
+                            "name": label,
+                            "id": prov.id,
+                            "model": model,
+                            "available": False,
+                            "error": "No API key",
+                        }
+                    )
                     continue
                 from app.services.ai.providers.openrouter import call_openrouter_text
+
                 start = time.monotonic()
                 result = await call_openrouter_text(test_prompt, model=model)
                 elapsed = time.monotonic() - start
-                providers.append({"name": label, "id": prov.id, "model": model, "available": bool(result), "response_ms": round(elapsed * 1000)})
+                providers.append(
+                    {
+                        "name": label,
+                        "id": prov.id,
+                        "model": model,
+                        "available": bool(result),
+                        "response_ms": round(elapsed * 1000),
+                    }
+                )
             elif prov.id == "groq":
                 if not await is_provider_configured("groq"):
-                    providers.append({"name": label, "id": prov.id, "model": model, "available": False, "error": "No API key"})
+                    providers.append(
+                        {
+                            "name": label,
+                            "id": prov.id,
+                            "model": model,
+                            "available": False,
+                            "error": "No API key",
+                        }
+                    )
                     continue
                 from app.services.ai.providers.groq import call_groq_text
+
                 start = time.monotonic()
                 result = await call_groq_text(test_prompt, model=model)
                 elapsed = time.monotonic() - start
-                providers.append({"name": label, "id": prov.id, "model": model, "available": bool(result), "response_ms": round(elapsed * 1000)})
+                providers.append(
+                    {
+                        "name": label,
+                        "id": prov.id,
+                        "model": model,
+                        "available": bool(result),
+                        "response_ms": round(elapsed * 1000),
+                    }
+                )
             elif prov.id == "openai":
                 if not await is_provider_configured("openai"):
-                    providers.append({"name": label, "id": prov.id, "model": model, "available": False, "error": "No API key"})
+                    providers.append(
+                        {
+                            "name": label,
+                            "id": prov.id,
+                            "model": model,
+                            "available": False,
+                            "error": "No API key",
+                        }
+                    )
                     continue
                 from app.services.ai.providers.openai import call_openai_text
+
                 start = time.monotonic()
                 result = await call_openai_text(test_prompt, model=model)
                 elapsed = time.monotonic() - start
-                providers.append({"name": label, "id": prov.id, "model": model, "available": bool(result), "response_ms": round(elapsed * 1000)})
+                providers.append(
+                    {
+                        "name": label,
+                        "id": prov.id,
+                        "model": model,
+                        "available": bool(result),
+                        "response_ms": round(elapsed * 1000),
+                    }
+                )
         except Exception as exc:
-            providers.append({"name": label, "id": prov.id, "model": model, "available": False, "error": _friendly_error(exc)})
+            providers.append(
+                {
+                    "name": label,
+                    "id": prov.id,
+                    "model": model,
+                    "available": False,
+                    "error": _friendly_error(exc),
+                }
+            )
 
     return {"providers": providers}

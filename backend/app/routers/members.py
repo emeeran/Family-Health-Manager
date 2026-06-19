@@ -1,4 +1,5 @@
 """Family member CRUD router — core create/read/update/delete operations."""
+
 import json
 import logging
 
@@ -123,7 +124,8 @@ async def get_batch_scores(
     latest_dates = {row[0]: row[1] for row in latest_result.all()}
 
     med_result = await db.execute(
-        select(HealthRecord).where(
+        select(HealthRecord)
+        .where(
             HealthRecord.family_member_id.in_(member_ids),
             HealthRecord.record_type == RecordType.DOCTOR_VISIT,
             HealthRecord.is_deleted.is_(False),
@@ -140,7 +142,9 @@ async def get_batch_scores(
             "first_name": m.first_name,
             "last_name": m.last_name,
             "total_records": record_counts.get(m.id, 0),
-            "latest_record_date": (d.isoformat() if (d := latest_dates.get(m.id)) is not None else None),
+            "latest_record_date": (
+                d.isoformat() if (d := latest_dates.get(m.id)) is not None else None
+            ),
             "active_medications_count": med_counts.get(str(m.id), 0),
         }
         for m in members

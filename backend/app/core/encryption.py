@@ -6,6 +6,7 @@ Performance optimisations:
 - #3  Cache the derived Fernet instance in a module-level variable so the
      expensive PBKDF2 key derivation only happens once per process.
 """
+
 import logging
 import struct
 import binascii
@@ -28,8 +29,8 @@ logger = logging.getLogger(__name__)
 ENCRYPTION_CHUNK_SIZE = 64 * 1024
 
 # Module-level Fernet caches so PBKDF2 derivation runs only once per process.
-_fernet_cache: Fernet | None = None          # primary: dedicated ENCRYPTION_KEY (or legacy)
-_legacy_fernet_cache: Fernet | None = None   # SECRET_KEY-derived, for decrypting old data
+_fernet_cache: Fernet | None = None  # primary: dedicated ENCRYPTION_KEY (or legacy)
+_legacy_fernet_cache: Fernet | None = None  # SECRET_KEY-derived, for decrypting old data
 
 
 def _legacy_fernet() -> Fernet:
@@ -157,9 +158,7 @@ async def encrypt_file(source_path: Path, dest_path: Path | None = None) -> Path
     # Read source, write to target — when encrypting in-place we must finish
     # writing all chunks before closing, which is safe because we open source
     # for reading first and write to the same path after draining it.
-    async with aiofiles.open(source_path, "rb") as src, aiofiles.open(
-        target, "wb"
-    ) as dst:
+    async with aiofiles.open(source_path, "rb") as src, aiofiles.open(target, "wb") as dst:
         while True:
             plaintext = await src.read(ENCRYPTION_CHUNK_SIZE)
             if not plaintext:

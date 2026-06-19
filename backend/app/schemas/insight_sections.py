@@ -7,6 +7,7 @@ titles, and removes the need for every client to re-implement the parser.
 The frontend keeps its own ``parseSections`` as a fallback when ``sections``
 is absent.
 """
+
 from __future__ import annotations
 
 import re

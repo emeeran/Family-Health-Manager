@@ -4,6 +4,7 @@ Verifies the real event sequence (secured → extracting → complete) and that
 extraction failures surface as an error event instead of crashing the stream.
 The AI layer is mocked so this exercises the streaming wiring, not the model.
 """
+
 import json
 from datetime import date
 from io import BytesIO
@@ -139,4 +140,3 @@ async def test_get_staging_file_rejects_traversal(auth_client):
         f"/api/v1/members/{member_id}/records/staging/..%2F..%2Fetc%2Fpasswd"
     )
     assert resp.status_code in (400, 404)
-

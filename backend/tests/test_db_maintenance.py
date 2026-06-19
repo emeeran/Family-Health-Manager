@@ -4,6 +4,7 @@ The service reads the SQLite file directly via a separate connection, so these
 tests point it at a temp DB (monkeypatching the path seam) populated with the
 full schema — mirroring how ``test_backup_restore.py`` patches ``jobs`` paths.
 """
+
 from pathlib import Path
 
 import pytest
@@ -118,9 +119,7 @@ async def test_repair_conflict_when_restore_in_progress(auth_client, monkeypatch
 @pytest.mark.asyncio
 async def test_repair_rejects_bad_operation(auth_client):
     """Unknown operations are rejected by the schema (422)."""
-    resp = await auth_client.post(
-        "/api/v1/database/repair", json={"operation": "defragment"}
-    )
+    resp = await auth_client.post("/api/v1/database/repair", json={"operation": "defragment"})
     assert resp.status_code == 422
 
 

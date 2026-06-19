@@ -1,4 +1,5 @@
 """Integration tests for health alerts endpoints."""
+
 import pytest
 
 pytestmark = pytest.mark.asyncio

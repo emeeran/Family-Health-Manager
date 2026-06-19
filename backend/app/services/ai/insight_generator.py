@@ -1,4 +1,5 @@
 """Insight generation — generate_insight, generate_insight_stream, check_drug_interactions, search parsing."""
+
 import asyncio
 import json
 import logging
@@ -75,7 +76,9 @@ async def generate_insight(
             _base.put_cache(cache_key, member_ctx)
             context = member_ctx + record_ctx
         else:
-            context = await build_member_context(db, member_id, fmt_date, comprehensive=comprehensive)
+            context = await build_member_context(
+                db, member_id, fmt_date, comprehensive=comprehensive
+            )
             _base.put_cache(cache_key, context)
     elif health_record_id:
         context = await build_record_context(db, health_record_id, fmt_date)
@@ -112,6 +115,7 @@ async def generate_insight_stream(
     - {"stage":"complete","insight_id":"..."}
     - {"stage":"error","message":"..."}
     """
+
     def sse(data: dict) -> str:
         return json.dumps(data)
 
@@ -136,7 +140,9 @@ async def generate_insight_stream(
             context = member_ctx + record_ctx
         else:
             yield sse({"stage": "context", "message": "Loading patient records..."})
-            context = await build_member_context(db, member_id, fmt_date, comprehensive=comprehensive)
+            context = await build_member_context(
+                db, member_id, fmt_date, comprehensive=comprehensive
+            )
             _base.put_cache(cache_key, context)
     elif health_record_id:
         yield sse({"stage": "context", "message": "Loading health record..."})
@@ -164,7 +170,9 @@ async def generate_insight_stream(
             async for chunk in ollama_chat_stream(model, full_prompt):
                 await queue.put((label, chunk))
         except Exception as exc:
-            logger.warning("Ollama streaming model %s failed: %s", label, _base.exc_description(exc))
+            logger.warning(
+                "Ollama streaming model %s failed: %s", label, _base.exc_description(exc)
+            )
         finally:
             await queue.put(None)  # signal this stream ended
 
@@ -227,7 +235,7 @@ async def generate_insight_stream(
                 full_response, provider = await _race_providers(full_prompt, cloud_providers)
                 if full_response:
                     for i in range(0, len(full_response), 800):
-                        yield sse({"stage": "token", "content": full_response[i:i+800]})
+                        yield sse({"stage": "token", "content": full_response[i : i + 800]})
             except Exception as exc:
                 logger.warning("Cloud providers failed for streaming insight: %s", exc)
 
@@ -301,9 +309,7 @@ async def _call_ollama_insight(prompt: str, context: str) -> tuple[str, str]:
     raise ValueError("All AI providers failed for insight generation")
 
 
-async def _race_providers(
-    prompt: str, providers: list[tuple]
-) -> tuple[str, str]:
+async def _race_providers(prompt: str, providers: list[tuple]) -> tuple[str, str]:
     """Race multiple providers in parallel — return the first successful result."""
     tasks: dict[asyncio.Task, str] = {}
     for provider_fn, label in providers:
@@ -341,7 +347,7 @@ async def check_drug_interactions(
         return []
 
     med_list = "\n".join(
-        f"{i+1}. {m.get('medicine', 'Unknown')}"
+        f"{i + 1}. {m.get('medicine', 'Unknown')}"
         f" (type: {m.get('type', 'N/A')}, dosage: {m.get('dosage', 'N/A')})"
         for i, m in enumerate(medications)
     )
@@ -396,9 +402,7 @@ Focus only on well-documented, clinically meaningful interactions. Do not flag t
     return []
 
 
-async def parse_natural_language(
-    text: str, member_list: str, call_ai_fn
-) -> dict:
+async def parse_natural_language(text: str, member_list: str, call_ai_fn) -> dict:
     """Parse natural language health text into structured record data."""
     prompt = f"""You are a health data extraction assistant. Parse the following natural language input into structured health record fields.
 
@@ -412,7 +416,7 @@ INSTRUCTIONS:
 2. Identify which family member the record is for using name or relationship (dad, mom, son, etc.).
 3. Determine the record type from context.
 4. Extract any relevant health data.
-5. Today's date is {datetime.now().strftime('%Y-%m-%d')} -- use it to resolve relative dates like "yesterday", "last week".
+5. Today's date is {datetime.now().strftime("%Y-%m-%d")} -- use it to resolve relative dates like "yesterday", "last week".
 6. For glucose/blood sugar mentions, include glucose_value and meal_timing.
 7. For vitals mentions (weight, height, BP, heart rate, temperature), include individual fields.
 8. For HbA1c mentions, include hba1c_value (percentage).
@@ -464,9 +468,7 @@ Return this JSON:
         return {}
 
 
-async def parse_search_query(
-    query: str, member_list: str, call_ai_fn
-) -> dict | None:
+async def parse_search_query(query: str, member_list: str, call_ai_fn) -> dict | None:
     """Parse a natural language search query into structured search filters."""
     today = datetime.now().strftime("%Y-%m-%d")
     prompt = f"""You are a search query parser for a family health records app.

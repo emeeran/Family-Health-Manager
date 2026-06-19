@@ -1,4 +1,4 @@
-# Domain Analysis — Family Health Tracker
+# Domain Analysis — Family Health Manager
 
 > Phase p0 — Domain-Driven Design decomposition of `raw_idea.txt`.
 

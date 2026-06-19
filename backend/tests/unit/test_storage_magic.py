@@ -1,4 +1,5 @@
 """Magic-byte verification, focused on the WebP RIFF/WEBP case (#14)."""
+
 from app.core.storage import _magic_matches, ALLOWED_MIME_TYPES
 
 

@@ -17,7 +17,9 @@ class Conversation(Base):
     __tablename__ = "conversations"
 
     id: Mapped[UUID] = mapped_column(primary_key=True, default=uuid4)
-    household_id: Mapped[UUID] = mapped_column(ForeignKey("households.id"), nullable=False, index=True)
+    household_id: Mapped[UUID] = mapped_column(
+        ForeignKey("households.id"), nullable=False, index=True
+    )
     family_member_id: Mapped[UUID | None] = mapped_column(
         ForeignKey("family_members.id"), nullable=True, index=True
     )
@@ -26,10 +28,17 @@ class Conversation(Base):
     )
     title: Mapped[str | None] = mapped_column(String(200), nullable=True)
     created_at: Mapped[datetime] = mapped_column(
-        DateTime, default=lambda: datetime.now(timezone.utc), server_default="CURRENT_TIMESTAMP", nullable=False
+        DateTime,
+        default=lambda: datetime.now(timezone.utc),
+        server_default="CURRENT_TIMESTAMP",
+        nullable=False,
     )
     updated_at: Mapped[datetime] = mapped_column(
-        DateTime, default=lambda: datetime.now(timezone.utc), server_default="CURRENT_TIMESTAMP", onupdate=lambda: datetime.now(timezone.utc), nullable=False
+        DateTime,
+        default=lambda: datetime.now(timezone.utc),
+        server_default="CURRENT_TIMESTAMP",
+        onupdate=lambda: datetime.now(timezone.utc),
+        nullable=False,
     )
 
     household: Mapped["Household"] = relationship(back_populates="conversations")
@@ -37,7 +46,9 @@ class Conversation(Base):
     messages: Mapped[list["Message"]] = relationship(
         back_populates="conversation", cascade="all, delete-orphan"
     )
-    ai_insights: Mapped[list["AIInsight"]] = relationship(back_populates="conversation", passive_deletes=True)
+    ai_insights: Mapped[list["AIInsight"]] = relationship(
+        back_populates="conversation", passive_deletes=True
+    )
 
 
 @dataclass
@@ -47,11 +58,17 @@ class Message(Base):
     __tablename__ = "messages"
 
     id: Mapped[UUID] = mapped_column(primary_key=True, default=uuid4)
-    conversation_id: Mapped[UUID] = mapped_column(ForeignKey("conversations.id"), nullable=False, index=True)
+    conversation_id: Mapped[UUID] = mapped_column(
+        ForeignKey("conversations.id"), nullable=False, index=True
+    )
     role: Mapped[MessageRole] = mapped_column(Enum(MessageRole), nullable=False)
     content: Mapped[str] = mapped_column(Text, nullable=False)
     created_at: Mapped[datetime] = mapped_column(
-        DateTime, default=lambda: datetime.now(timezone.utc), server_default="CURRENT_TIMESTAMP", nullable=False, index=True
+        DateTime,
+        default=lambda: datetime.now(timezone.utc),
+        server_default="CURRENT_TIMESTAMP",
+        nullable=False,
+        index=True,
     )
 
     conversation: Mapped["Conversation"] = relationship(back_populates="messages")

@@ -1,4 +1,5 @@
 """Family member service."""
+
 import asyncio
 import json
 import logging
@@ -85,9 +86,9 @@ class MemberService:
                 "Medications": medical_history.current_medications,
                 "Surgeries": medical_history.past_surgeries,
             }
-            member.medical_history_summary = "; ".join(
-                f"{k}: {v}" for k, v in parts.items() if v
-            ) or None
+            member.medical_history_summary = (
+                "; ".join(f"{k}: {v}" for k, v in parts.items() if v) or None
+            )
             member.blood_group = medical_history.blood_group
             member.family_history = medical_history.family_history
 
@@ -121,16 +122,25 @@ class MemberService:
     async def update_member(self, member_id: UUID, **kwargs) -> FamilyMember:
         """Update member fields. Auto-logs a VITALS record if height/weight changes."""
         allowed = {
-            "first_name", "last_name", "date_of_birth", "gender",
-            "relationship_type", "height_cm", "weight_kg",
-            "emergency_contact_name", "emergency_contact_phone",
-            "patient_id", "phone", "address",
-            "blood_group", "family_history", "medical_history_summary",
-            "allergies_json", "notes",
+            "first_name",
+            "last_name",
+            "date_of_birth",
+            "gender",
+            "relationship_type",
+            "height_cm",
+            "weight_kg",
+            "emergency_contact_name",
+            "emergency_contact_phone",
+            "patient_id",
+            "phone",
+            "address",
+            "blood_group",
+            "family_history",
+            "medical_history_summary",
+            "allergies_json",
+            "notes",
         }
-        result = await self.db.execute(
-            select(FamilyMember).where(FamilyMember.id == member_id)
-        )
+        result = await self.db.execute(select(FamilyMember).where(FamilyMember.id == member_id))
         member = result.scalar_one()
 
         old_h, old_w = member.height_cm, member.weight_kg
@@ -187,7 +197,14 @@ class MemberService:
             payload["temperature"] = temperature
         if source_visit_id is not None:
             payload["_source_visit"] = str(source_visit_id)
-        vital_keys = {"bmi", "height_cm", "weight_kg", "blood_pressure", "heart_rate", "temperature"}
+        vital_keys = {
+            "bmi",
+            "height_cm",
+            "weight_kg",
+            "blood_pressure",
+            "heart_rate",
+            "temperature",
+        }
         if not (vital_keys & payload.keys()):
             return None
         return payload
@@ -208,6 +225,7 @@ class MemberService:
         tagged with the source visit so BMI/vitals history includes the visit and
         edits update in place rather than creating duplicates.
         """
+
         def _fnum(val: object) -> float | None:
             if val is None:
                 return None
@@ -228,7 +246,9 @@ class MemberService:
         heart_rate = _fstr(vitals.get("heart_rate"))
         temperature = _fstr(vitals.get("temperature"))
 
-        if not any(v is not None for v in (weight_kg, height_cm, blood_pressure, heart_rate, temperature)):
+        if not any(
+            v is not None for v in (weight_kg, height_cm, blood_pressure, heart_rate, temperature)
+        ):
             return
 
         payload = self._build_vitals_payload(
@@ -262,7 +282,9 @@ class MemberService:
         )
         for rec in res.scalars().all():
             try:
-                if json.loads(rec.clinical_data or "{}").get("_source_visit") == str(source_visit_id):
+                if json.loads(rec.clinical_data or "{}").get("_source_visit") == str(
+                    source_visit_id
+                ):
                     existing = rec
                     break
             except (json.JSONDecodeError, TypeError):
@@ -335,18 +357,20 @@ class MemberService:
                 if not med_name:
                     continue
 
-                medications.append({
-                    "medicine": med_name,
-                    "type": rx.get("type", ""),
-                    "dosage": rx.get("dosage", ""),
-                    "duration": rx.get("duration", ""),
-                    "timing": rx.get("timing", ""),
-                    "note": rx.get("note", ""),
-                    "prescribed_date": r.record_date.isoformat() if r.record_date else None,
-                    "provider_name": r.provider.name if r.provider else None,
-                    "record_id": str(r.id),
-                    "prescription_index": rx_idx,
-                })
+                medications.append(
+                    {
+                        "medicine": med_name,
+                        "type": rx.get("type", ""),
+                        "dosage": rx.get("dosage", ""),
+                        "duration": rx.get("duration", ""),
+                        "timing": rx.get("timing", ""),
+                        "note": rx.get("note", ""),
+                        "prescribed_date": r.record_date.isoformat() if r.record_date else None,
+                        "provider_name": r.provider.name if r.provider else None,
+                        "record_id": str(r.id),
+                        "prescription_index": rx_idx,
+                    }
+                )
 
         return medications
 
@@ -360,8 +384,10 @@ class MemberService:
         member = await self.get_member(household_id, member_id)
 
         today = date.today()
-        age = today.year - member.date_of_birth.year - (
-            (today.month, today.day) < (member.date_of_birth.month, member.date_of_birth.day)
+        age = (
+            today.year
+            - member.date_of_birth.year
+            - ((today.month, today.day) < (member.date_of_birth.month, member.date_of_birth.day))
         )
         conditions_count = get_conditions_count(member.medical_history_summary)
 
@@ -437,7 +463,9 @@ class MemberService:
         return [
             {
                 "id": str(r.id),
-                "record_type": r.record_type.value if hasattr(r.record_type, "value") else r.record_type,
+                "record_type": r.record_type.value
+                if hasattr(r.record_type, "value")
+                else r.record_type,
                 "record_date": r.record_date.isoformat() if r.record_date else None,
                 "diagnosis": r.diagnosis,
                 "provider_name": r.provider_name,
@@ -446,7 +474,9 @@ class MemberService:
             for r in records
         ]
 
-    async def _detail_provider_assignments(self, member_id: UUID, member: FamilyMember) -> list[dict]:
+    async def _detail_provider_assignments(
+        self, member_id: UUID, member: FamilyMember
+    ) -> list[dict]:
         result = await self.db.execute(
             select(ProviderAssignment)
             .options(joinedload(ProviderAssignment.provider))
@@ -457,11 +487,13 @@ class MemberService:
         for a in result.scalars().unique().all():
             out.append(
                 ProviderAssignmentResponse(
-                    id=a.id, provider_id=a.provider_id,
+                    id=a.id,
+                    provider_id=a.provider_id,
                     provider_name=a.provider.name if a.provider else "Unknown",
                     family_member_id=a.family_member_id,
                     family_member_name=f"{member.first_name} {member.last_name}",
-                    uhid=a.uhid, created_at=a.created_at,
+                    uhid=a.uhid,
+                    created_at=a.created_at,
                 ).model_dump(mode="json")
             )
         return out
@@ -471,7 +503,9 @@ class MemberService:
             select(HealthRecord)
             .where(
                 HealthRecord.family_member_id == member_id,
-                HealthRecord.record_type.in_([RecordType.BLOOD_GLUCOSE, RecordType.DOCTOR_VISIT, RecordType.LAB_REPORT]),
+                HealthRecord.record_type.in_(
+                    [RecordType.BLOOD_GLUCOSE, RecordType.DOCTOR_VISIT, RecordType.LAB_REPORT]
+                ),
                 HealthRecord.is_deleted.is_(False),
             )
             .order_by(HealthRecord.record_date.asc())
@@ -485,8 +519,12 @@ class MemberService:
         cutoff = datetime.now(timezone.utc) - timedelta(hours=24)
         result = await self.db.execute(
             select(AIInsight)
-            .where(AIInsight.prompt == f"__drug_interactions__{member_id}", AIInsight.generated_at >= cutoff)
-            .order_by(AIInsight.generated_at.desc()).limit(1)
+            .where(
+                AIInsight.prompt == f"__drug_interactions__{member_id}",
+                AIInsight.generated_at >= cutoff,
+            )
+            .order_by(AIInsight.generated_at.desc())
+            .limit(1)
         )
         cached = result.scalar_one_or_none()
         if cached:
@@ -506,7 +544,8 @@ class MemberService:
                 AIInsight.prompt.notlike("__preconsult__%"),
                 AIInsight.prompt.notlike("__smartreport__%"),
             )
-            .order_by(AIInsight.generated_at.desc()).limit(1)
+            .order_by(AIInsight.generated_at.desc())
+            .limit(1)
         )
         insight = result.scalar_one_or_none()
         if not insight:
@@ -516,8 +555,12 @@ class MemberService:
     async def _detail_latest_preconsult(self, member_id: UUID) -> dict | None:
         result = await self.db.execute(
             select(AIInsight)
-            .where(AIInsight.prompt.like(f"__preconsult__{member_id}__%"), AIInsight.health_record_id.is_(None))
-            .order_by(AIInsight.generated_at.desc()).limit(1)
+            .where(
+                AIInsight.prompt.like(f"__preconsult__{member_id}__%"),
+                AIInsight.health_record_id.is_(None),
+            )
+            .order_by(AIInsight.generated_at.desc())
+            .limit(1)
         )
         insight = result.scalar_one_or_none()
         if not insight:
@@ -527,8 +570,12 @@ class MemberService:
     async def _detail_latest_smart_report(self, member_id: UUID) -> dict | None:
         result = await self.db.execute(
             select(AIInsight)
-            .where(AIInsight.prompt.like(f"__smartreport__{member_id}__%"), AIInsight.health_record_id.is_(None))
-            .order_by(AIInsight.generated_at.desc()).limit(1)
+            .where(
+                AIInsight.prompt.like(f"__smartreport__{member_id}__%"),
+                AIInsight.health_record_id.is_(None),
+            )
+            .order_by(AIInsight.generated_at.desc())
+            .limit(1)
         )
         insight = result.scalar_one_or_none()
         if not insight:
@@ -539,25 +586,42 @@ class MemberService:
         now = datetime.now(timezone.utc)
         result = await self.db.execute(
             select(Reminder)
-            .where(Reminder.family_member_id == member_id, Reminder.is_active.is_(True), Reminder.start_datetime >= now)
-            .order_by(Reminder.start_datetime.asc()).limit(10)
+            .where(
+                Reminder.family_member_id == member_id,
+                Reminder.is_active.is_(True),
+                Reminder.start_datetime >= now,
+            )
+            .order_by(Reminder.start_datetime.asc())
+            .limit(10)
         )
         return [
-            {"id": str(r.id), "title": r.title, "description": r.description,
-             "start_datetime": r.start_datetime.isoformat() if r.start_datetime else None,
-             "reminder_type": r.reminder_type.value if hasattr(r.reminder_type, "value") else r.reminder_type}
+            {
+                "id": str(r.id),
+                "title": r.title,
+                "description": r.description,
+                "start_datetime": r.start_datetime.isoformat() if r.start_datetime else None,
+                "reminder_type": r.reminder_type.value
+                if hasattr(r.reminder_type, "value")
+                else r.reminder_type,
+            }
             for r in result.scalars().all()
         ]
 
     async def _detail_vaccinations(self, member_id: UUID) -> list[dict]:
         result = await self.db.execute(
-            select(Vaccination).where(Vaccination.family_member_id == member_id)
+            select(Vaccination)
+            .where(Vaccination.family_member_id == member_id)
             .order_by(Vaccination.date_administered.desc())
         )
         return [
-            {"id": str(v.id), "name": v.name,
-             "date_administered": v.date_administered.isoformat() if v.date_administered else None,
-             "booster_due_date": v.booster_due_date.isoformat() if v.booster_due_date else None,
-             "notes": v.notes}
+            {
+                "id": str(v.id),
+                "name": v.name,
+                "date_administered": v.date_administered.isoformat()
+                if v.date_administered
+                else None,
+                "booster_due_date": v.booster_due_date.isoformat() if v.booster_due_date else None,
+                "notes": v.notes,
+            }
             for v in result.scalars().all()
         ]

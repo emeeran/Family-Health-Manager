@@ -2,6 +2,7 @@
 
 Public API is identical to the original monolithic ai_service.py.
 """
+
 import asyncio
 import json
 import logging
@@ -70,11 +71,13 @@ class AIService:
     @classmethod
     def _get_lock(cls) -> asyncio.Lock:
         from app.services.ai import base as _base
+
         return _base.get_lock()
 
     @classmethod
     async def _get_cloud_client(cls) -> httpx.AsyncClient:
         from app.services.ai import base as _base
+
         client = await _base.get_cloud_client()
         cls._cloud_client = _base.cloud_client
         return client
@@ -82,6 +85,7 @@ class AIService:
     @classmethod
     async def _get_ollama_client(cls) -> httpx.AsyncClient:
         from app.services.ai import base as _base
+
         client = await _base.get_ollama_client()
         cls._ollama_client = _base.ollama_client
         return client
@@ -89,18 +93,21 @@ class AIService:
     @classmethod
     def invalidate_member_cache(cls, member_id: "UUID | str") -> None:  # noqa: F821
         from app.services.ai import base as _base
+
         _base.invalidate_member_cache(member_id)
         cls._member_context_cache = _base.member_context_cache
 
     @classmethod
     def _put_cache(cls, key: str, value: str) -> None:
         from app.services.ai import base as _base
+
         _base.put_cache(key, value)
         cls._member_context_cache = _base.member_context_cache
 
     @classmethod
     def _get_cache(cls, key: str) -> str | None:
         from app.services.ai import base as _base
+
         return _base.get_cache(key)
 
     # ---- Static helper re-exports (test compatibility) ----
@@ -108,21 +115,25 @@ class AIService:
     @staticmethod
     def _strip_markdown_fences(text: str) -> str:
         from app.services.ai.document_extractor import strip_markdown_fences
+
         return strip_markdown_fences(text)
 
     @staticmethod
     def _summarize_clinical_data(raw: str | None) -> str:
         from app.services.ai.context_builder import summarize_clinical_data
+
         return summarize_clinical_data(raw)
 
     @staticmethod
     def _build_lab_trends_from_records(records: list) -> str:
         from app.services.ai.context_builder import build_lab_trends_from_records
+
         return build_lab_trends_from_records(records)
 
     @staticmethod
     def _fmt_date(d: object) -> str:
         from app.services.ai.context_builder import fmt_date
+
         return fmt_date(d)
 
     # ---- Constructor ----
@@ -210,7 +221,9 @@ class AIService:
         from app.schemas.ai_provider_config import PROVIDER_LABELS
 
         system_note = _CLINICAL_SYSTEM_NOTE.format(today=self._fmt_date(date.today()))
-        full_prompt = f"{system_note}{context}\n\nUser: {prompt}\n\nAssistant:" if context else prompt
+        full_prompt = (
+            f"{system_note}{context}\n\nUser: {prompt}\n\nAssistant:" if context else prompt
+        )
 
         full_response = ""
         provider = ""
@@ -219,10 +232,14 @@ class AIService:
 
         # Primary: Ollama models (local streaming) — use configured model
         ollama_cfg = next((p for p in config.providers if p.id == "ollama"), None)
-        ollama_model = ollama_cfg.model if ollama_cfg and ollama_cfg.model else settings.OLLAMA_MODEL
+        ollama_model = (
+            ollama_cfg.model if ollama_cfg and ollama_cfg.model else settings.OLLAMA_MODEL
+        )
         ollama_models = [(ollama_model, f"Ollama {ollama_model}")]
         if settings.OLLAMA_TEXT_MODEL != ollama_model:
-            ollama_models.append((settings.OLLAMA_TEXT_MODEL, f"Ollama {settings.OLLAMA_TEXT_MODEL}"))
+            ollama_models.append(
+                (settings.OLLAMA_TEXT_MODEL, f"Ollama {settings.OLLAMA_TEXT_MODEL}")
+            )
         for model, label in ollama_models:
             try:
                 yield sse({"stage": "provider", "provider": label})
@@ -243,7 +260,9 @@ class AIService:
                     provider = label
                     break
             except Exception as exc:
-                logger.warning("Ollama streaming model %s failed: %s", label, _base.exc_description(exc))
+                logger.warning(
+                    "Ollama streaming model %s failed: %s", label, _base.exc_description(exc)
+                )
 
         # Fallback: cloud providers (non-streaming) — use household-configured models
         if not full_response:
@@ -260,10 +279,12 @@ class AIService:
             if cloud_providers:
                 try:
                     yield sse({"stage": "provider", "provider": "Cloud AI"})
-                    full_response, provider = await self._race_providers(full_prompt, cloud_providers)
+                    full_response, provider = await self._race_providers(
+                        full_prompt, cloud_providers
+                    )
                     if full_response:
                         for i in range(0, len(full_response), 40):
-                            yield sse({"stage": "token", "content": full_response[i:i+40]})
+                            yield sse({"stage": "token", "content": full_response[i : i + 40]})
                 except Exception as exc:
                     logger.warning("Cloud providers failed for streaming insight: %s", exc)
 
@@ -279,7 +300,11 @@ class AIService:
         self.db.add(insight)
         await self.db.flush()
 
-        complete_event: dict = {"stage": "complete", "insight_id": str(insight.id), "provider": provider}
+        complete_event: dict = {
+            "stage": "complete",
+            "insight_id": str(insight.id),
+            "provider": provider,
+        }
         if member_id:
             complete_event["member_id"] = str(member_id)
         # Let a caller (e.g. the Smart Report router) enrich the final frame
@@ -317,36 +342,40 @@ class AIService:
         self.db.add(user_msg)
         await self.db.flush()
 
-        yield sse({
-            "stage": "user_message",
-            "id": str(user_msg.id),
-            "content": user_message,
-            "created_at": user_msg.created_at.isoformat(),
-        })
+        yield sse(
+            {
+                "stage": "user_message",
+                "id": str(user_msg.id),
+                "content": user_message,
+                "created_at": user_msg.created_at.isoformat(),
+            }
+        )
 
         health_context = ""
         if member_id:
             cache_key = str(member_id)
             if not self._get_cache(cache_key):
                 yield sse({"stage": "context", "message": "Loading health context..."})
-                self._put_cache(cache_key, await self._build_member_context(
-                    member_id, comprehensive=True
-                ))
+                self._put_cache(
+                    cache_key, await self._build_member_context(member_id, comprehensive=True)
+                )
             health_context = self._get_cache(cache_key) or ""
         elif household_id:
             cache_key = f"hh:{household_id}"
             if not self._get_cache(cache_key):
                 yield sse({"stage": "context", "message": "Loading health context..."})
-                self._put_cache(cache_key, await self._build_household_context(
-                    household_id
-                ))
+                self._put_cache(cache_key, await self._build_household_context(household_id))
             health_context = self._get_cache(cache_key) or ""
 
         history = await self._get_conversation_history(conversation_id, limit=10)
         full_context = f"{health_context}\n{history}" if health_context else history
 
         system_note = _CLINICAL_SYSTEM_NOTE.format(today=self._fmt_date(date.today()))
-        full_prompt = f"{system_note}{full_context}\n\nUser: {user_message}\n\nAssistant:" if full_context else user_message
+        full_prompt = (
+            f"{system_note}{full_context}\n\nUser: {user_message}\n\nAssistant:"
+            if full_context
+            else user_message
+        )
 
         full_response = ""
         provider = ""
@@ -355,10 +384,14 @@ class AIService:
 
         # Primary: Ollama models (local streaming) — use configured model
         ollama_cfg = next((p for p in config.providers if p.id == "ollama"), None)
-        ollama_model = ollama_cfg.model if ollama_cfg and ollama_cfg.model else settings.OLLAMA_MODEL
+        ollama_model = (
+            ollama_cfg.model if ollama_cfg and ollama_cfg.model else settings.OLLAMA_MODEL
+        )
         ollama_models = [(ollama_model, f"Ollama {ollama_model}")]
         if settings.OLLAMA_TEXT_MODEL != ollama_model:
-            ollama_models.append((settings.OLLAMA_TEXT_MODEL, f"Ollama {settings.OLLAMA_TEXT_MODEL}"))
+            ollama_models.append(
+                (settings.OLLAMA_TEXT_MODEL, f"Ollama {settings.OLLAMA_TEXT_MODEL}")
+            )
         for model, label in ollama_models:
             try:
                 yield sse({"stage": "provider", "provider": label})
@@ -379,7 +412,9 @@ class AIService:
                     provider = label
                     break
             except Exception as exc:
-                logger.warning("Ollama streaming model %s failed: %s", label, _base.exc_description(exc))
+                logger.warning(
+                    "Ollama streaming model %s failed: %s", label, _base.exc_description(exc)
+                )
 
         if not full_response:
             from app.schemas.ai_provider_config import PROVIDER_LABELS
@@ -397,7 +432,9 @@ class AIService:
             if cloud_providers:
                 try:
                     yield sse({"stage": "provider", "provider": "Cloud AI"})
-                    full_response, provider = await self._race_providers(full_prompt, cloud_providers)
+                    full_response, provider = await self._race_providers(
+                        full_prompt, cloud_providers
+                    )
                     if full_response:
                         yield sse({"stage": "token", "content": full_response})
                 except Exception as exc:
@@ -423,19 +460,21 @@ class AIService:
         self.db.add(insight)
         await self.db.flush()
 
-        yield sse({
-            "stage": "complete",
-            "assistant_message": {
-                "id": str(assistant_msg.id),
-                "conversation_id": str(conversation_id),
-                "role": "assistant",
-                "content": full_response,
-                "created_at": assistant_msg.created_at.isoformat(),
-                "disclaimer": "This is not medical advice. Consult a healthcare professional.",
-            },
-            "provider": provider,
-            "health_context": health_context,
-        })
+        yield sse(
+            {
+                "stage": "complete",
+                "assistant_message": {
+                    "id": str(assistant_msg.id),
+                    "conversation_id": str(conversation_id),
+                    "role": "assistant",
+                    "content": full_response,
+                    "created_at": assistant_msg.created_at.isoformat(),
+                    "disclaimer": "This is not medical advice. Consult a healthcare professional.",
+                },
+                "provider": provider,
+                "health_context": health_context,
+            }
+        )
 
     async def chat(
         self,
@@ -459,16 +498,14 @@ class AIService:
         if member_id:
             cache_key = str(member_id)
             if not self._get_cache(cache_key):
-                self._put_cache(cache_key, await self._build_member_context(
-                    member_id, comprehensive=True
-                ))
+                self._put_cache(
+                    cache_key, await self._build_member_context(member_id, comprehensive=True)
+                )
             health_context = self._get_cache(cache_key) or ""
         elif household_id:
             cache_key = f"hh:{household_id}"
             if not self._get_cache(cache_key):
-                self._put_cache(cache_key, await self._build_household_context(
-                    household_id
-                ))
+                self._put_cache(cache_key, await self._build_household_context(household_id))
             health_context = self._get_cache(cache_key) or ""
 
         full_context = f"{health_context}\n{history}" if health_context else history
@@ -498,16 +535,19 @@ class AIService:
     async def check_drug_interactions(self, medications: list[dict]) -> list[dict]:
         """Check drug interactions between a list of medications using AI."""
         from app.services.ai.insight_generator import check_drug_interactions
+
         return await check_drug_interactions(self.db, medications, self._call_ai)
 
     async def parse_natural_language(self, text: str, member_list: str) -> dict:
         """Parse natural language health text into structured record data."""
         from app.services.ai.insight_generator import parse_natural_language
+
         return await parse_natural_language(text, member_list, self._call_ai)
 
     async def parse_search_query(self, query: str, member_list: str) -> dict | None:
         """Parse a natural language search query into structured search filters."""
         from app.services.ai.insight_generator import parse_search_query
+
         return await parse_search_query(query, member_list, self._call_ai)
 
     # ---- Document extraction ----
@@ -515,6 +555,7 @@ class AIService:
     async def classify_document(self, file_path: str, mime_type: str):
         """Classify a document into a record type using AI with keyword fallback."""
         from app.services.ai.document_extractor import classify_document
+
         return await classify_document(file_path, mime_type, self._call_ai)
 
     async def extract_medical_data(
@@ -544,9 +585,7 @@ class AIService:
                     from app.schemas.health_record import ExtractedFields
 
                     return ExtractionResult(
-                        extracted=ExtractedFields.model_validate_json(
-                            cached["extracted_json"]
-                        ),
+                        extracted=ExtractedFields.model_validate_json(cached["extracted_json"]),
                         transcription=cached.get("transcription"),
                     )
                 except Exception as exc:
@@ -633,13 +672,16 @@ class AIService:
         context_str = "\n".join(parts)
 
         # Load prompt template
-        prompt_path = Path(__file__).resolve().parent.parent.parent.parent / "prompts" / "consultation_summary.md"
+        prompt_path = (
+            Path(__file__).resolve().parent.parent.parent.parent
+            / "prompts"
+            / "consultation_summary.md"
+        )
         try:
             prompt_template = prompt_path.read_text()
         except FileNotFoundError:
             prompt_template = (
-                "Generate a clear consultation summary from this medical data.\n\n"
-                "{extracted_data}"
+                "Generate a clear consultation summary from this medical data.\n\n{extracted_data}"
             )
 
         prompt = prompt_template.replace("{extracted_data}", context_str)
@@ -748,7 +790,8 @@ class AIService:
         # Repo-root prompts/ dir (5 parents up from backend/app/services/ai/).
         prompt_path = (
             Path(__file__).resolve().parent.parent.parent.parent.parent
-            / "prompts" / "transcription_report.md"
+            / "prompts"
+            / "transcription_report.md"
         )
         try:
             prompt_template = prompt_path.read_text()
@@ -791,7 +834,9 @@ class AIService:
             "address": "Primary Address",
             "blood_group": "Blood Group",
         }
-        demo = [f"**{lbl}:** {member_ctx[k]}" for k, lbl in demo_labels.items() if member_ctx.get(k)]
+        demo = [
+            f"**{lbl}:** {member_ctx[k]}" for k, lbl in demo_labels.items() if member_ctx.get(k)
+        ]
         if demo:
             parts.append("PATIENT DEMOGRAPHICS\n" + "\n".join(demo))
 
@@ -886,7 +931,11 @@ class AIService:
         s2: list[str] = []
         prov_line = provider_ctx.get("name", "")
         if provider_ctx.get("speciality"):
-            prov_line = f"{prov_line}, {provider_ctx['speciality']}" if prov_line else provider_ctx["speciality"]
+            prov_line = (
+                f"{prov_line}, {provider_ctx['speciality']}"
+                if prov_line
+                else provider_ctx["speciality"]
+            )
         if prov_line:
             s2.append(f"- **Consultant Physician:** {prov_line}")
         if extracted_data.get("chief_complaint"):
@@ -945,30 +994,39 @@ class AIService:
 
     async def _call_ollama_text(self, prompt: str, model: str | None = None) -> str | None:
         from app.services.ai.providers.ollama import call_ollama_text
+
         return await call_ollama_text(prompt, model=model)
 
     async def _call_gemini_text(self, prompt: str, model: str | None = None) -> str | None:
         from app.services.ai.providers.gemini import call_gemini_text
+
         return await call_gemini_text(prompt, model=model or "gemini-2.5-flash")
 
     async def _call_openai_text(self, prompt: str, model: str | None = None) -> str | None:
         from app.services.ai.providers.openai import call_openai_text
+
         return await call_openai_text(prompt, model=model)
 
     async def _call_groq_text(self, prompt: str, model: str | None = None) -> str | None:
         from app.services.ai.providers.groq import call_groq_text
-        return await call_groq_text(prompt, model=model or "meta-llama/llama-4-scout-17b-16e-instruct")
+
+        return await call_groq_text(
+            prompt, model=model or "meta-llama/llama-4-scout-17b-16e-instruct"
+        )
 
     async def _call_openrouter_text(self, prompt: str, model: str | None = None) -> str | None:
         from app.services.ai.providers.openrouter import call_openrouter_text
+
         return await call_openrouter_text(prompt, model=model or "deepseek/deepseek-v4-flash")
 
     async def _ollama_chat(self, model: str, prompt: str) -> str | None:
         from app.services.ai.providers.ollama import ollama_chat
+
         return await ollama_chat(model, prompt)
 
     async def _ollama_chat_stream(self, model: str, prompt: str) -> AsyncGenerator[str, None]:
         from app.services.ai.providers.ollama import ollama_chat_stream
+
         async for chunk in ollama_chat_stream(model, prompt):
             yield chunk
 
@@ -991,6 +1049,7 @@ class AIService:
                 from sqlalchemy import select
                 from app.models.base import Household
                 from app.schemas.household import FeatureSettings
+
                 result = await self.db.execute(
                     select(Household).where(Household.id == self.household_id)
                 )
@@ -1003,6 +1062,7 @@ class AIService:
                 logger.warning("Failed to load provider config: %s", exc)
         if self._provider_config is None:
             from app.schemas.ai_provider_config import default_provider_config
+
             self._provider_config = default_provider_config()
         return self._provider_config
 
@@ -1024,7 +1084,11 @@ class AIService:
         """
         from app.schemas.ai_provider_config import PROVIDER_LABELS
         from app.services.ai import base as _base
-        from app.services.ai.base import is_provider_available, record_provider_failure, record_provider_success
+        from app.services.ai.base import (
+            is_provider_available,
+            record_provider_failure,
+            record_provider_success,
+        )
 
         # Performance: check AI response cache before calling any provider
         cached = _base.get_ai_response(prompt, context)
@@ -1032,7 +1096,9 @@ class AIService:
             return cached
 
         system_note = _CLINICAL_SYSTEM_NOTE.format(today=self._fmt_date(date.today()))
-        full_prompt = f"{system_note}{context}\n\nUser: {prompt}\n\nAssistant:" if context else prompt
+        full_prompt = (
+            f"{system_note}{context}\n\nUser: {prompt}\n\nAssistant:" if context else prompt
+        )
 
         config = await self._get_provider_config()
         for prov in config.providers:
@@ -1055,7 +1121,9 @@ class AIService:
                     # Performance: log token-sized metrics at DEBUG for usage tracking
                     logger.debug(
                         "AI call: provider=%s prompt_chars=%d response_chars=%d",
-                        label, len(full_prompt), len(result),
+                        label,
+                        len(full_prompt),
+                        len(result),
                     )
                     logger.info("AI text call succeeded via %s", label)
                     # Performance: store successful response for cache reuse
@@ -1067,12 +1135,11 @@ class AIService:
                 continue
         raise ValueError("All AI providers failed")
 
-    async def _call_ai_excluding(
-        self, prompt: str, exclude_provider: str
-    ) -> tuple[str, str]:
+    async def _call_ai_excluding(self, prompt: str, exclude_provider: str) -> tuple[str, str]:
         """Call AI provider with failover, skipping the excluded provider."""
         from app.schemas.ai_provider_config import PROVIDER_LABELS
         from app.services.ai import base as _base
+
         config = await self._get_provider_config()
         for prov in config.providers:
             if not prov.enabled:
@@ -1089,7 +1156,9 @@ class AIService:
                     logger.info("Verification AI call succeeded via %s", label)
                     return result, label
             except Exception as exc:
-                logger.warning("Verification provider %s failed: %s", label, _base.exc_description(exc))
+                logger.warning(
+                    "Verification provider %s failed: %s", label, _base.exc_description(exc)
+                )
                 continue
         raise ValueError("All verification providers failed")
 
@@ -1098,16 +1167,22 @@ class AIService:
         from app.schemas.ai_provider_config import PROVIDER_LABELS
 
         system_note = _CLINICAL_SYSTEM_NOTE.format(today=self._fmt_date(date.today()))
-        full_prompt = f"{system_note}{context}\n\nUser: {prompt}\n\nAssistant:" if context else prompt
+        full_prompt = (
+            f"{system_note}{context}\n\nUser: {prompt}\n\nAssistant:" if context else prompt
+        )
 
         config = await self._get_provider_config()
 
         # Primary: Ollama models (local first for privacy and speed)
         ollama_cfg = next((p for p in config.providers if p.id == "ollama"), None)
-        ollama_model = ollama_cfg.model if ollama_cfg and ollama_cfg.model else settings.OLLAMA_MODEL
+        ollama_model = (
+            ollama_cfg.model if ollama_cfg and ollama_cfg.model else settings.OLLAMA_MODEL
+        )
         ollama_models = [(ollama_model, f"Ollama {ollama_model}")]
         if settings.OLLAMA_TEXT_MODEL != ollama_model:
-            ollama_models.append((settings.OLLAMA_TEXT_MODEL, f"Ollama {settings.OLLAMA_TEXT_MODEL}"))
+            ollama_models.append(
+                (settings.OLLAMA_TEXT_MODEL, f"Ollama {settings.OLLAMA_TEXT_MODEL}")
+            )
         for model, label in ollama_models:
             try:
                 result = await self._ollama_chat(model, full_prompt)
@@ -1115,7 +1190,9 @@ class AIService:
                     # Performance: log token-sized metrics at DEBUG for usage tracking
                     logger.debug(
                         "AI call: provider=%s prompt_chars=%d response_chars=%d",
-                        label, len(full_prompt), len(result),
+                        label,
+                        len(full_prompt),
+                        len(result),
                     )
                     return result, label
             except Exception as exc:
@@ -1142,9 +1219,7 @@ class AIService:
 
         raise ValueError("All AI providers failed for insight generation")
 
-    async def _race_providers(
-        self, prompt: str, providers: list[tuple]
-    ) -> tuple[str, str]:
+    async def _race_providers(self, prompt: str, providers: list[tuple]) -> tuple[str, str]:
         """Race multiple providers in parallel -- return the first successful result.
 
         Skips providers whose circuit breaker is open, avoiding wasted requests
@@ -1152,7 +1227,11 @@ class AIService:
 
         Each provider tuple is (fn, label) or (fn, label, model).
         """
-        from app.services.ai.base import is_provider_available, record_provider_failure, record_provider_success
+        from app.services.ai.base import (
+            is_provider_available,
+            record_provider_failure,
+            record_provider_success,
+        )
 
         tasks: dict[asyncio.Task, str] = {}
         for entry in providers:
@@ -1185,7 +1264,9 @@ class AIService:
                         # Performance: log token-sized metrics at DEBUG for usage tracking
                         logger.debug(
                             "AI call: provider=%s prompt_chars=%d response_chars=%d",
-                            label, len(prompt), len(result),
+                            label,
+                            len(prompt),
+                            len(result),
                         )
                         for t in pending:
                             t.cancel()
@@ -1203,20 +1284,25 @@ class AIService:
 
     async def _build_member_context(self, member_id: UUID, comprehensive: bool = False) -> str:
         from app.services.ai.context_builder import build_member_context, fmt_date
+
         return await build_member_context(self.db, member_id, fmt_date, comprehensive=comprehensive)
 
     async def _build_medication_summary(self, member_id: UUID) -> str:
         from app.services.ai.context_builder import build_medication_summary
+
         return await build_medication_summary(self.db, member_id)
 
     async def _build_household_context(self, household_id: UUID) -> str:
         from app.services.ai.context_builder import build_household_context, fmt_date
+
         return await build_household_context(self.db, household_id, fmt_date)
 
     async def _build_record_context(self, record_id: UUID) -> str:
         from app.services.ai.context_builder import build_record_context, fmt_date
+
         return await build_record_context(self.db, record_id, fmt_date)
 
     async def _get_conversation_history(self, conversation_id: UUID, limit: int = 10) -> str:
         from app.services.ai.chat_assistant import _get_conversation_history
+
         return await _get_conversation_history(self.db, conversation_id, limit)

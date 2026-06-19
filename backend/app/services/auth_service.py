@@ -1,10 +1,16 @@
 """Authentication service."""
+
 from datetime import datetime, timezone
 from uuid import UUID
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 from app.models.base import User, Household
-from app.core.security import hash_password, verify_password, create_access_token, validate_password_strength
+from app.core.security import (
+    hash_password,
+    verify_password,
+    create_access_token,
+    validate_password_strength,
+)
 
 
 class AuthService:
@@ -27,6 +33,7 @@ class AuthService:
 
         # Auto-promote first registered user to admin
         from sqlalchemy import func
+
         count_result = await self.db.execute(select(func.count()).select_from(User))
         is_first_user = count_result.scalar() == 0
 

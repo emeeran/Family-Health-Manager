@@ -17,8 +17,12 @@ class HealthRecord(Base):
     __tablename__ = "health_records"
 
     id: Mapped[UUID] = mapped_column(primary_key=True, default=uuid4)
-    family_member_id: Mapped[UUID] = mapped_column(ForeignKey("family_members.id", ondelete="CASCADE"), nullable=False, index=True)
-    provider_id: Mapped[UUID | None] = mapped_column(ForeignKey("providers.id"), nullable=True, index=True)
+    family_member_id: Mapped[UUID] = mapped_column(
+        ForeignKey("family_members.id", ondelete="CASCADE"), nullable=False, index=True
+    )
+    provider_id: Mapped[UUID | None] = mapped_column(
+        ForeignKey("providers.id"), nullable=True, index=True
+    )
     record_type: Mapped[RecordType] = mapped_column(Enum(RecordType), nullable=False, index=True)
     record_date: Mapped[date] = mapped_column(Date, nullable=False, index=True)
     record_time: Mapped[time | None] = mapped_column(Time, nullable=True)
@@ -31,10 +35,17 @@ class HealthRecord(Base):
     tags: Mapped[str | None] = mapped_column(Text, nullable=True)
     is_deleted: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False, index=True)
     created_at: Mapped[datetime] = mapped_column(
-        DateTime, default=lambda: datetime.now(timezone.utc), server_default="CURRENT_TIMESTAMP", nullable=False
+        DateTime,
+        default=lambda: datetime.now(timezone.utc),
+        server_default="CURRENT_TIMESTAMP",
+        nullable=False,
     )
     updated_at: Mapped[datetime] = mapped_column(
-        DateTime, default=lambda: datetime.now(timezone.utc), server_default="CURRENT_TIMESTAMP", onupdate=lambda: datetime.now(timezone.utc), nullable=False
+        DateTime,
+        default=lambda: datetime.now(timezone.utc),
+        server_default="CURRENT_TIMESTAMP",
+        onupdate=lambda: datetime.now(timezone.utc),
+        nullable=False,
     )
 
     family_member: Mapped["FamilyMember"] = relationship(back_populates="health_records")
@@ -50,6 +61,14 @@ class HealthRecord(Base):
     ai_insights: Mapped[list["AIInsight"]] = relationship(back_populates="health_record")
 
     __table_args__ = (
-        Index("ix_health_records_member_deleted_date", "family_member_id", "is_deleted", "record_date"),
-        Index("ix_health_records_member_type_deleted_date", "family_member_id", "record_type", "is_deleted", "record_date"),
+        Index(
+            "ix_health_records_member_deleted_date", "family_member_id", "is_deleted", "record_date"
+        ),
+        Index(
+            "ix_health_records_member_type_deleted_date",
+            "family_member_id",
+            "record_type",
+            "is_deleted",
+            "record_date",
+        ),
     )

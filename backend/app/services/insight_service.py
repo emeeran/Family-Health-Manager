@@ -1,4 +1,5 @@
 """AI insight generation for health records."""
+
 import asyncio
 import json
 import logging
@@ -114,7 +115,8 @@ class InsightService:
                 if rx and isinstance(rx, list):
                     medications = "; ".join(
                         f"{p.get('type', '')} {p.get('medicine', '')} {p.get('dosage', '')}".strip()
-                        for p in rx if isinstance(p, dict)
+                        for p in rx
+                        if isinstance(p, dict)
                     )
         except (json.JSONDecodeError, ValueError):
             pass
@@ -136,9 +138,7 @@ class InsightService:
         """
         db = SessionLocal()
         try:
-            result = await db.execute(
-                select(HealthRecord).where(HealthRecord.id == record_id)
-            )
+            result = await db.execute(select(HealthRecord).where(HealthRecord.id == record_id))
             record = result.scalar_one_or_none()
             if not record:
                 logger.warning("Record %s not found for insight generation", record_id)
@@ -166,6 +166,7 @@ class InsightService:
 
 def spawn_insight_task(record_id: "UUID") -> None:
     """Fire-and-forget insight generation — errors are logged, never raised."""
+
     async def _run():
         svc = InsightService(None)  # type: ignore  # creates own session
         await svc.generate_record_insight(record_id)
@@ -177,14 +178,15 @@ def spawn_insight_task(record_id: "UUID") -> None:
         logger.warning("No running event loop — skipping insight generation")
 
 
-def spawn_insight_verification_task(insight_id: "UUID", health_context: str, member_id: str | None = None) -> None:
+def spawn_insight_verification_task(
+    insight_id: "UUID", health_context: str, member_id: str | None = None
+) -> None:
     """Fire-and-forget insight cross-verification using a different AI provider."""
+
     async def _run():
         db = SessionLocal()
         try:
-            result = await db.execute(
-                select(AIInsight).where(AIInsight.id == insight_id)
-            )
+            result = await db.execute(select(AIInsight).where(AIInsight.id == insight_id))
             insight = result.scalar_one_or_none()
             if not insight or insight.verification_status != "pending":
                 return
@@ -196,13 +198,17 @@ def spawn_insight_verification_task(insight_id: "UUID", health_context: str, mem
             if member_id:
                 try:
                     from uuid import UUID as _UUID
-                    built = await ai_service._build_member_context(_UUID(member_id), comprehensive=True)
+
+                    built = await ai_service._build_member_context(
+                        _UUID(member_id), comprehensive=True
+                    )
                     if built:
                         ctx = built[:2000]
                 except Exception:
                     logger.debug("Could not build member context for verification, using fallback")
 
             from app.services.verification_service import VerificationService
+
             verification_svc = VerificationService(db, ai_service)
             await verification_svc.verify_insight(insight, ctx)
             await db.commit()
@@ -212,9 +218,7 @@ def spawn_insight_verification_task(insight_id: "UUID", health_context: str, mem
             logger.exception("Failed to verify insight %s", insight_id)
             # Mark as unverifiable so the UI doesn't spin forever
             try:
-                result2 = await db.execute(
-                    select(AIInsight).where(AIInsight.id == insight_id)
-                )
+                result2 = await db.execute(select(AIInsight).where(AIInsight.id == insight_id))
                 stuck = result2.scalar_one_or_none()
                 if stuck and stuck.verification_status == "pending":
                     stuck.verification_status = "unverifiable"

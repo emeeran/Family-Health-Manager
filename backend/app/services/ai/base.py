@@ -1,4 +1,5 @@
 """Shared httpx clients, cache, lock management, and circuit breaker for AI service."""
+
 import asyncio
 import hashlib
 import logging
@@ -43,7 +44,9 @@ def record_provider_failure(provider_name: str) -> None:
         entry["opened_at"] = time.monotonic()
         logger.info(
             "Circuit OPEN for provider %s after %d failures (cooldown %ds)",
-            provider_name, entry["failures"], int(_COOLDOWN_SECONDS),
+            provider_name,
+            entry["failures"],
+            int(_COOLDOWN_SECONDS),
         )
 
 
@@ -244,9 +247,7 @@ def get_ai_response(question: str, member_context_ids: str) -> tuple[str, str] |
     return None
 
 
-def put_ai_response(
-    question: str, member_context_ids: str, response: str, provider: str
-) -> None:
+def put_ai_response(question: str, member_context_ids: str, response: str, provider: str) -> None:
     """Store an AI response in the response cache with LRU eviction."""
     key = _ai_response_cache_key(question, member_context_ids)
     if key in _ai_response_cache:
@@ -282,7 +283,7 @@ async def retry_with_backoff(
                 raise
 
             # Respect Retry-After header on 429
-            delay = base_delay * (2 ** attempt)
+            delay = base_delay * (2**attempt)
             if status == 429:
                 retry_after = exc.response.headers.get("Retry-After")
                 if retry_after:
@@ -293,7 +294,11 @@ async def retry_with_backoff(
 
             logger.warning(
                 "Retryable error %d on attempt %d/%d, waiting %.1fs: %s",
-                status, attempt + 1, max_retries + 1, delay, exc,
+                status,
+                attempt + 1,
+                max_retries + 1,
+                delay,
+                exc,
             )
             await asyncio.sleep(delay)
     raise last_exc

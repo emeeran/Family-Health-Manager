@@ -1,4 +1,5 @@
 """Integration tests for notifications."""
+
 import pytest
 from datetime import datetime, timedelta, timezone
 
@@ -17,9 +18,7 @@ async def _get_household_id(auth_client, db_session):
     token = auth_client.params["token"]
     user_id = await decode_access_token(token, db_session)
 
-    result = await db_session.execute(
-        select(Household).where(Household.primary_user_id == user_id)
-    )
+    result = await db_session.execute(select(Household).where(Household.primary_user_id == user_id))
     return result.scalar_one().id
 
 
@@ -83,7 +82,8 @@ async def test_mark_notification_read(auth_client, db_session):
 async def test_delete_notification(auth_client, db_session):
     """Delete a notification returns 204."""
     notification_id = await _create_notification(
-        auth_client, db_session,
+        auth_client,
+        db_session,
         title="Delete Me",
         message="To be deleted",
         reminder_type="medication",

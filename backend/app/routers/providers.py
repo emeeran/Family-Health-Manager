@@ -1,4 +1,5 @@
 """Provider router."""
+
 import json
 from collections import Counter
 from datetime import datetime, timezone
@@ -19,9 +20,7 @@ from app.models.record import HealthRecord
 router = APIRouter(prefix="/providers", tags=["Providers"])
 
 
-async def _enrich_with_members(
-    service: ProviderService, providers: list[Provider]
-) -> list[dict]:
+async def _enrich_with_members(service: ProviderService, providers: list[Provider]) -> list[dict]:
     """Attach assigned_members to each provider for the response."""
     from app.schemas.provider import AssignedMember
 
@@ -231,14 +230,8 @@ async def get_provider_stats(
     return {
         "visit_count": visit_count,
         "last_visit": last_visit.isoformat() if last_visit else None,
-        "top_diagnoses": [
-            {"diagnosis": d, "count": c}
-            for d, c in diagnoses.most_common(10)
-        ],
-        "most_prescribed": [
-            {"medicine": m, "count": c}
-            for m, c in medicines.most_common(10)
-        ],
+        "top_diagnoses": [{"diagnosis": d, "count": c} for d, c in diagnoses.most_common(10)],
+        "most_prescribed": [{"medicine": m, "count": c} for m, c in medicines.most_common(10)],
     }
 
 

@@ -4,6 +4,7 @@ The original record must be encrypted the moment it lands (it used to sit as
 plaintext in ``staging/`` until attach, or for 24h if the upload was abandoned),
 and its SHA-256 must be available at extraction time so dedup/caching work.
 """
+
 import hashlib
 import io
 
@@ -75,9 +76,9 @@ async def test_finalize_relocates_encrypted_file_and_cleans_up(isolated_storage)
     )
 
     assert returned_hash == content_hash
-    assert final_path.exists()              # relocated to content-addressable path
-    assert not staged_path.exists()         # staged copy gone
-    assert meta_path.exists()               # meta sidecar persists until attach cleans it
+    assert final_path.exists()  # relocated to content-addressable path
+    assert not staged_path.exists()  # staged copy gone
+    assert meta_path.exists()  # meta sidecar persists until attach cleans it
     assert await decrypt_file(final_path) == PDF_BODY
     # Sharded content-addressable layout: files/<2-char-shard>/<hash>.pdf
     assert final_path.parent.name == content_hash[:2]
@@ -95,8 +96,8 @@ async def test_finalize_dedups_identical_content(isolated_storage):
     assert h2 == h1  # identical plaintext → identical hash
     final2, _ = await finalize_staged_to_content_addressed(staged2, h2, ".pdf")
 
-    assert final2 == final1            # same path (reused)
-    assert not staged2.exists()        # duplicate staged copy dropped
+    assert final2 == final1  # same path (reused)
+    assert not staged2.exists()  # duplicate staged copy dropped
     shard = get_files_dir() / h1[:2]
     assert len(list(shard.glob(f"{h1}*"))) == 1  # exactly one physical file
 
@@ -133,6 +134,6 @@ async def test_attach_round_trip_uses_encrypted_relocate(isolated_storage, db_se
 
     final = Path(attachment.file_path)
     assert final.exists()
-    assert not staged_path.exists()                       # staged file consumed
+    assert not staged_path.exists()  # staged file consumed
     assert not (get_staging_dir() / f"{unique_filename}.meta").exists()
-    assert await decrypt_file(final) == PDF_BODY          # original retrievable
+    assert await decrypt_file(final) == PDF_BODY  # original retrievable

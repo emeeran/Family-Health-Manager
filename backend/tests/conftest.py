@@ -1,4 +1,5 @@
 """Shared test fixtures for integration tests."""
+
 import asyncio
 import os
 import tempfile
@@ -69,6 +70,7 @@ async def client(db_session):
     uncommitted data (e.g. from register) is visible to subsequent
     requests (e.g. login).
     """
+
     async def override_get_db():
         yield db_session
         await db_session.commit()
@@ -76,8 +78,10 @@ async def client(db_session):
     app.dependency_overrides[get_db] = override_get_db
 
     # Disable rate limiting during tests
-    with patch("app.main.rate_limiter.check_limit", return_value=(True, 0)), \
-         patch("app.main.auth_rate_limiter.check_limit", return_value=(True, 0)):
+    with (
+        patch("app.main.rate_limiter.check_limit", return_value=(True, 0)),
+        patch("app.main.auth_rate_limiter.check_limit", return_value=(True, 0)),
+    ):
         transport = ASGITransport(app=app, raise_app_exceptions=False)
         async with AsyncClient(transport=transport, base_url="http://test") as c:
             yield c

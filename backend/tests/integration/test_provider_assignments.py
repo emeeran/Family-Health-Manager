@@ -1,4 +1,5 @@
 """Integration tests for provider assignment endpoints."""
+
 import pytest
 
 pytestmark = pytest.mark.asyncio
@@ -63,9 +64,7 @@ async def test_remove_assignment(auth_client):
     )
     assignment_id = assign_resp.json()["id"]
 
-    resp = await auth_client.delete(
-        f"/api/v1/members/{member_id}/providers/{assignment_id}"
-    )
+    resp = await auth_client.delete(f"/api/v1/members/{member_id}/providers/{assignment_id}")
     assert resp.status_code == 204
 
     # Verify it's gone

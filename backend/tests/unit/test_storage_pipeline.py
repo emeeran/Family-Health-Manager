@@ -1,4 +1,5 @@
 """Unit tests for the storage pipeline (PDF optimization + encryption-at-rest)."""
+
 import hashlib
 from types import SimpleNamespace
 
@@ -73,7 +74,8 @@ def test_optimize_pdf_disabled_returns_src(tmp_path, monkeypatch):
 
 def test_optimize_pdf_noop_without_gs(tmp_path, monkeypatch):
     monkeypatch.setattr(
-        storage, "settings",
+        storage,
+        "settings",
         SimpleNamespace(STORAGE_PATH=str(tmp_path), OPTIMIZE_PDFS=True, PDF_OPTIMIZE_DPI="ebook"),
     )
     src = tmp_path / "x.pdf"

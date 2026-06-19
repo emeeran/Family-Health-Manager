@@ -1,4 +1,5 @@
 """Phase 3 (lean) — OCR-quality gating + coverage-based confidence."""
+
 from datetime import date
 
 from app.models.base import RecordType

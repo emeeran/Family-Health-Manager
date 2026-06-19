@@ -1,4 +1,5 @@
 """Simple in-memory TTL cache with optional Redis backend."""
+
 import json
 import time
 from threading import Lock

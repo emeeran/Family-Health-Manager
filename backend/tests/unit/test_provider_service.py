@@ -1,4 +1,5 @@
 """Unit tests for provider service."""
+
 import pytest
 from unittest.mock import AsyncMock, MagicMock
 from uuid import uuid4

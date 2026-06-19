@@ -1,4 +1,5 @@
 """File storage abstraction."""
+
 import asyncio
 import contextlib
 import hashlib
@@ -107,10 +108,13 @@ def optimize_pdf(src: Path) -> Path:
         pdf_settings = f"/{settings.PDF_OPTIMIZE_DPI.lstrip('/')}"
         result = subprocess.run(
             [
-                gs, "-sDEVICE=pdfwrite",
+                gs,
+                "-sDEVICE=pdfwrite",
                 f"-dPDFSETTINGS={pdf_settings}",
-                "-dNOPAUSE", "-dBATCH",
-                f"-sOutputFile={out}", str(src),
+                "-dNOPAUSE",
+                "-dBATCH",
+                f"-sOutputFile={out}",
+                str(src),
             ],
             capture_output=True,
             timeout=120,
@@ -130,9 +134,7 @@ def optimize_pdf(src: Path) -> Path:
     return out
 
 
-async def _store_plaintext_file(
-    src_plaintext: Path, ext: str, mime: str
-) -> tuple[Path, str]:
+async def _store_plaintext_file(src_plaintext: Path, ext: str, mime: str) -> tuple[Path, str]:
     """Optimize (PDF) → hash plaintext → encrypt → write content-addressed.
 
     Returns ``(final_path, content_hash)``. *src_plaintext* is read but not
@@ -217,9 +219,7 @@ def scan_file(file_path: Path) -> bool:
         # clamd not installed (the common self-hosted case). Warn once so it's
         # visible that uploads are NOT being virus-scanned, without spamming.
         if not _clamav_unavailable_warned:
-            logger.warning(
-                "ClamAV (clamd) not installed — uploads will not be virus-scanned"
-            )
+            logger.warning("ClamAV (clamd) not installed — uploads will not be virus-scanned")
             _clamav_unavailable_warned = True
         return True
     except Exception:
@@ -269,9 +269,7 @@ async def save_file(file: UploadFile, prefix: str = "attachments") -> tuple[Path
             if not magic_checked:
                 if not _magic_matches(chunk, declared_mime):
                     await aiofiles.os.remove(file_path)
-                    raise ValueError(
-                        f"File content does not match declared type {declared_mime}"
-                    )
+                    raise ValueError(f"File content does not match declared type {declared_mime}")
                 magic_checked = True
             await f.write(chunk)
 
@@ -311,9 +309,7 @@ async def save_file_hashed(file: UploadFile) -> tuple[Path, str, str]:
             if not magic_checked:
                 if not _magic_matches(chunk, declared_mime):
                     await aiofiles.os.remove(tmp_path)
-                    raise ValueError(
-                        f"File content does not match declared type {declared_mime}"
-                    )
+                    raise ValueError(f"File content does not match declared type {declared_mime}")
                 magic_checked = True
             await f.write(chunk)
             total_size += len(chunk)

@@ -1,4 +1,5 @@
 """Health alerts router."""
+
 import logging
 from uuid import UUID
 

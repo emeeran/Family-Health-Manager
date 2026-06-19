@@ -2,9 +2,9 @@ name: CI
 
 on:
   push:
-    branches: [main, dev-feature*]
+    branches: [main, develop]
   pull_request:
-    branches: [main]
+    branches: [main, develop]
 
 jobs:
   backend:
@@ -31,7 +31,7 @@ jobs:
         run: uv run mypy app/
 
       - name: Test
-        run: uv run pytest tests/ -v --cov=app --cov-report=term-missing --cov-report=xml
+        run: uv run pytest tests/ -v --cov=app --cov-report=term-missing --cov-report=xml --cov-fail-under=40
 
       - name: Security scan
         run: uv run pip-audit

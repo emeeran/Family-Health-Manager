@@ -1,4 +1,5 @@
 """OpenAI API provider."""
+
 import logging
 
 from app.core.provider_keys import resolve_provider_api_key
@@ -52,9 +53,7 @@ async def call_openai_text(prompt: str, model: str | None = None) -> str | None:
     return None
 
 
-async def call_openai_vision(
-    b64_data: str, mime_type: str, extraction_prompt: str
-) -> str | None:
+async def call_openai_vision(b64_data: str, mime_type: str, extraction_prompt: str) -> str | None:
     """Call OpenAI API for vision extraction."""
     api_key = await resolve_provider_api_key("openai")
     if not api_key:
@@ -62,15 +61,20 @@ async def call_openai_vision(
     url = "https://api.openai.com/v1/chat/completions"
     payload = {
         "model": PRIMARY_MODEL,
-        "messages": [{
-            "role": "user",
-            "content": [
-                {"type": "text", "text": extraction_prompt},
-                {"type": "image_url", "image_url": {
-                    "url": f"data:{mime_type};base64,{b64_data}",
-                }},
-            ],
-        }],
+        "messages": [
+            {
+                "role": "user",
+                "content": [
+                    {"type": "text", "text": extraction_prompt},
+                    {
+                        "type": "image_url",
+                        "image_url": {
+                            "url": f"data:{mime_type};base64,{b64_data}",
+                        },
+                    },
+                ],
+            }
+        ],
         "temperature": 0.1,
     }
     headers = {

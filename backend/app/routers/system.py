@@ -4,6 +4,7 @@ All endpoints require an admin user. Credentials are encrypted at rest with
 Fernet (see :mod:`app.core.encryption`) and are never returned in plaintext;
 GET exposes only a masked value plus ``is_set``/``using_env`` flags.
 """
+
 import logging
 
 from fastapi import APIRouter, Depends, HTTPException

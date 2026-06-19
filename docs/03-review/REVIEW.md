@@ -1,4 +1,4 @@
-# Specification Review — Family Health Tracker
+# Specification Review — Family Health Manager
 
 > Phase p3 — Gate review of `docs/02-spec/SPEC.md`
 

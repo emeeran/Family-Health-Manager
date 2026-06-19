@@ -1,4 +1,4 @@
-# Context Map — Family Health Tracker
+# Context Map — Family Health Manager
 
 > Phase p0 — Bounded-context integration patterns and dependency flow.
 

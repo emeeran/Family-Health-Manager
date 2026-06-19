@@ -1,4 +1,5 @@
 """TOTP service — 2FA setup and verification."""
+
 import base64
 import io
 import json

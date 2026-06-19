@@ -1,4 +1,5 @@
 """Unit tests for AI service."""
+
 import pytest
 from datetime import date
 from unittest.mock import AsyncMock, MagicMock, patch
@@ -11,6 +12,7 @@ from app.models.base import Message, MessageRole, Conversation
 def _reset_circuit_breaker():
     """Reset circuit breaker and AI response cache state between tests to prevent leakage."""
     from app.services.ai.base import _circuit_state, _ai_response_cache
+
     _circuit_state.clear()
     _ai_response_cache.clear()
     yield
@@ -38,8 +40,10 @@ async def test_generate_insight(ai_service, mock_db):
     """Test generating AI insight."""
     prompt = "Explain this lab result"
 
-    with patch.object(ai_service, "_call_ollama_insight") as mock_call, \
-         patch("app.services.ai_service.settings") as mock_settings:
+    with (
+        patch.object(ai_service, "_call_ollama_insight") as mock_call,
+        patch("app.services.ai_service.settings") as mock_settings,
+    ):
         mock_call.return_value = ("AI response", "test-provider")
         mock_settings.AI_VERIFICATION_ENABLED = False
 
@@ -72,9 +76,11 @@ async def test_generate_insight_with_member_context(ai_service, mock_db):
     get_result.scalar_one.return_value = mock_member
     mock_db.execute = AsyncMock(return_value=get_result)
 
-    with patch.object(ai_service, "_build_member_context", return_value="Patient context"), \
-         patch.object(ai_service, "_call_ollama_insight") as mock_call, \
-         patch("app.services.ai_service.settings") as mock_settings:
+    with (
+        patch.object(ai_service, "_build_member_context", return_value="Patient context"),
+        patch.object(ai_service, "_call_ollama_insight") as mock_call,
+        patch("app.services.ai_service.settings") as mock_settings,
+    ):
         mock_call.return_value = ("AI response", "test-provider")
         mock_settings.AI_VERIFICATION_ENABLED = False
 
@@ -87,17 +93,25 @@ async def test_generate_insight_with_member_context(ai_service, mock_db):
 async def test_call_ai_failover(ai_service):
     """Test AI provider failover chain — all providers fail with no keys."""
     from app.schemas.ai_provider_config import default_provider_config
+
     mock_ollama = AsyncMock(return_value=None)
     mock_openrouter = AsyncMock(return_value=None)
     mock_groq = AsyncMock(return_value=None)
     mock_gemini = AsyncMock(return_value=None)
     mock_openai = AsyncMock(return_value=None)
-    with patch.object(ai_service, "_get_provider_config", new_callable=AsyncMock, return_value=default_provider_config()), \
-         patch.object(ai_service, "_call_ollama_text", mock_ollama), \
-         patch.object(ai_service, "_call_openrouter_text", mock_openrouter), \
-         patch.object(ai_service, "_call_groq_text", mock_groq), \
-         patch.object(ai_service, "_call_gemini_text", mock_gemini), \
-         patch.object(ai_service, "_call_openai_text", mock_openai):
+    with (
+        patch.object(
+            ai_service,
+            "_get_provider_config",
+            new_callable=AsyncMock,
+            return_value=default_provider_config(),
+        ),
+        patch.object(ai_service, "_call_ollama_text", mock_ollama),
+        patch.object(ai_service, "_call_openrouter_text", mock_openrouter),
+        patch.object(ai_service, "_call_groq_text", mock_groq),
+        patch.object(ai_service, "_call_gemini_text", mock_gemini),
+        patch.object(ai_service, "_call_openai_text", mock_openai),
+    ):
         with pytest.raises(ValueError, match="All AI providers failed"):
             await ai_service._call_ai("Test prompt", "")
 
@@ -106,44 +120,60 @@ async def test_call_ai_failover(ai_service):
 async def test_call_ai_ollama_first_then_cloud(ai_service):
     """Test Ollama is tried first, then cloud providers as fallback."""
     from app.schemas.ai_provider_config import default_provider_config
+
     mock_groq = AsyncMock(return_value=None)
     mock_gemini = AsyncMock(return_value="Gemini response")
     mock_ollama = AsyncMock(return_value=None)
     mock_openrouter = AsyncMock(return_value=None)
     mock_openai = AsyncMock(return_value=None)
-    with patch.object(ai_service, "_get_provider_config", new_callable=AsyncMock, return_value=default_provider_config()), \
-         patch.object(ai_service, "_call_groq_text", mock_groq), \
-         patch.object(ai_service, "_call_gemini_text", mock_gemini), \
-         patch.object(ai_service, "_call_ollama_text", mock_ollama), \
-         patch.object(ai_service, "_call_openrouter_text", mock_openrouter), \
-         patch.object(ai_service, "_call_openai_text", mock_openai):
-            result, provider = await ai_service._call_ai("Test prompt", "")
-            assert result == "Gemini response"
-            assert "Gemini" in provider
-            # Ollama tried first, then cloud fallback
-            mock_ollama.assert_called_once()
-            mock_groq.assert_called_once()
-            mock_gemini.assert_called_once()
+    with (
+        patch.object(
+            ai_service,
+            "_get_provider_config",
+            new_callable=AsyncMock,
+            return_value=default_provider_config(),
+        ),
+        patch.object(ai_service, "_call_groq_text", mock_groq),
+        patch.object(ai_service, "_call_gemini_text", mock_gemini),
+        patch.object(ai_service, "_call_ollama_text", mock_ollama),
+        patch.object(ai_service, "_call_openrouter_text", mock_openrouter),
+        patch.object(ai_service, "_call_openai_text", mock_openai),
+    ):
+        result, provider = await ai_service._call_ai("Test prompt", "")
+        assert result == "Gemini response"
+        assert "Gemini" in provider
+        # Ollama tried first, then cloud fallback
+        mock_ollama.assert_called_once()
+        mock_groq.assert_called_once()
+        mock_gemini.assert_called_once()
 
 
 @pytest.mark.asyncio
 async def test_call_ai_fallback_to_openrouter(ai_service):
     """Test fallback to OpenRouter when Groq, Gemini, and Ollama fail."""
     from app.schemas.ai_provider_config import default_provider_config
+
     mock_groq = AsyncMock(return_value=None)
     mock_gemini = AsyncMock(return_value=None)
     mock_ollama = AsyncMock(return_value=None)
     mock_openrouter = AsyncMock(return_value="OpenRouter response")
     mock_openai = AsyncMock(return_value=None)
-    with patch.object(ai_service, "_get_provider_config", new_callable=AsyncMock, return_value=default_provider_config()), \
-         patch.object(ai_service, "_call_groq_text", mock_groq), \
-         patch.object(ai_service, "_call_gemini_text", mock_gemini), \
-         patch.object(ai_service, "_call_ollama_text", mock_ollama), \
-         patch.object(ai_service, "_call_openrouter_text", mock_openrouter), \
-         patch.object(ai_service, "_call_openai_text", mock_openai):
-            result, provider = await ai_service._call_ai("Test prompt", "")
-            assert result == "OpenRouter response"
-            assert "OpenRouter" in provider
+    with (
+        patch.object(
+            ai_service,
+            "_get_provider_config",
+            new_callable=AsyncMock,
+            return_value=default_provider_config(),
+        ),
+        patch.object(ai_service, "_call_groq_text", mock_groq),
+        patch.object(ai_service, "_call_gemini_text", mock_gemini),
+        patch.object(ai_service, "_call_ollama_text", mock_ollama),
+        patch.object(ai_service, "_call_openrouter_text", mock_openrouter),
+        patch.object(ai_service, "_call_openai_text", mock_openai),
+    ):
+        result, provider = await ai_service._call_ai("Test prompt", "")
+        assert result == "OpenRouter response"
+        assert "OpenRouter" in provider
 
 
 @pytest.mark.asyncio
@@ -196,6 +226,7 @@ async def test_get_conversation_history(ai_service, mock_db):
 
 # ── Transcription report generation ──
 
+
 def _report_extracted_data() -> dict:
     return {
         "record_type": "doctor_visit",
@@ -203,20 +234,28 @@ def _report_extracted_data() -> dict:
         "chief_complaint": "Lower abdominal pain",
         "diagnosis": "Pelvic Inflammatory Disease",
         "prescriptions": [
-            {"type": "Tab", "medicine": "Doxycycline", "dosage": "100mg",
-             "timing": "BD", "duration": "10 days"}
+            {
+                "type": "Tab",
+                "medicine": "Doxycycline",
+                "dosage": "100mg",
+                "timing": "BD",
+                "duration": "10 days",
+            }
         ],
         "lab_tests": [
-            {"test_name": "Haemoglobin", "result": "8.6", "units": "gm%",
-             "ref_value": "12.0-15.5"}
+            {"test_name": "Haemoglobin", "result": "8.6", "units": "gm%", "ref_value": "12.0-15.5"}
         ],
     }
 
 
 def _report_member_ctx() -> dict:
-    return {"name": "Mrs. Jenitha", "patient_id": "KF2446",
-            "age_gender": "41 Years / Female", "phone": "7598287415",
-            "address": "Chennai, Tamil Nadu, India"}
+    return {
+        "name": "Mrs. Jenitha",
+        "patient_id": "KF2446",
+        "age_gender": "41 Years / Female",
+        "phone": "7598287415",
+        "address": "Chennai, Tamil Nadu, India",
+    }
 
 
 def _report_provider_ctx() -> dict:
@@ -227,8 +266,9 @@ def _report_provider_ctx() -> dict:
 async def test_generate_transcription_report_uses_ai(ai_service):
     """When the AI provider responds, its output is returned (fences stripped)."""
     ai_report = "## Medical Records Transcription Report\n\nAI-generated body."
-    with patch.object(ai_service, "_call_ai", new_callable=AsyncMock,
-                      return_value=(ai_report, "mock-provider")):
+    with patch.object(
+        ai_service, "_call_ai", new_callable=AsyncMock, return_value=(ai_report, "mock-provider")
+    ):
         result = await ai_service.generate_transcription_report(
             _report_extracted_data(), _report_member_ctx(), _report_provider_ctx()
         )
@@ -239,8 +279,12 @@ async def test_generate_transcription_report_uses_ai(ai_service):
 @pytest.mark.asyncio
 async def test_generate_transcription_report_falls_back_to_template(ai_service):
     """When every AI provider fails, the deterministic template is used."""
-    with patch.object(ai_service, "_call_ai", new_callable=AsyncMock,
-                      side_effect=RuntimeError("all providers down")):
+    with patch.object(
+        ai_service,
+        "_call_ai",
+        new_callable=AsyncMock,
+        side_effect=RuntimeError("all providers down"),
+    ):
         result = await ai_service.generate_transcription_report(
             _report_extracted_data(), _report_member_ctx(), _report_provider_ctx()
         )
@@ -269,4 +313,3 @@ def test_build_template_transcription_report_omits_empty_sections():
     assert "HbA1c" in report
     # No prescriptions → section 3 (Treatment Plan) must be absent.
     assert "3. TREATMENT PLAN & MEDICAL ORDERS" not in report
-

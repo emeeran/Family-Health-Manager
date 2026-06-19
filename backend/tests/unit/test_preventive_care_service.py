@@ -1,4 +1,5 @@
 """Unit tests for preventive care service."""
+
 import pytest
 from unittest.mock import AsyncMock, MagicMock
 from datetime import date
@@ -16,9 +17,11 @@ def mock_db():
     scalars_mock.all.return_value = []
     result_mock = MagicMock()
     result_mock.scalars.return_value = scalars_mock
+
     # db.execute returns a coroutine that resolves to result_mock
     async def mock_execute(*args, **kwargs):
         return result_mock
+
     db.execute = mock_execute
     return db
 

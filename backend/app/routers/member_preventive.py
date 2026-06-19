@@ -1,4 +1,5 @@
 """Preventive care router — age- and condition-based recommendations and reminders."""
+
 import logging
 from datetime import datetime, timedelta
 from uuid import UUID
@@ -19,6 +20,7 @@ router = APIRouter(prefix="/members", tags=["Preventive Care"])
 
 class PreventiveReminderRequest(BaseModel):
     """Validated request body for preventive-reminders."""
+
     title: str = Field("Preventive care reminder", max_length=200)
     description: str = Field("", max_length=1000)
     due_interval_months: int = Field(12, ge=1, le=120)

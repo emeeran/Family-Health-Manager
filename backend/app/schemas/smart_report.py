@@ -7,6 +7,7 @@ string, and ``coerce_numbers_to_str`` lets a numeric LLM value still parse.
 This keeps a slightly-off model output from invalidating the whole report —
 the viewer degrades to prose only when parsing fails entirely.
 """
+
 from __future__ import annotations
 
 from pydantic import BaseModel, ConfigDict, Field

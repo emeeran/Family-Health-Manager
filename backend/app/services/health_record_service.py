@@ -1,4 +1,5 @@
 """Health record service."""
+
 from pathlib import Path
 from datetime import date, datetime, timedelta, time, timezone
 from uuid import UUID
@@ -37,13 +38,15 @@ class HealthRecordService:
         # Check for duplicate: same member, type, date, created within 2 min
         cutoff = datetime.now(timezone.utc) - timedelta(minutes=2)
         existing = await self.db.execute(
-            select(HealthRecord).where(
+            select(HealthRecord)
+            .where(
                 HealthRecord.family_member_id == member_id,
                 HealthRecord.record_date == record_date,
                 HealthRecord.record_type == record_type,
                 HealthRecord.is_deleted.is_(False),
                 HealthRecord.created_at >= cutoff,
-            ).limit(1)
+            )
+            .limit(1)
         )
         dup = existing.scalar_one_or_none()
         if dup and dup.clinical_data == clinical_data:
@@ -67,13 +70,16 @@ class HealthRecordService:
         # Refresh with provider and attachments eagerly loaded for response serialization
         await self.db.refresh(record, ["provider", "attachments"])
         return record
+
     async def get_record(self, member_id: UUID, record_id: UUID) -> HealthRecord:
         """Get record by ID, ensuring member access."""
         result = await self.db.execute(
-            select(HealthRecord).options(
+            select(HealthRecord)
+            .options(
                 joinedload(HealthRecord.provider),
                 joinedload(HealthRecord.attachments),
-            ).where(
+            )
+            .where(
                 HealthRecord.id == record_id,
                 HealthRecord.family_member_id == member_id,
                 HealthRecord.is_deleted.is_(False),
@@ -95,12 +101,16 @@ class HealthRecordService:
         limit: int = 20,
     ) -> tuple[list[HealthRecord], str | None, bool]:
         """List records with optional filters and pagination."""
-        query = select(HealthRecord).options(
-            joinedload(HealthRecord.provider),
-            joinedload(HealthRecord.attachments),
-        ).where(
-            HealthRecord.family_member_id == member_id,
-            HealthRecord.is_deleted.is_(False),
+        query = (
+            select(HealthRecord)
+            .options(
+                joinedload(HealthRecord.provider),
+                joinedload(HealthRecord.attachments),
+            )
+            .where(
+                HealthRecord.family_member_id == member_id,
+                HealthRecord.is_deleted.is_(False),
+            )
         )
 
         if record_type:
@@ -119,9 +129,9 @@ class HealthRecordService:
                 < (cursor["record_date"], cursor["id"])
             )
 
-        query = query.order_by(
-            HealthRecord.record_date.desc(), HealthRecord.id.desc()
-        ).limit(limit + 1)
+        query = query.order_by(HealthRecord.record_date.desc(), HealthRecord.id.desc()).limit(
+            limit + 1
+        )
 
         result = await self.db.execute(query)
         records = list(result.scalars().unique().all())
@@ -130,7 +140,9 @@ class HealthRecordService:
         items = records[:limit]
         next_cursor = (
             base64.b64encode(
-                json.dumps({"record_date": str(items[-1].record_date), "id": str(items[-1].id)}).encode()
+                json.dumps(
+                    {"record_date": str(items[-1].record_date), "id": str(items[-1].id)}
+                ).encode()
             ).decode()
             if has_more and items
             else None
@@ -141,9 +153,17 @@ class HealthRecordService:
     async def update_record(self, record_id: UUID, **kwargs) -> HealthRecord:
         """Update record fields."""
         allowed = {
-            "clinical_data", "diagnosis", "prescription_text",
-            "next_review_date", "tags", "record_date", "record_time",
-            "record_type", "provider_id", "summary", "transcription_report",
+            "clinical_data",
+            "diagnosis",
+            "prescription_text",
+            "next_review_date",
+            "tags",
+            "record_date",
+            "record_time",
+            "record_type",
+            "provider_id",
+            "summary",
+            "transcription_report",
         }
         result = await self.db.execute(
             select(HealthRecord)
@@ -159,6 +179,7 @@ class HealthRecordService:
 
         # Delete physical files for all attachments
         from app.core.storage import delete_file
+
         for attachment in record.attachments:
             try:
                 await delete_file(Path(attachment.file_path))
@@ -269,7 +290,8 @@ class HealthRecordService:
 
         lab_types = [RecordType.LAB_REPORT, RecordType.BLOOD_GLUCOSE]
         result = await self.db.execute(
-            select(HealthRecord).options(joinedload(HealthRecord.provider))
+            select(HealthRecord)
+            .options(joinedload(HealthRecord.provider))
             .where(
                 HealthRecord.family_member_id == member_id,
                 HealthRecord.record_type.in_(lab_types + [RecordType.DOCTOR_VISIT]),
@@ -347,4 +369,3 @@ class HealthRecordService:
             for r in records
             if _has_lab_data(r.clinical_data, r.record_type)
         ]
-

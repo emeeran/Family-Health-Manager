@@ -1,4 +1,5 @@
 """Integration tests for vaccinations endpoints."""
+
 import pytest
 
 pytestmark = pytest.mark.asyncio
@@ -35,9 +36,7 @@ async def test_list_vaccinations_empty(auth_client):
 async def test_create_vaccination(auth_client):
     """Create a vaccination record."""
     member_id = await _create_member(auth_client)
-    resp = await auth_client.post(
-        f"/api/v1/members/{member_id}/vaccinations", json=VACCINE_PAYLOAD
-    )
+    resp = await auth_client.post(f"/api/v1/members/{member_id}/vaccinations", json=VACCINE_PAYLOAD)
     assert resp.status_code == 201
     body = resp.json()
     assert body["name"] == "COVID-19 Booster"
@@ -68,9 +67,7 @@ async def test_delete_vaccination(auth_client):
     )
     vax_id = create_resp.json()["id"]
 
-    resp = await auth_client.delete(
-        f"/api/v1/members/{member_id}/vaccinations/{vax_id}"
-    )
+    resp = await auth_client.delete(f"/api/v1/members/{member_id}/vaccinations/{vax_id}")
     assert resp.status_code == 204
 
     # Verify it's gone

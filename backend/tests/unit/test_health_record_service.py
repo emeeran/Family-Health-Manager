@@ -1,4 +1,5 @@
 """Unit tests for health record service."""
+
 import pytest
 from unittest.mock import AsyncMock, MagicMock
 from datetime import date

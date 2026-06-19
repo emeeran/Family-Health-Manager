@@ -1,4 +1,5 @@
 """Tests for bulk medication delete logic."""
+
 import json
 
 import pytest

@@ -1,4 +1,5 @@
 """Email service — async email delivery via SMTP."""
+
 import logging
 from email.mime.multipart import MIMEMultipart
 from email.mime.text import MIMEText
@@ -84,7 +85,13 @@ class EmailService:
         self, to: str, member_name: str, alert_title: str, severity: str
     ) -> bool:
         """Send a health alert notification email."""
-        color = "#dc2626" if severity == "critical" else "#d97706" if severity == "warning" else "#2563eb"
+        color = (
+            "#dc2626"
+            if severity == "critical"
+            else "#d97706"
+            if severity == "warning"
+            else "#2563eb"
+        )
         html = f"""
         <div style="font-family: sans-serif; max-width: 480px; margin: 0 auto;">
             <h2 style="color: {color};">Health Alert: {severity.title()}</h2>

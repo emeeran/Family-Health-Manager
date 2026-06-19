@@ -15,6 +15,7 @@ Revision ID: k7l8m9n0o1p2
 Revises: j6k7l8m9n0o1
 Create Date: 2026-06-19
 """
+
 from alembic import op
 import sqlalchemy as sa
 
@@ -38,9 +39,7 @@ def upgrade() -> None:
     """Add the new columns if they are not already present."""
     bind = op.get_bind()
     inspector = sa.inspect(bind)
-    existing = {
-        t: {col["name"] for col in inspector.get_columns(t)} for t, _, _ in _NEW_COLUMNS
-    }
+    existing = {t: {col["name"] for col in inspector.get_columns(t)} for t, _, _ in _NEW_COLUMNS}
 
     for table, column_name, column_type in _NEW_COLUMNS:
         if column_name not in existing.get(table, set()):

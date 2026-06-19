@@ -1,4 +1,5 @@
 """Smart Report router — generate and retrieve comprehensive health insight per member."""
+
 import logging
 from uuid import UUID
 

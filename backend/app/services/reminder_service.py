@@ -1,4 +1,5 @@
 """Reminder service."""
+
 from datetime import datetime, timezone
 from uuid import UUID
 from sqlalchemy import insert, select
@@ -116,8 +117,14 @@ class ReminderService:
     async def update_reminder(self, reminder_id: UUID, household_id: UUID, **kwargs) -> Reminder:
         """Update reminder details."""
         allowed = {
-            "title", "description", "reminder_type", "schedule_type",
-            "schedule_interval", "start_datetime", "end_datetime", "is_active",
+            "title",
+            "description",
+            "reminder_type",
+            "schedule_type",
+            "schedule_interval",
+            "start_datetime",
+            "end_datetime",
+            "is_active",
         }
         result = await self.db.execute(
             select(Reminder).where(

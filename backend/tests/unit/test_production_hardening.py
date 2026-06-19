@@ -6,6 +6,7 @@ Covers the new pure-logic code paths that are most regression-prone:
 - SQLite + attachments backup (jobs.py)
 - scheduler single-instance lock helpers (scheduler.py)
 """
+
 import os
 import sqlite3
 import tarfile
@@ -120,7 +121,9 @@ def test_reset_database_route_requires_admin():
     import inspect
     from app.routers import household
 
-    route = next(r for r in household.router.routes if getattr(r, "path", "").endswith("/reset-database"))
+    route = next(
+        r for r in household.router.routes if getattr(r, "path", "").endswith("/reset-database")
+    )
     sig = inspect.signature(route.endpoint)
     # The dependency callables in the signature:
     deps = [d.default for d in sig.parameters.values() if hasattr(d.default, "dependency")]
@@ -147,7 +150,8 @@ def test_create_backup_archive_contains_db_and_originals(tmp_path, monkeypatch):
     (storage / "files" / "record.pdf").write_bytes(b"%PDF-encrypted-bytes")
     backups = tmp_path / "backups"
     monkeypatch.setattr(
-        jobs, "settings",
+        jobs,
+        "settings",
         SimpleNamespace(DATABASE_URL=f"sqlite:///{src_db}", STORAGE_PATH=str(storage)),
     )
     monkeypatch.setattr(jobs, "BACKUP_DIR", backups)
@@ -206,6 +210,7 @@ def test_backup_state_round_trip(tmp_path, monkeypatch):
 @pytest.mark.asyncio
 async def test_backup_database_skips_when_off(monkeypatch):
     """Schedule 'off' → run_backup_now must not be called."""
+
     async def _off_cfg():
         return ("off", 10)
 

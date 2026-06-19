@@ -1,9 +1,19 @@
 """Health record router."""
+
 import asyncio
 import logging
 from datetime import date, datetime, time
 from uuid import UUID
-from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Query, UploadFile, File, Response
+from fastapi import (
+    APIRouter,
+    BackgroundTasks,
+    Depends,
+    HTTPException,
+    Query,
+    UploadFile,
+    File,
+    Response,
+)
 from fastapi.responses import StreamingResponse
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, update
@@ -20,11 +30,19 @@ from app.services.ai_service import AIService
 from app.services.ai.document_extractor import extraction_confidence
 from app.core.cache import cache
 from app.schemas.health_record import (
-    HealthRecordCreate, HealthRecordUpdate, HealthRecordResponse,
-    ExtractionResponse, ExtractedFields, TimelineResponse,
-    BatchExtractionItemSchema, BatchExtractionResponse,
-    CheckFilenamesRequest, CheckFilenamesResponse,
-    BatchDeleteRequest, DedupResponse, MergeRequest,
+    HealthRecordCreate,
+    HealthRecordUpdate,
+    HealthRecordResponse,
+    ExtractionResponse,
+    ExtractedFields,
+    TimelineResponse,
+    BatchExtractionItemSchema,
+    BatchExtractionResponse,
+    CheckFilenamesRequest,
+    CheckFilenamesResponse,
+    BatchDeleteRequest,
+    DedupResponse,
+    MergeRequest,
 )
 from app.models.base import Household, FamilyMember, RecordType
 from app.models.attachment import Attachment
@@ -117,12 +135,14 @@ async def extract_from_document_stream(
         def sse(payload: dict) -> str:
             return f"data: {json.dumps(payload, default=str)}\n\n"
 
-        yield sse({
-            "stage": "secured",
-            "staging_file_id": unique_filename,
-            "original_file_name": original_name,
-            "content_hash": content_hash,
-        })
+        yield sse(
+            {
+                "stage": "secured",
+                "staging_file_id": unique_filename,
+                "original_file_name": original_name,
+                "content_hash": content_hash,
+            }
+        )
         yield sse({"stage": "extracting", "pct": 50})
 
         async def run_extract():
@@ -148,15 +168,17 @@ async def extract_from_document_stream(
                 raise exc
             result = task.result()
             extracted = result.extracted
-            yield sse({
-                "stage": "complete",
-                "staging_file_id": unique_filename,
-                "original_file_name": original_name,
-                "extracted": extracted.model_dump(mode="json"),
-                "transcription": result.transcription,
-                "confidence": extraction_confidence(extracted),
-                "verification": None,
-            })
+            yield sse(
+                {
+                    "stage": "complete",
+                    "staging_file_id": unique_filename,
+                    "original_file_name": original_name,
+                    "extracted": extracted.model_dump(mode="json"),
+                    "transcription": result.transcription,
+                    "confidence": extraction_confidence(extracted),
+                    "verification": None,
+                }
+            )
         except Exception as exc:
             logger.error("Streamed AI extraction failed: %s", exc)
             yield sse({"stage": "error", "message": str(exc)})
@@ -295,6 +317,7 @@ async def extract_batch(
 
     # Run verification in parallel for all successful extractions
     from app.services.verification_service import VerificationService
+
     verification_svc = VerificationService(db, ai_service)
 
     async def _verify_item(item: BatchExtractionItemSchema) -> None:
@@ -366,7 +389,6 @@ async def list_records(
     return records
 
 
-
 async def _generate_summary_background(
     record_id: UUID, extracted_data: dict, household_id: UUID
 ) -> None:
@@ -385,9 +407,7 @@ async def _generate_summary_background(
             summary = await ai_service.generate_consultation_summary(extracted_data)
             if summary:
                 await db.execute(
-                    update(HealthRecord)
-                    .where(HealthRecord.id == record_id)
-                    .values(summary=summary)
+                    update(HealthRecord).where(HealthRecord.id == record_id).values(summary=summary)
                 )
                 await db.commit()
                 await cache.invalidate_async(f"dashboard_summary:{household_id}")
@@ -413,8 +433,13 @@ def _extracted_data_from_record(record: HealthRecord) -> dict:
     try:
         parsed_cd = json.loads(record.clinical_data)
         if isinstance(parsed_cd, dict):
-            for key in ("prescriptions", "lab_tests", "chief_complaint",
-                        "existing_conditions", "investigations"):
+            for key in (
+                "prescriptions",
+                "lab_tests",
+                "chief_complaint",
+                "existing_conditions",
+                "investigations",
+            ):
                 if parsed_cd.get(key):
                     extracted_data[key] = parsed_cd[key]
             notes = parsed_cd.get("_notes") or parsed_cd.get("notes")
@@ -467,9 +492,7 @@ def _provider_report_context(provider) -> dict:
     return ctx
 
 
-async def _generate_transcription_report_background(
-    record_id: UUID, household_id: UUID
-) -> None:
+async def _generate_transcription_report_background(record_id: UUID, household_id: UUID) -> None:
     """Generate and persist the 'Medical Records Transcription Report' after a
     doctor_visit / lab_report record is created or updated.
 
@@ -521,8 +544,12 @@ async def _generate_transcription_report_background(
 async def create_record(
     member_id: UUID,
     request: HealthRecordCreate,
-    staging_file_ids: str | None = Query(None, description="Comma-separated staging file IDs to attach"),
-    original_file_names: str | None = Query(None, description="Comma-separated original file names (same order as staging_file_ids)"),
+    staging_file_ids: str | None = Query(
+        None, description="Comma-separated staging file IDs to attach"
+    ),
+    original_file_names: str | None = Query(
+        None, description="Comma-separated original file names (same order as staging_file_ids)"
+    ),
     household: Household = Depends(get_household_from_token),
     _member: FamilyMember = Depends(require_member_in_household),
     db: AsyncSession = Depends(get_db),
@@ -552,10 +579,19 @@ async def create_record(
 
             # Parse structured data from clinical_data if it's JSON
             try:
-                parsed_cd = json.loads(request.clinical_data) if isinstance(request.clinical_data, str) else request.clinical_data
+                parsed_cd = (
+                    json.loads(request.clinical_data)
+                    if isinstance(request.clinical_data, str)
+                    else request.clinical_data
+                )
                 if isinstance(parsed_cd, dict):
-                    for key in ("prescriptions", "lab_tests", "chief_complaint",
-                                "existing_conditions", "investigations"):
+                    for key in (
+                        "prescriptions",
+                        "lab_tests",
+                        "chief_complaint",
+                        "existing_conditions",
+                        "investigations",
+                    ):
                         if key in parsed_cd and parsed_cd[key]:
                             extracted_data[key] = parsed_cd[key]
                     notes = parsed_cd.get("_notes") or parsed_cd.get("notes")
@@ -622,19 +658,24 @@ async def create_record(
                 try:
                     orig_name = names[i].strip() if i < len(names) else None
                     await attachment_service.attach_staged_file(
-                        record.id, fid, orig_name, background_tasks=background_tasks,
+                        record.id,
+                        fid,
+                        orig_name,
+                        background_tasks=background_tasks,
                     )
                 except ValueError:
                     logger.warning("Staging file %s not found, skipping", fid)
 
     # Remove outdated prescriptions if this record has medications synced
-    if (
-        request.record_type == RecordType.DOCTOR_VISIT
-        and request.clinical_data
-    ):
+    if request.record_type == RecordType.DOCTOR_VISIT and request.clinical_data:
         try:
             from app.services.medication_service import MedicationService
-            parsed_cd = json.loads(request.clinical_data) if isinstance(request.clinical_data, str) else request.clinical_data
+
+            parsed_cd = (
+                json.loads(request.clinical_data)
+                if isinstance(request.clinical_data, str)
+                else request.clinical_data
+            )
             if isinstance(parsed_cd, dict) and parsed_cd.get("_medication_sync") is not False:
                 prescriptions = parsed_cd.get("prescriptions", [])
                 if isinstance(prescriptions, list):
@@ -656,6 +697,7 @@ async def create_record(
         try:
             from app.services.medication_service import MedicationService
             from app.services.lab_result_service import LabResultService
+
             provider_name_val = None
             if record.provider:
                 provider_name_val = record.provider.name
@@ -666,8 +708,11 @@ async def create_record(
                 """Sync medications with individual error handling."""
                 try:
                     await med_svc.sync_from_record(
-                        member_id, record.id, request.clinical_data,
-                        request.record_date, provider_name_val,
+                        member_id,
+                        record.id,
+                        request.clinical_data,
+                        request.record_date,
+                        provider_name_val,
                     )
                 except (json.JSONDecodeError, ValueError, TypeError, AttributeError) as exc:
                     logger.warning("Medication sync failed: %s", exc)
@@ -676,7 +721,9 @@ async def create_record(
                 """Sync lab results with individual error handling."""
                 try:
                     await lab_svc.sync_from_record(
-                        member_id, record.id, request.clinical_data,
+                        member_id,
+                        record.id,
+                        request.clinical_data,
                         request.record_date,
                     )
                 except (json.JSONDecodeError, ValueError, TypeError, AttributeError) as exc:
@@ -691,6 +738,7 @@ async def create_record(
     if request.record_type == RecordType.DOCTOR_VISIT and request.clinical_data:
         try:
             from app.services.member_service import MemberService
+
             parsed_cd = (
                 json.loads(request.clinical_data)
                 if isinstance(request.clinical_data, str)
@@ -713,6 +761,7 @@ async def create_record(
     # Fire-and-forget AI insight generation
     try:
         from app.services.insight_service import spawn_insight_task
+
         spawn_insight_task(record.id)
     except Exception:
         logger.debug("Insight generation skipped")
@@ -770,7 +819,11 @@ async def backfill_summaries(
     records = list(result.unique().scalars().all())
 
     if not records:
-        return {"updated_count": 0, "total_remaining": 0, "message": "All records already have summaries"}
+        return {
+            "updated_count": 0,
+            "total_remaining": 0,
+            "message": "All records already have summaries",
+        }
 
     ai_service = AIService(db, household_id=household.id)
     updated = 0
@@ -797,8 +850,13 @@ async def backfill_summaries(
             try:
                 parsed_cd = json.loads(record.clinical_data)
                 if isinstance(parsed_cd, dict):
-                    for key in ("prescriptions", "lab_tests", "chief_complaint",
-                                "existing_conditions", "investigations"):
+                    for key in (
+                        "prescriptions",
+                        "lab_tests",
+                        "chief_complaint",
+                        "existing_conditions",
+                        "investigations",
+                    ):
                         if key in parsed_cd and parsed_cd[key]:
                             extracted_data[key] = parsed_cd[key]
                     notes = parsed_cd.get("_notes") or parsed_cd.get("notes")
@@ -814,7 +872,9 @@ async def backfill_summaries(
             else:
                 # Even if summary is empty, the template fallback should produce something
                 # If not, create a minimal placeholder
-                record.summary = f"## Consultation Summary\n\n{record.record_type.value} on {record.record_date}"
+                record.summary = (
+                    f"## Consultation Summary\n\n{record.record_type.value} on {record.record_date}"
+                )
                 updated += 1
         except Exception as exc:
             logger.warning("Summary backfill failed for record %s: %s", record.id, exc)
@@ -824,8 +884,7 @@ async def backfill_summaries(
 
     # Count remaining
     remaining_result = await db.execute(
-        select(HealthRecord.id)
-        .where(
+        select(HealthRecord.id).where(
             HealthRecord.family_member_id == member_id,
             HealthRecord.is_deleted.is_(False),
             HealthRecord.summary.is_(None),
@@ -1006,6 +1065,7 @@ async def update_record(
         try:
             from app.services.medication_service import MedicationService
             from app.services.lab_result_service import LabResultService
+
             provider_name_val = None
             if record.provider:
                 provider_name_val = record.provider.name
@@ -1015,8 +1075,11 @@ async def update_record(
             async def _sync_medications() -> None:
                 try:
                     await med_svc.sync_from_record(
-                        member_id, record.id, update_data["clinical_data"],
-                        record.record_date, provider_name_val,
+                        member_id,
+                        record.id,
+                        update_data["clinical_data"],
+                        record.record_date,
+                        provider_name_val,
                     )
                 except (json.JSONDecodeError, ValueError, TypeError, AttributeError) as exc:
                     logger.warning("Medication sync on update failed: %s", exc)
@@ -1024,7 +1087,9 @@ async def update_record(
             async def _sync_lab_results() -> None:
                 try:
                     await lab_svc.sync_from_record(
-                        member_id, record.id, update_data["clinical_data"],
+                        member_id,
+                        record.id,
+                        update_data["clinical_data"],
                         record.record_date,
                     )
                 except (json.JSONDecodeError, ValueError, TypeError, AttributeError) as exc:
@@ -1044,6 +1109,7 @@ async def update_record(
     ):
         try:
             from app.services.member_service import MemberService
+
             parsed_cd = (
                 json.loads(update_data["clinical_data"])
                 if isinstance(update_data["clinical_data"], str)
@@ -1162,7 +1228,9 @@ def _verification_dict(insight):
         "claims_checked": insight.verification_claims_checked,
         "verifier_provider": insight.verification_verifier,
         "summary": insight.verification_summary,
-        "warnings": json.loads(insight.verification_warnings_json) if insight.verification_warnings_json else None,
+        "warnings": json.loads(insight.verification_warnings_json)
+        if insight.verification_warnings_json
+        else None,
         "verified_at": insight.verification_at.isoformat() if insight.verification_at else None,
     }
 
@@ -1292,8 +1360,13 @@ async def regenerate_summary(
     try:
         parsed_cd = json.loads(record.clinical_data)
         if isinstance(parsed_cd, dict):
-            for key in ("prescriptions", "lab_tests", "chief_complaint",
-                        "existing_conditions", "investigations"):
+            for key in (
+                "prescriptions",
+                "lab_tests",
+                "chief_complaint",
+                "existing_conditions",
+                "investigations",
+            ):
                 if key in parsed_cd and parsed_cd[key]:
                     extracted_data[key] = parsed_cd[key]
             notes = parsed_cd.get("_notes") or parsed_cd.get("notes")

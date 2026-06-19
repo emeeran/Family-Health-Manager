@@ -11,6 +11,7 @@ Arrays (prescriptions / lab_tests) are matched element-by-element on a key
 (medicine / test_name); unmatched expected rows are FN, unmatched extracted
 rows are FP.
 """
+
 from __future__ import annotations
 
 import enum
@@ -20,10 +21,21 @@ from datetime import date
 from app.schemas.health_record import ExtractedFields
 
 SCALAR_FIELDS = (
-    "record_type", "record_date", "record_time", "diagnosis",
-    "existing_conditions", "chief_complaint", "investigations",
-    "provider_name", "prescription_text", "next_review_date",
-    "weight", "height", "blood_pressure", "heart_rate", "temperature",
+    "record_type",
+    "record_date",
+    "record_time",
+    "diagnosis",
+    "existing_conditions",
+    "chief_complaint",
+    "investigations",
+    "provider_name",
+    "prescription_text",
+    "next_review_date",
+    "weight",
+    "height",
+    "blood_pressure",
+    "heart_rate",
+    "temperature",
 )
 
 ARRAY_FIELDS = {"prescriptions": "medicine", "lab_tests": "test_name"}
@@ -88,7 +100,9 @@ def _score_scalar(extracted: ExtractedFields, expected: ExtractedFields, name: s
     return Score(fp=1)
 
 
-def _score_array(extracted: ExtractedFields, expected: ExtractedFields, name: str, key: str) -> Score:
+def _score_array(
+    extracted: ExtractedFields, expected: ExtractedFields, name: str, key: str
+) -> Score:
     exp_rows = getattr(expected, name, None) or []
     ext_rows = list(getattr(extracted, name, None) or [])
     tp = fp = fn = 0

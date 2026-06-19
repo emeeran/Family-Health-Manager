@@ -1,4 +1,5 @@
 """Shared parsing utilities."""
+
 import json
 import re
 

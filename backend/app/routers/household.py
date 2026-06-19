@@ -1,4 +1,5 @@
 """Household router."""
+
 import json
 import logging
 from uuid import UUID
@@ -96,9 +97,7 @@ async def update_settings(
 ):
     """Update feature toggle settings for the household."""
     settings_json = request.settings.model_dump_json()
-    result = await db.execute(
-        select(Household).where(Household.id == household.id)
-    )
+    result = await db.execute(select(Household).where(Household.id == household.id))
     db_household = result.scalar_one()
     db_household.settings_json = settings_json
     await db.flush()
@@ -129,9 +128,7 @@ async def update_ai_provider_config(
     existing = _parse_settings(household)
     existing.ai_providers = request
     settings_json = existing.model_dump_json()
-    result = await db.execute(
-        select(Household).where(Household.id == household.id)
-    )
+    result = await db.execute(select(Household).where(Household.id == household.id))
     db_household = result.scalar_one()
     db_household.settings_json = settings_json
     await db.flush()
@@ -217,6 +214,7 @@ async def search_household_records(
 
 class ResetDatabaseRequest(BaseModel):
     """Request body for database reset."""
+
     password: str
     confirmation: str  # Must be "RESET"
 
@@ -254,7 +252,9 @@ async def reset_database(
         # Get list of all tables
         if settings.DATABASE_URL.startswith("sqlite"):
             tables_result = await db.execute(
-                text("SELECT name FROM sqlite_master WHERE type='table' AND name NOT LIKE 'sqlite_%'")
+                text(
+                    "SELECT name FROM sqlite_master WHERE type='table' AND name NOT LIKE 'sqlite_%'"
+                )
             )
             table_names = [row[0] for row in tables_result]
         else:
@@ -294,6 +294,7 @@ async def reset_database(
         # Ensure schema is intact (SQLite)
         if settings.DATABASE_URL.startswith("sqlite"):
             from sqlalchemy import create_engine
+
             sync_db_url = settings.DATABASE_URL.replace("sqlite+aiosqlite:///", "sqlite:///")
             sync_engine = create_engine(sync_db_url)
             Base.metadata.create_all(sync_engine)

@@ -1,4 +1,5 @@
 """Ollama local AI provider — text, chat, streaming, and vision."""
+
 import asyncio
 import json
 import logging
@@ -39,6 +40,7 @@ async def _reset_ollama_client() -> None:
     connection (mirrors the reset embedded in :func:`_retry_request`).
     """
     from app.services.ai import base as _base
+
     if _base.ollama_client:
         try:
             await _base.ollama_client.aclose()
@@ -57,9 +59,14 @@ async def _retry_request(fn, retries: int = 2, base_delay: float = 0.5):
                 # Final failure — reset shared client
                 await _reset_ollama_client()
                 raise
-            delay = base_delay * (2 ** attempt)
-            logger.debug("Ollama request failed (attempt %d/%d), retrying in %.1fs: %s",
-                         attempt + 1, retries + 1, delay, exc)
+            delay = base_delay * (2**attempt)
+            logger.debug(
+                "Ollama request failed (attempt %d/%d), retrying in %.1fs: %s",
+                attempt + 1,
+                retries + 1,
+                delay,
+                exc,
+            )
             await asyncio.sleep(delay)
 
 
@@ -196,11 +203,13 @@ async def call_ollama_vision(
     url = f"{base_url}/api/chat"
     payload = {
         "model": settings.OLLAMA_MODEL,
-        "messages": [{
-            "role": "user",
-            "content": extraction_prompt,
-            "images": [b64_data],
-        }],
+        "messages": [
+            {
+                "role": "user",
+                "content": extraction_prompt,
+                "images": [b64_data],
+            }
+        ],
         "stream": False,
         "options": {"num_ctx": 8192, "num_predict": 4096, "temperature": 0.2},
     }
@@ -209,7 +218,8 @@ async def call_ollama_vision(
     try:
         client = await get_ollama_client()
         resp = await client.post(
-            url, json=payload,
+            url,
+            json=payload,
             timeout=_ollama_timeout(len(extraction_prompt)),
         )
         resp.raise_for_status()
@@ -219,9 +229,7 @@ async def call_ollama_vision(
         return None
 
 
-async def call_ollama_ocr(
-    b64_data: str, mime_type: str
-) -> str | None:
+async def call_ollama_ocr(b64_data: str, mime_type: str) -> str | None:
     """Use local Ollama vision to OCR an image to text."""
     base_url = await resolve_provider_value("ollama")
     if not base_url:
@@ -233,17 +241,20 @@ async def call_ollama_ocr(
     url = f"{base_url}/api/chat"
     payload = {
         "model": settings.OLLAMA_MODEL,
-        "messages": [{
-            "role": "user",
-            "content": ocr_prompt,
-            "images": [b64_data],
-        }],
+        "messages": [
+            {
+                "role": "user",
+                "content": ocr_prompt,
+                "images": [b64_data],
+            }
+        ],
         "stream": False,  # type: ignore[dict-item]
         "options": {"num_ctx": 8192, "num_predict": 4096, "temperature": 0.1},
     }
     client = await get_ollama_client()
     resp = await client.post(
-        url, json=payload,
+        url,
+        json=payload,
         timeout=_ollama_timeout(len(ocr_prompt)),
     )
     resp.raise_for_status()

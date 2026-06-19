@@ -9,6 +9,7 @@ field-level precision/recall/F1. This is the baseline / re-measurement tool.
 
     cd backend && uv run python -m tests.extraction.evaluator --real-ai
 """
+
 from __future__ import annotations
 
 import argparse
@@ -78,6 +79,7 @@ async def _main(real_ai: bool, output: str | None) -> None:
     if real_ai:
         extract_fn = _real_extract("")
     else:
+
         async def mock_fn(text: str) -> ExtractedFields:
             # Round-trip the expected JSON through the parser to exercise the harness.
             for doc in GOLDEN_DOCUMENTS:

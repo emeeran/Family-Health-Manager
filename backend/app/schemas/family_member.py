@@ -1,4 +1,5 @@
 """Family member schemas."""
+
 import json
 from pydantic import BaseModel, Field, ConfigDict, computed_field, model_validator
 from datetime import datetime, date
@@ -35,9 +36,15 @@ class FamilyMemberCreate(BaseModel):
     height_cm: float | None = Field(None, ge=30, le=300, description="Height in cm")
     weight_kg: float | None = Field(None, ge=1, le=500, description="Weight in kg")
     allergies: list[AllergyEntry] | None = Field(None, description="Structured allergies")
-    emergency_contact_name: str | None = Field(None, max_length=100, description="Emergency contact name")
-    emergency_contact_phone: str | None = Field(None, max_length=30, description="Emergency contact phone")
-    patient_id: str | None = Field(None, max_length=50, description="Patient ID / hospital number (report header)")
+    emergency_contact_name: str | None = Field(
+        None, max_length=100, description="Emergency contact name"
+    )
+    emergency_contact_phone: str | None = Field(
+        None, max_length=30, description="Emergency contact phone"
+    )
+    patient_id: str | None = Field(
+        None, max_length=50, description="Patient ID / hospital number (report header)"
+    )
     phone: str | None = Field(None, max_length=30, description="Contact phone (report header)")
     address: str | None = Field(None, description="Primary address (report header)")
     notes: str | None = Field(None, description="General notes about the member")
@@ -60,9 +67,15 @@ class FamilyMemberUpdate(BaseModel):
     height_cm: float | None = Field(None, ge=30, le=300, description="Height in cm")
     weight_kg: float | None = Field(None, ge=1, le=500, description="Weight in kg")
     allergies: list[AllergyEntry] | None = Field(None, description="Structured allergies")
-    emergency_contact_name: str | None = Field(None, max_length=100, description="Emergency contact name")
-    emergency_contact_phone: str | None = Field(None, max_length=30, description="Emergency contact phone")
-    patient_id: str | None = Field(None, max_length=50, description="Patient ID / hospital number (report header)")
+    emergency_contact_name: str | None = Field(
+        None, max_length=100, description="Emergency contact name"
+    )
+    emergency_contact_phone: str | None = Field(
+        None, max_length=30, description="Emergency contact phone"
+    )
+    patient_id: str | None = Field(
+        None, max_length=50, description="Patient ID / hospital number (report header)"
+    )
     phone: str | None = Field(None, max_length=30, description="Contact phone (report header)")
     address: str | None = Field(None, description="Primary address (report header)")
     notes: str | None = Field(None, description="General notes about the member")
@@ -79,7 +92,9 @@ class FamilyMemberResponse(BaseModel):
     last_name: str = Field(..., description="Last name")
     date_of_birth: date = Field(..., description="Date of birth")
     gender: Gender = Field(..., description="Gender identity")
-    relationship: Relationship = Field(..., description="Relationship to household primary", alias="relationship_type")
+    relationship: Relationship = Field(
+        ..., description="Relationship to household primary", alias="relationship_type"
+    )
     medical_history_summary: str | None = Field(None, description="Medical history summary")
     blood_group: str | None = Field(None, description="Blood group (e.g. A+, O-)")
     patient_id: str | None = Field(None, description="Patient ID / hospital number (report header)")

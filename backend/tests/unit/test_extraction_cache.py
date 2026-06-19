@@ -3,6 +3,7 @@
 A re-upload or duplicate file must be served from cache without re-running the
 underlying OCR + LLM extraction. Bumping the version invalidates all entries.
 """
+
 import pytest
 
 from app.core.cache import cache
@@ -30,9 +31,7 @@ async def test_extract_caches_by_content_hash(monkeypatch, clean_extraction_cach
         calls["n"] += 1
         return expected
 
-    monkeypatch.setattr(
-        "app.services.ai.document_extractor.extract_medical_data", fake_extract
-    )
+    monkeypatch.setattr("app.services.ai.document_extractor.extract_medical_data", fake_extract)
 
     svc = AIService(db=None)  # db unused — fake_extract ignores it
     content_hash = "a" * 64
@@ -54,9 +53,7 @@ async def test_extract_uncached_when_no_content_hash(monkeypatch, clean_extracti
         calls["n"] += 1
         return ExtractionResult(extracted=ExtractedFields(diagnosis="x"))
 
-    monkeypatch.setattr(
-        "app.services.ai.document_extractor.extract_medical_data", fake_extract
-    )
+    monkeypatch.setattr("app.services.ai.document_extractor.extract_medical_data", fake_extract)
 
     svc = AIService(db=None)
     await svc.extract_medical_data("/tmp/x.pdf", "application/pdf")
@@ -72,9 +69,7 @@ async def test_cache_version_invalidates(monkeypatch, clean_extraction_cache):
         calls["n"] += 1
         return ExtractionResult(extracted=ExtractedFields(diagnosis="x"))
 
-    monkeypatch.setattr(
-        "app.services.ai.document_extractor.extract_medical_data", fake_extract
-    )
+    monkeypatch.setattr("app.services.ai.document_extractor.extract_medical_data", fake_extract)
 
     content_hash = "b" * 64
 

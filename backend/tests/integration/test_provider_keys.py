@@ -3,6 +3,7 @@
 The first registered user (via ``auth_client``) is the admin; a second
 registration is role="user" and is used for the 403 cases.
 """
+
 import pytest
 
 from app.core import provider_keys
@@ -61,7 +62,9 @@ async def test_delete_clears_stored_key(auth_client):
 
 async def test_ollama_url_is_not_masked(auth_client):
     """The Ollama URL is not a secret — it is returned in full."""
-    resp = await auth_client.put(KEYS_PATH, json={"provider": "ollama", "value": "http://host:11434"})
+    resp = await auth_client.put(
+        KEYS_PATH, json={"provider": "ollama", "value": "http://host:11434"}
+    )
     assert resp.status_code == 200
     assert resp.json()["is_secret"] is False
     assert resp.json()["masked"] == "http://host:11434"

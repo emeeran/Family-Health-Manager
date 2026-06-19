@@ -1,4 +1,5 @@
 """Smart entry router — NL parsing for quick record creation."""
+
 import logging
 from uuid import UUID
 from fastapi import APIRouter, Depends, HTTPException
@@ -112,11 +113,23 @@ async def parse_natural_language(
         # Relationship match
         if not member_match:
             rel_map = {
-                "dad": "father", "mom": "mother", "papa": "father", "mama": "mother",
-                "appa": "father", "amma": "mother", "father": "father", "mother": "mother",
-                "son": "son", "daughter": "daughter", "wife": "spouse", "husband": "spouse",
-                "spouse": "spouse", "brother": "brother", "sister": "sister",
-                "grandfather": "grandfather", "grandmother": "grandmother",
+                "dad": "father",
+                "mom": "mother",
+                "papa": "father",
+                "mama": "mother",
+                "appa": "father",
+                "amma": "mother",
+                "father": "father",
+                "mother": "mother",
+                "son": "son",
+                "daughter": "daughter",
+                "wife": "spouse",
+                "husband": "spouse",
+                "spouse": "spouse",
+                "brother": "brother",
+                "sister": "sister",
+                "grandfather": "grandfather",
+                "grandmother": "grandmother",
             }
             rel_key = rel_map.get(member_name_lower)
             if rel_key:
@@ -164,10 +177,12 @@ async def parse_natural_language(
                 "vitals": "Vitals",
                 "misc_record": "Misc Record",
             }
-            preview_fields.append(NLFieldPreview(
-                label="Type",
-                value=type_labels.get(record_type_raw, record_type_raw),
-            ))
+            preview_fields.append(
+                NLFieldPreview(
+                    label="Type",
+                    value=type_labels.get(record_type_raw, record_type_raw),
+                )
+            )
         except ValueError:
             pass
 
@@ -189,10 +204,12 @@ async def parse_natural_language(
         preview_fields.append(NLFieldPreview(label="Lab Tests", value=str(len(lab_list))))
 
     if parsed.get("glucose_value"):
-        preview_fields.append(NLFieldPreview(label="Glucose", value=f'{parsed["glucose_value"]} mg/dL'))
+        preview_fields.append(
+            NLFieldPreview(label="Glucose", value=f"{parsed['glucose_value']} mg/dL")
+        )
 
     if parsed.get("hba1c_value"):
-        preview_fields.append(NLFieldPreview(label="HbA1c", value=f'{parsed["hba1c_value"]}%'))
+        preview_fields.append(NLFieldPreview(label="HbA1c", value=f"{parsed['hba1c_value']}%"))
 
     vitals_parts = []
     for key, label in [
@@ -225,7 +242,9 @@ async def parse_natural_language(
         investigations=parsed.get("investigations"),
         provider_name=parsed.get("provider_name"),
         prescription_text=parsed.get("prescription_text"),
-        prescriptions=parsed.get("prescriptions") if isinstance(parsed.get("prescriptions"), list) else None,
+        prescriptions=parsed.get("prescriptions")
+        if isinstance(parsed.get("prescriptions"), list)
+        else None,
         lab_tests=parsed.get("lab_tests") if isinstance(parsed.get("lab_tests"), list) else None,
         clinical_notes=parsed.get("clinical_notes"),
         next_review_date=parsed.get("next_review_date"),

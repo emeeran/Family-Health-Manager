@@ -1,4 +1,5 @@
 """Schemas for the database integrity check + repair feature (Data tab)."""
+
 from typing import Literal
 
 from pydantic import BaseModel, ConfigDict, Field

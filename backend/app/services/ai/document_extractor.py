@@ -1,4 +1,5 @@
 """Document extraction — OCR, PDF handling, vision AI extraction, and parsing."""
+
 import asyncio
 import base64
 import functools
@@ -37,6 +38,7 @@ class ExtractionResult:
 
     extracted: "ExtractedFields"  # noqa: F821
     transcription: str | None = None
+
 
 EXTRACTION_PROMPT = """You are a medical document data extraction assistant. Analyze the provided medical document image/PDF and extract structured data.
 
@@ -131,13 +133,20 @@ async def classify_document(file_path: str, mime_type: str, call_ai_fn) -> "Reco
 
     # Keyword fallback
     text_lower = text.lower()
-    if any(kw in text_lower for kw in ("prescription", "rx", "medicine", "tablet", "capsule", "syrup")):
+    if any(
+        kw in text_lower for kw in ("prescription", "rx", "medicine", "tablet", "capsule", "syrup")
+    ):
         return RecordType.DOCTOR_VISIT
     if any(kw in text_lower for kw in ("eye", "vision", "sph", "cyl", "lens", "optical")):
         return RecordType.RX_EYEGLASS
-    if any(kw in text_lower for kw in ("hba1c", "diabetes monitoring", "fasting glucose", "postprandial")):
+    if any(
+        kw in text_lower
+        for kw in ("hba1c", "diabetes monitoring", "fasting glucose", "postprandial")
+    ):
         return RecordType.BLOOD_GLUCOSE
-    if any(kw in text_lower for kw in ("lab", "test", "blood", "hemoglobin", "cholesterol", "urine")):
+    if any(
+        kw in text_lower for kw in ("lab", "test", "blood", "hemoglobin", "cholesterol", "urine")
+    ):
         return RecordType.LAB_REPORT
     return RecordType.MISC_RECORD
 
@@ -155,7 +164,9 @@ async def extract_medical_data(
     if mime_type == "application/pdf":
         pdf_text = extract_pdf_text(file_path)
         if pdf_text:
-            logger.info("PDF has embedded text (%d chars) — using fast text extraction", len(pdf_text))
+            logger.info(
+                "PDF has embedded text (%d chars) — using fast text extraction", len(pdf_text)
+            )
             # Extraction and transcription-formatting both consume only pdf_text —
             # run them concurrently to save an AI round-trip.
             if await _fast_cloud_text_available():
@@ -170,7 +181,9 @@ async def extract_medical_data(
                 formatted = pdf_text
             result = parse_extraction(raw_text, ExtractedFields)
             if not result.has_any_data():
-                logger.warning("PDF text extraction returned no usable fields — text may be non-medical or too short")
+                logger.warning(
+                    "PDF text extraction returned no usable fields — text may be non-medical or too short"
+                )
             return ExtractionResult(extracted=result, transcription=formatted)
 
         # Scanned/image PDF — OCR pages then use fast text extraction
@@ -179,6 +192,7 @@ async def extract_medical_data(
         # Check if the PDF can even be opened
         try:
             import fitz
+
             doc = fitz.open(file_path)
             page_count = len(doc)
             doc.close()
@@ -197,16 +211,17 @@ async def extract_medical_data(
         if ocr_text and ocr_quality >= OCR_QUALITY_THRESHOLD:
             logger.info(
                 "OCR extracted %d chars (quality %.2f) from %d pages — using text extraction",
-                len(ocr_text), ocr_quality, page_count,
+                len(ocr_text),
+                ocr_quality,
+                page_count,
             )
             # Chunk OCR text by page markers to keep prompts small for local models
             page_chunks = chunk_ocr_text(ocr_text, pages_per_chunk=3)
             all_extracted = ExtractedFields()
             # Process all chunks in parallel
-            chunk_results = await asyncio.gather(*[
-                call_text_extraction(chunk[:10000], last_provider_ref)
-                for chunk in page_chunks
-            ])
+            chunk_results = await asyncio.gather(
+                *[call_text_extraction(chunk[:10000], last_provider_ref) for chunk in page_chunks]
+            )
             for raw_text in chunk_results:
                 chunk_result = parse_extraction(raw_text, ExtractedFields)
                 all_extracted = merge_extractions(all_extracted, chunk_result)
@@ -217,7 +232,9 @@ async def extract_medical_data(
                     else ocr_text
                 )
                 return ExtractionResult(extracted=all_extracted, transcription=formatted)
-            logger.warning("OCR text extraction returned no usable fields — falling back to vision AI")
+            logger.warning(
+                "OCR text extraction returned no usable fields — falling back to vision AI"
+            )
         else:
             logger.warning(
                 "OCR quality too low (%.2f) or empty — falling back to vision AI", ocr_quality
@@ -234,7 +251,9 @@ async def extract_medical_data(
             page_num += 1
 
         if not page_images:
-            logger.error("PDF has %d pages but none could be rendered — file may be encrypted", page_count)
+            logger.error(
+                "PDF has %d pages but none could be rendered — file may be encrypted", page_count
+            )
             return ExtractionResult(extracted=ExtractedFields())
 
         logger.info("Vision fallback: %d pages — extracting in parallel batches", len(page_images))
@@ -242,12 +261,13 @@ async def extract_medical_data(
         BATCH_SIZE = 3
         all_extracted = ExtractedFields()
         for batch_start in range(0, len(page_images), BATCH_SIZE):
-            batch = page_images[batch_start:batch_start + BATCH_SIZE]
+            batch = page_images[batch_start : batch_start + BATCH_SIZE]
             page_nums = list(range(batch_start + 1, batch_start + len(batch) + 1))
-            logger.info("Extracting pages %s via vision AI...", ", ".join(str(p) for p in page_nums))
+            logger.info(
+                "Extracting pages %s via vision AI...", ", ".join(str(p) for p in page_nums)
+            )
             tasks = [
-                call_vision_provider_from_b64(b64, "image/jpeg", last_provider_ref)
-                for b64 in batch
+                call_vision_provider_from_b64(b64, "image/jpeg", last_provider_ref) for b64 in batch
             ]
             results = await asyncio.gather(*tasks)
             for raw_text in results:
@@ -265,7 +285,9 @@ async def extract_medical_data(
         # starving the SSE heartbeat and all concurrent requests.
         ocr_text = await asyncio.to_thread(tesseract_image, file_path)
         if ocr_text and _ocr_quality(ocr_text) >= OCR_QUALITY_THRESHOLD:
-            logger.info("Image OCR (tesseract) extracted %d chars — using text extraction", len(ocr_text))
+            logger.info(
+                "Image OCR (tesseract) extracted %d chars — using text extraction", len(ocr_text)
+            )
             if await _fast_cloud_text_available():
                 raw_text, formatted = await asyncio.gather(
                     call_text_extraction(ocr_text, last_provider_ref),
@@ -302,9 +324,7 @@ async def extract_medical_data(
     extraction_task = asyncio.create_task(
         call_vision_provider(file_path, mime_type, last_provider_ref)
     )
-    transcription_task = asyncio.create_task(
-        _transcribe_via_vision([b64_data], mime_type)
-    )
+    transcription_task = asyncio.create_task(_transcribe_via_vision([b64_data], mime_type))
     raw_text, transcription = await asyncio.gather(extraction_task, transcription_task)
     return ExtractionResult(
         extracted=parse_extraction(raw_text, ExtractedFields),
@@ -334,6 +354,7 @@ def extract_pdf_text(file_path: str) -> str | None:
     """Extract text content from a PDF file using PyMuPDF."""
     try:
         import fitz  # PyMuPDF
+
         doc = fitz.open(file_path)
         text = "\n".join(page.get_text() for page in doc)
         doc.close()
@@ -491,7 +512,9 @@ def _ocr_single_page(file_path: str, page_num: int) -> str:
         # PSM 6 = uniform block of text, better for medical documents
         result = subprocess.run(
             ["tesseract", ocr_input, "stdout", "--psm", "6"],
-            capture_output=True, text=True, timeout=30,
+            capture_output=True,
+            text=True,
+            timeout=30,
         )
         page_text = result.stdout.strip()
 
@@ -499,7 +522,9 @@ def _ocr_single_page(file_path: str, page_num: int) -> str:
         if not page_text:
             result = subprocess.run(
                 ["tesseract", ocr_input, "stdout", "--psm", "4"],
-                capture_output=True, text=True, timeout=30,
+                capture_output=True,
+                text=True,
+                timeout=30,
             )
             page_text = result.stdout.strip()
 
@@ -541,14 +566,18 @@ def tesseract_image(file_path: str) -> str | None:
         # PSM 6 = uniform block of text, good for medical docs/prescriptions
         result = subprocess.run(
             ["tesseract", ocr_input, "stdout", "--psm", "6"],
-            capture_output=True, text=True, timeout=15,
+            capture_output=True,
+            text=True,
+            timeout=15,
         )
         text = result.stdout.strip()
         if not text:
             # Fallback: try PSM 4 (single column of text of variable sizes)
             result = subprocess.run(
                 ["tesseract", ocr_input, "stdout", "--psm", "4"],
-                capture_output=True, text=True, timeout=15,
+                capture_output=True,
+                text=True,
+                timeout=15,
             )
             text = result.stdout.strip()
         return text or None
@@ -558,6 +587,7 @@ def tesseract_image(file_path: str) -> str | None:
     finally:
         if enhanced_path:
             import os
+
             try:
                 os.unlink(enhanced_path)
             except OSError:
@@ -601,6 +631,7 @@ def _preprocess_image_for_ocr(file_path: str) -> str | None:
         img = img.convert("L")
 
         import tempfile
+
         tmp = tempfile.NamedTemporaryFile(suffix=".png", delete=False)
         img.save(tmp, format="PNG")
         tmp.close()
@@ -618,6 +649,7 @@ def pdf_page_to_image(file_path: str, page_num: int = 0) -> bytes | None:
     """
     try:
         import fitz
+
         doc = fitz.open(file_path)
         if page_num >= len(doc):
             doc.close()
@@ -859,7 +891,8 @@ async def call_text_extraction(pdf_text: str, last_provider_ref: list) -> str | 
 
 
 def merge_extractions(
-    base: "ExtractedFields", page: "ExtractedFields"  # noqa: F821
+    base: "ExtractedFields",
+    page: "ExtractedFields",  # noqa: F821
 ) -> "ExtractedFields":  # noqa: F821
     """Merge extraction results from multiple pages into one."""
     from app.schemas.health_record import ExtractedFields
@@ -910,9 +943,7 @@ def strip_markdown_fences(text: str) -> str:
     return re.sub(r"```\s*", "", cleaned).strip()
 
 
-def parse_extraction(
-    raw_text: str | None, extracted_class: type
-) -> "ExtractedFields":  # noqa: F821
+def parse_extraction(raw_text: str | None, extracted_class: type) -> "ExtractedFields":  # noqa: F821
     """Parse AI response text into ExtractedFields."""
     from app.schemas.health_record import ExtractedFields
 
@@ -928,7 +959,7 @@ def parse_extraction(
         early = raw_text[:MAX_EXTRACTION_CHARS]
         match = re.search(r"\{", early)
         if match:
-            raw_text = early[match.start():]
+            raw_text = early[match.start() :]
         else:
             raw_text = early
 
@@ -960,13 +991,17 @@ def parse_extraction(
                         break
 
     if data is None:
-        logger.warning("Extraction: could not parse JSON from AI response (first 200 chars: %s)", raw_text[:200] if raw_text else "None")
+        logger.warning(
+            "Extraction: could not parse JSON from AI response (first 200 chars: %s)",
+            raw_text[:200] if raw_text else "None",
+        )
         return ExtractedFields()
 
     # Map record_type string to enum if present
     if "record_type" in data and isinstance(data["record_type"], str):
         try:
             from app.models.base import RecordType
+
             data["record_type"] = RecordType(data["record_type"])
         except ValueError:
             data["record_type"] = None

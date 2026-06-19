@@ -1,4 +1,5 @@
 """Integration tests for health records CRUD."""
+
 import pytest
 
 
@@ -44,9 +45,7 @@ async def test_create_record(auth_client):
 async def test_create_doctor_visit_exposes_report_field(auth_client):
     """A created doctor_visit response carries the transcription_report field."""
     member_id = await _create_member(auth_client)
-    resp = await auth_client.post(
-        f"/api/v1/members/{member_id}/records", json=RECORD_PAYLOAD
-    )
+    resp = await auth_client.post(f"/api/v1/members/{member_id}/records", json=RECORD_PAYLOAD)
     assert resp.status_code == 201
     assert "transcription_report" in resp.json()
 
@@ -58,9 +57,7 @@ async def test_regenerate_report_builds_transcription_report(auth_client):
     template fallback is used — the report must still be produced.
     """
     member_id = await _create_member(auth_client)
-    create = await auth_client.post(
-        f"/api/v1/members/{member_id}/records", json=RECORD_PAYLOAD
-    )
+    create = await auth_client.post(f"/api/v1/members/{member_id}/records", json=RECORD_PAYLOAD)
     record_id = create.json()["id"]
 
     resp = await auth_client.post(
@@ -70,7 +67,6 @@ async def test_regenerate_report_builds_transcription_report(auth_client):
     report = resp.json()["transcription_report"]
     assert report
     assert "Medical Records Transcription Report" in report
-
 
 
 async def test_list_records(auth_client):
@@ -95,9 +91,7 @@ async def test_get_record(auth_client):
     )
     record_id = create_resp.json()["id"]
 
-    resp = await auth_client.get(
-        f"/api/v1/members/{member_id}/records/{record_id}"
-    )
+    resp = await auth_client.get(f"/api/v1/members/{member_id}/records/{record_id}")
     assert resp.status_code == 200
     assert resp.json()["id"] == record_id
 
@@ -111,7 +105,5 @@ async def test_delete_record(auth_client):
     )
     record_id = create_resp.json()["id"]
 
-    resp = await auth_client.delete(
-        f"/api/v1/members/{member_id}/records/{record_id}"
-    )
+    resp = await auth_client.delete(f"/api/v1/members/{member_id}/records/{record_id}")
     assert resp.status_code == 204

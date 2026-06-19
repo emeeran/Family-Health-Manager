@@ -30,7 +30,10 @@ class LabResult(Base):
     note: Mapped[str] = mapped_column(Text, default="")
     record_date: Mapped[date | None] = mapped_column(Date, nullable=True)
     created_at: Mapped[datetime] = mapped_column(
-        DateTime, default=lambda: datetime.now(timezone.utc), server_default="CURRENT_TIMESTAMP", nullable=False
+        DateTime,
+        default=lambda: datetime.now(timezone.utc),
+        server_default="CURRENT_TIMESTAMP",
+        nullable=False,
     )
 
     family_member: Mapped["FamilyMember"] = relationship(back_populates="lab_results")

@@ -5,6 +5,7 @@ unit, so these tests cover only the endpoint layer: admin gating, archive-name
 validation, the pending-restore guard, and that a valid request writes the
 archive name into the flag file the path-unit watches.
 """
+
 from pathlib import Path
 
 import pytest

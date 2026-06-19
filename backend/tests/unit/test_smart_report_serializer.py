@@ -1,4 +1,5 @@
 """Unit tests for Smart Report / insight serialization and tolerant parsing."""
+
 import json
 from datetime import datetime, timezone
 from uuid import uuid4
@@ -146,9 +147,7 @@ def test_parse_numeric_value_coerced_to_str():
 
 
 def test_parse_unknown_enum_tolerated():
-    payload = json.dumps(
-        {"systems_at_a_glance": [{"system": "X", "status": "critical_danger"}]}
-    )
+    payload = json.dumps({"systems_at_a_glance": [{"system": "X", "status": "critical_danger"}]})
     report, _ = parse_smart_report_response(payload)
     assert report is not None
     assert report.systems_at_a_glance[0].status == "critical_danger"

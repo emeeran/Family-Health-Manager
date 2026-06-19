@@ -1,4 +1,5 @@
 """Unit tests for medication service — duration parsing & active medications."""
+
 import json
 from datetime import date, timedelta
 from uuid import uuid4
@@ -31,8 +32,8 @@ def _empty_scalars():
         ("6 months", 180),
         ("14", 14),
         ("60", 60),
-        ("", 30),       # empty → default 30
-        (None, 30),     # None → default 30
+        ("", 30),  # empty → default 30
+        (None, 30),  # None → default 30
         ("ongoing", 30),  # unrecognized → default 30
         ("lifelong", 30),
         ("  90 days  ", 90),  # whitespace trimmed
@@ -88,7 +89,11 @@ def med_service(mock_db):
 @pytest.mark.asyncio
 async def test_get_active_medications_empty(med_service, mock_db):
     """No records → empty list."""
-    mock_db.execute = AsyncMock(return_value=MagicMock(scalars=MagicMock(return_value=MagicMock(all=MagicMock(return_value=[])))))
+    mock_db.execute = AsyncMock(
+        return_value=MagicMock(
+            scalars=MagicMock(return_value=MagicMock(all=MagicMock(return_value=[])))
+        )
+    )
     result = await med_service.get_active_medications(uuid4())
     assert result == []
 
@@ -130,8 +135,12 @@ async def test_get_active_medications_deduplication(med_service, mock_db):
     old_date = date.today() - timedelta(days=60)
     new_date = date.today() - timedelta(days=5)
 
-    old_rx = [{"medicine": "Metformin 500mg", "type": "Tab", "dosage": "1-0-1", "duration": "30 days"}]
-    new_rx = [{"medicine": "Metformin 500mg", "type": "Tab", "dosage": "1-0-1", "duration": "60 days"}]
+    old_rx = [
+        {"medicine": "Metformin 500mg", "type": "Tab", "dosage": "1-0-1", "duration": "30 days"}
+    ]
+    new_rx = [
+        {"medicine": "Metformin 500mg", "type": "Tab", "dosage": "1-0-1", "duration": "60 days"}
+    ]
 
     old_record = _make_record(record_date=old_date, clinical_data=_clinical_data(old_rx))
     new_record = _make_record(record_date=new_date, clinical_data=_clinical_data(new_rx))

@@ -1,4 +1,5 @@
 """Unit tests for verification service."""
+
 import json
 import pytest
 from unittest.mock import AsyncMock, MagicMock
@@ -91,9 +92,23 @@ class TestVerifyInsight:
         insight.response = "Patient HbA1c is 8.5%"
         insight.provider_used = "Ollama medgemma"
 
-        warnings = [{"type": "wrong_value", "claim": "HbA1c 8.5%", "correction": "HbA1c is 7.2%", "severity": "high"}]
+        warnings = [
+            {
+                "type": "wrong_value",
+                "claim": "HbA1c 8.5%",
+                "correction": "HbA1c is 7.2%",
+                "severity": "high",
+            }
+        ]
         mock_ai_service._call_ai_excluding.return_value = (
-            json.dumps({"status": "warnings", "claims_checked": 1, "warnings": warnings, "summary": "Value mismatch"}),
+            json.dumps(
+                {
+                    "status": "warnings",
+                    "claims_checked": 1,
+                    "warnings": warnings,
+                    "summary": "Value mismatch",
+                }
+            ),
             "Cloud AI",
         )
 

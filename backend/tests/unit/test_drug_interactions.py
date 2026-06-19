@@ -1,4 +1,5 @@
 """Unit tests for AI drug interaction checking — response parsing logic."""
+
 import json
 import pytest
 from unittest.mock import AsyncMock
@@ -150,7 +151,9 @@ async def test_check_interactions_malformed_json_returns_empty(ai_service):
 @pytest.mark.asyncio
 async def test_check_interactions_partial_json_returns_empty(ai_service):
     """AI returns truncated JSON → returns empty list."""
-    ai_service._call_ai = AsyncMock(return_value=('[{"drugs": ["A", "B"], "severity":', "test-provider"))
+    ai_service._call_ai = AsyncMock(
+        return_value=('[{"drugs": ["A", "B"], "severity":', "test-provider")
+    )
 
     result = await ai_service.check_drug_interactions(_medications(2))
     assert result == []
@@ -196,14 +199,14 @@ async def test_check_interactions_nested_json_array(ai_service):
 
 
 def test_strip_markdown_fences_json():
-    raw = "```json\n[{\"drugs\": [\"A\"]}]\n```"
+    raw = '```json\n[{"drugs": ["A"]}]\n```'
     cleaned = AIService._strip_markdown_fences(raw)
     assert cleaned.startswith("[")
     assert cleaned.endswith("]")
 
 
 def test_strip_markdown_fences_plain():
-    raw = "```\n[\"hello\"]\n```"
+    raw = '```\n["hello"]\n```'
     cleaned = AIService._strip_markdown_fences(raw)
     assert "```" not in cleaned
 

@@ -3,6 +3,7 @@
 These run without real AI. The real-AI baseline is run manually via
 ``python -m tests.extraction.evaluator --real-ai``.
 """
+
 from datetime import date
 
 import pytest
@@ -54,18 +55,22 @@ def test_wrong_value_is_false_negative():
 
 
 def test_prescriptions_match_by_medicine_name():
-    expected = ExtractedFields(prescriptions=[
-        {"medicine": "Amlodipine 5mg", "dosage": "1-0-1"},
-        {"medicine": "Metoprolol 50mg", "dosage": "1-0-1"},
-    ])
-    extracted = ExtractedFields(prescriptions=[
-        {"medicine": "Amlodipine 5mg", "dosage": "1-0-1"},  # match
-        {"medicine": "Unknownium 10mg"},                    # spurious
-    ])
+    expected = ExtractedFields(
+        prescriptions=[
+            {"medicine": "Amlodipine 5mg", "dosage": "1-0-1"},
+            {"medicine": "Metoprolol 50mg", "dosage": "1-0-1"},
+        ]
+    )
+    extracted = ExtractedFields(
+        prescriptions=[
+            {"medicine": "Amlodipine 5mg", "dosage": "1-0-1"},  # match
+            {"medicine": "Unknownium 10mg"},  # spurious
+        ]
+    )
     s = score_extraction(extracted, expected).fields["prescriptions"]
-    assert s.tp == 1   # Amlodipine matched
-    assert s.fn == 1   # Metoprolol missed
-    assert s.fp == 1   # Unknownium spurious
+    assert s.tp == 1  # Amlodipine matched
+    assert s.fn == 1  # Metoprolol missed
+    assert s.fp == 1  # Unknownium spurious
 
 
 def test_record_type_enum_normalizes():
@@ -77,8 +82,10 @@ def test_record_type_enum_normalizes():
 @pytest.mark.asyncio
 async def test_evaluate_runs_over_all_golden_docs():
     """Mock mode: every golden doc maps to itself → perfect recall on present fields."""
+
     async def identity(text: str) -> ExtractedFields:
         from .golden_documents import GOLDEN_DOCUMENTS
+
         for doc in GOLDEN_DOCUMENTS:
             if doc.text == text:
                 return doc.expected

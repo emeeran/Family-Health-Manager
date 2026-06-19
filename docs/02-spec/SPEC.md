@@ -1,4 +1,4 @@
-# Specification — Family Health Tracker
+# Specification — Family Health Manager
 
 > Phase p2 — Technical specification derived from `docs/01-requirements/REQUIREMENTS.md`.
 

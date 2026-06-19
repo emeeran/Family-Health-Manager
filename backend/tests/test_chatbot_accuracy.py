@@ -4,6 +4,7 @@ Chatbot accuracy verification: direct AI context testing.
 Builds real household context from the database, sends questions
 directly to the AI, then saves results for independent model verification.
 """
+
 import asyncio
 import json
 import sqlite3
@@ -27,9 +28,28 @@ GROUND_TRUTH = {
         {"date": "12-Sep-2015", "value": "9.3%", "source": "lab_report"},
     ],
     "family_member_count": 6,
-    "family_members": ["Meeran Esmail", "Jenitha Meeran", "Ashik Nesin", "Reshman Susmi", "Tarika Nesin", "Tariq Al Fayad"],
-    "meeran_conditions": ["T2DM (Type 2 Diabetes) since 2008", "Hypertension since 2003", "Parkinson's Disease since 2020", "Depression"],
-    "latest_medications": ["HUMALOG LISPRO", "CYBLEX MV 80/0.2MG", "PIOZ MF 15MG", "GLUXIT S 10/100 MG", "Syndopa 110", "SENTIDOR OINTMENT"],
+    "family_members": [
+        "Meeran Esmail",
+        "Jenitha Meeran",
+        "Ashik Nesin",
+        "Reshman Susmi",
+        "Tarika Nesin",
+        "Tariq Al Fayad",
+    ],
+    "meeran_conditions": [
+        "T2DM (Type 2 Diabetes) since 2008",
+        "Hypertension since 2003",
+        "Parkinson's Disease since 2020",
+        "Depression",
+    ],
+    "latest_medications": [
+        "HUMALOG LISPRO",
+        "CYBLEX MV 80/0.2MG",
+        "PIOZ MF 15MG",
+        "GLUXIT S 10/100 MG",
+        "Syndopa 110",
+        "SENTIDOR OINTMENT",
+    ],
     "latest_visit": {"date": "12-Apr-2026", "next_review": "14-May-2026"},
 }
 
@@ -154,9 +174,17 @@ def build_context_from_db(db_path: str, household_id: str) -> str:
 
 def build_lab_trends_from_db(conn, member_ids):
     """Extract key lab trends from all records for given members."""
-    KEY_TESTS = {"hba1c", "hb a1c", "glycosylated hb", "fasting glucose",
-                 "postprandial blood glucose", "total cholesterol",
-                 "ldl cholesterol", "hdl cholesterol", "triglyceride"}
+    KEY_TESTS = {
+        "hba1c",
+        "hb a1c",
+        "glycosylated hb",
+        "fasting glucose",
+        "postprandial blood glucose",
+        "total cholesterol",
+        "ldl cholesterol",
+        "hdl cholesterol",
+        "triglyceride",
+    }
 
     trends = {}
     placeholders = ",".join("?" * len(member_ids))
@@ -221,12 +249,13 @@ async def run_tests():
     # Send questions via the AI service directly (no DB session needed)
     # We'll use a minimal mock to call _call_ai directly
     from unittest.mock import MagicMock
+
     service = AIService.__new__(AIService)
     service.db = MagicMock()
 
     results = []
     for i, test in enumerate(TEST_QUESTIONS):
-        print(f"[{i+1}/{len(TEST_QUESTIONS)}] Q: {test['question']}")
+        print(f"[{i + 1}/{len(TEST_QUESTIONS)}] Q: {test['question']}")
 
         try:
             response, provider = await service._call_ai(test["question"], context)
@@ -236,13 +265,15 @@ async def run_tests():
             response = f"ERROR: {e}"
             print(f"    A: {response}")
 
-        results.append({
-            "question": test["question"],
-            "response": response,
-            "expected_facts": test["expected_facts"],
-            "category": test["category"],
-            "provider": provider if 'provider' in dir() else "unknown",
-        })
+        results.append(
+            {
+                "question": test["question"],
+                "response": response,
+                "expected_facts": test["expected_facts"],
+                "category": test["category"],
+                "provider": provider if "provider" in dir() else "unknown",
+            }
+        )
         print()
 
     # Save results

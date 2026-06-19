@@ -1,4 +1,5 @@
 """Medication expiry / refill tracking service."""
+
 import json
 import logging
 from datetime import date, timedelta
@@ -70,23 +71,25 @@ class MedicationService:
             for old_med in existing.scalars().all():
                 old_med.status = "superseded"
 
-            self.db.add(Medication(
-                family_member_id=member_id,
-                health_record_id=record_id,
-                medicine=medicine,
-                medicine_key=medicine_key,
-                type=rx.get("type", ""),
-                dosage=rx.get("dosage", ""),
-                timing=rx.get("timing", ""),
-                duration=rx.get("duration", ""),
-                duration_days=duration_days,
-                note=rx.get("note", ""),
-                start_date=record_date,
-                end_date=end_date,
-                status=status,
-                prescription_index=i,
-                provider_name=provider_name or "",
-            ))
+            self.db.add(
+                Medication(
+                    family_member_id=member_id,
+                    health_record_id=record_id,
+                    medicine=medicine,
+                    medicine_key=medicine_key,
+                    type=rx.get("type", ""),
+                    dosage=rx.get("dosage", ""),
+                    timing=rx.get("timing", ""),
+                    duration=rx.get("duration", ""),
+                    duration_days=duration_days,
+                    note=rx.get("note", ""),
+                    start_date=record_date,
+                    end_date=end_date,
+                    status=status,
+                    prescription_index=i,
+                    provider_name=provider_name or "",
+                )
+            )
             synced += 1
 
         if synced:
@@ -118,20 +121,22 @@ class MedicationService:
                 if m.medicine_key in seen:
                     continue
                 seen.add(m.medicine_key)
-                medications.append({
-                    "medicine": m.medicine,
-                    "type": m.type,
-                    "dosage": m.dosage,
-                    "timing": m.timing,
-                    "start_date": m.start_date.isoformat() if m.start_date else "",
-                    "end_date": m.end_date.isoformat() if m.end_date else "",
-                    "duration": m.duration,
-                    "note": m.note,
-                    "status": m.status,
-                    "record_id": str(m.health_record_id) if m.health_record_id else "",
-                    "prescription_index": m.prescription_index,
-                    "provider_name": m.provider_name,
-                })
+                medications.append(
+                    {
+                        "medicine": m.medicine,
+                        "type": m.type,
+                        "dosage": m.dosage,
+                        "timing": m.timing,
+                        "start_date": m.start_date.isoformat() if m.start_date else "",
+                        "end_date": m.end_date.isoformat() if m.end_date else "",
+                        "duration": m.duration,
+                        "note": m.note,
+                        "status": m.status,
+                        "record_id": str(m.health_record_id) if m.health_record_id else "",
+                        "prescription_index": m.prescription_index,
+                        "provider_name": m.provider_name,
+                    }
+                )
             return medications
 
         # ── Slow path: scan JSON (pre-migration fallback) ─────────────
@@ -141,7 +146,9 @@ class MedicationService:
         """Fallback: scan health_records JSON for medication data."""
         result = await self.db.execute(
             select(HealthRecord)
-            .options(load_only(HealthRecord.id, HealthRecord.record_date, HealthRecord.clinical_data))
+            .options(
+                load_only(HealthRecord.id, HealthRecord.record_date, HealthRecord.clinical_data)
+            )
             .where(
                 HealthRecord.family_member_id == member_id,
                 HealthRecord.record_type == RecordType.DOCTOR_VISIT,
@@ -191,20 +198,22 @@ class MedicationService:
 
                 status = "active" if end_date >= today else "completed"
 
-                medications.append({
-                    "medicine": medicine,
-                    "type": rx.get("type", ""),
-                    "dosage": rx.get("dosage", ""),
-                    "timing": rx.get("timing", ""),
-                    "start_date": start_date.isoformat(),
-                    "end_date": end_date.isoformat(),
-                    "duration": rx.get("duration", ""),
-                    "note": rx.get("note", ""),
-                    "status": status,
-                    "record_id": str(r.id),
-                    "prescription_index": i,
-                    "provider_name": parsed.get("_provider_name"),
-                })
+                medications.append(
+                    {
+                        "medicine": medicine,
+                        "type": rx.get("type", ""),
+                        "dosage": rx.get("dosage", ""),
+                        "timing": rx.get("timing", ""),
+                        "start_date": start_date.isoformat(),
+                        "end_date": end_date.isoformat(),
+                        "duration": rx.get("duration", ""),
+                        "note": rx.get("note", ""),
+                        "status": status,
+                        "record_id": str(r.id),
+                        "prescription_index": i,
+                        "provider_name": parsed.get("_provider_name"),
+                    }
+                )
 
         return medications
 
@@ -218,12 +227,14 @@ class MedicationService:
         cutoff = today + timedelta(days=7)
 
         result = await self.db.execute(
-            select(Medication).where(
+            select(Medication)
+            .where(
                 Medication.family_member_id == member_id,
                 Medication.status == "active",
                 Medication.end_date >= today,
                 Medication.end_date <= cutoff,
-            ).order_by(Medication.end_date)
+            )
+            .order_by(Medication.end_date)
         )
         meds = result.scalars().all()
 
@@ -244,21 +255,23 @@ class MedicationService:
         reminders: list[dict] = []
         for m in meds:
             days_left = (m.end_date - today).days if m.end_date else 0
-            reminders.append({
-                "medicine": m.medicine,
-                "type": m.type,
-                "dosage": m.dosage,
-                "timing": m.timing,
-                "start_date": m.start_date.isoformat() if m.start_date else "",
-                "end_date": m.end_date.isoformat() if m.end_date else "",
-                "duration": m.duration,
-                "note": m.note,
-                "status": m.status,
-                "record_id": str(m.health_record_id) if m.health_record_id else "",
-                "prescription_index": m.prescription_index,
-                "provider_name": m.provider_name,
-                "days_until_end": days_left,
-            })
+            reminders.append(
+                {
+                    "medicine": m.medicine,
+                    "type": m.type,
+                    "dosage": m.dosage,
+                    "timing": m.timing,
+                    "start_date": m.start_date.isoformat() if m.start_date else "",
+                    "end_date": m.end_date.isoformat() if m.end_date else "",
+                    "duration": m.duration,
+                    "note": m.note,
+                    "status": m.status,
+                    "record_id": str(m.health_record_id) if m.health_record_id else "",
+                    "prescription_index": m.prescription_index,
+                    "provider_name": m.provider_name,
+                    "days_until_end": days_left,
+                }
+            )
         return reminders
 
     async def remove_outdated_prescriptions(
@@ -279,7 +292,9 @@ class MedicationService:
 
         result = await self.db.execute(
             select(HealthRecord)
-            .options(load_only(HealthRecord.id, HealthRecord.record_date, HealthRecord.clinical_data))
+            .options(
+                load_only(HealthRecord.id, HealthRecord.record_date, HealthRecord.clinical_data)
+            )
             .where(
                 HealthRecord.family_member_id == member_id,
                 HealthRecord.record_type == RecordType.DOCTOR_VISIT,
@@ -345,9 +360,7 @@ class MedicationService:
         """
         return name.strip().lower().split()[0] if name.strip() else ""
 
-    async def compute_medication_diff(
-        self, member_id: UUID, new_prescriptions: list[dict]
-    ) -> dict:
+    async def compute_medication_diff(self, member_id: UUID, new_prescriptions: list[dict]) -> dict:
         """Compare new prescriptions against current active medications.
 
         Returns a dict with keys: added, updated, removed, unchanged.
@@ -410,17 +423,19 @@ class MedicationService:
         removed: list[dict] = []
         for key, med in current_by_name.items():
             if key not in new_seen:
-                removed.append({
-                    "medicine": med["medicine"],
-                    "type": med.get("type", ""),
-                    "old_dosage": med.get("dosage", ""),
-                    "new_dosage": None,
-                    "old_timing": med.get("timing", ""),
-                    "new_timing": None,
-                    "old_duration": med.get("duration", ""),
-                    "new_duration": None,
-                    "provider_name": med.get("provider_name"),
-                })
+                removed.append(
+                    {
+                        "medicine": med["medicine"],
+                        "type": med.get("type", ""),
+                        "old_dosage": med.get("dosage", ""),
+                        "new_dosage": None,
+                        "old_timing": med.get("timing", ""),
+                        "new_timing": None,
+                        "old_duration": med.get("duration", ""),
+                        "new_duration": None,
+                        "provider_name": med.get("provider_name"),
+                    }
+                )
 
         return {
             "added": added,
@@ -443,9 +458,7 @@ class MedicationService:
         """
         # For updated and removed, use remove_outdated_prescriptions
         # which keeps only the latest prescription per medicine.
-        all_to_update = [
-            name for name in apply_updated + apply_removed if name.strip()
-        ]
+        all_to_update = [name for name in apply_updated + apply_removed if name.strip()]
         updated_removed = 0
         if all_to_update:
             updated_removed = await self.remove_outdated_prescriptions(member_id, all_to_update)

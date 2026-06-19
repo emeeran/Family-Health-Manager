@@ -1,4 +1,5 @@
 """Unit tests for rate limiter."""
+
 import pytest
 from unittest.mock import patch
 from app.core.rate_limiter import RateLimiter

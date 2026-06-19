@@ -1,4 +1,5 @@
 """Attachment service."""
+
 from pathlib import Path
 from uuid import UUID
 
@@ -30,7 +31,10 @@ class AttachmentService:
         self.db = db
 
     async def upload_attachment(
-        self, record_id: UUID, file: UploadFile, household_id: UUID,
+        self,
+        record_id: UUID,
+        file: UploadFile,
+        household_id: UUID,
         background_tasks: "object | None" = None,
     ) -> Attachment:
         """Upload and validate attachment using content-addressable storage.
@@ -81,10 +85,16 @@ class AttachmentService:
         if background_tasks is not None:
             from app.core.thumbnails import generate_thumbnail_background
             from fastapi import BackgroundTasks
+
             if isinstance(background_tasks, BackgroundTasks):
                 background_tasks.add_task(
                     generate_thumbnail_background,
-                    self.db, attachment.id, file_path, content_hash, mime, True,
+                    self.db,
+                    attachment.id,
+                    file_path,
+                    content_hash,
+                    mime,
+                    True,
                 )
 
         return attachment
@@ -107,9 +117,7 @@ class AttachmentService:
             raise ValueError("Attachment not found")
         return attachment
 
-    async def download_attachment(
-        self, attachment_id: UUID, household_id: UUID
-    ):
+    async def download_attachment(self, attachment_id: UUID, household_id: UUID):
         """Download attachment — returns async generator for streaming."""
         attachment = await self.get_attachment(attachment_id, household_id)
         file_path = Path(attachment.file_path)
@@ -117,11 +125,14 @@ class AttachmentService:
         # Decrypt if needed
         if attachment.encrypted:
             from app.core.encryption import decrypt_file
+
             content = await decrypt_file(file_path)
+
             async def _decrypted_stream(content: bytes):
                 chunk_size = 1024 * 1024
                 for i in range(0, len(content), chunk_size):
-                    yield content[i:i + chunk_size]
+                    yield content[i : i + chunk_size]
+
             return _decrypted_stream(content), attachment.mime_type, attachment.file_name
 
         return stream_file(file_path), attachment.mime_type, attachment.file_name
@@ -137,9 +148,9 @@ class AttachmentService:
         # Reference-counted: only delete physical file if no other references
         if content_hash:
             remaining = await self.db.execute(
-                select(func.count()).select_from(Attachment).where(
-                    Attachment.content_hash == content_hash
-                )
+                select(func.count())
+                .select_from(Attachment)
+                .where(Attachment.content_hash == content_hash)
             )
             if remaining.scalar() == 0:
                 await delete_file(Path(attachment.file_path))
@@ -153,7 +164,10 @@ class AttachmentService:
             await delete_file(Path(attachment.file_path))
 
     async def attach_staged_file(
-        self, record_id: UUID, staging_file_id: str, original_file_name: str | None = None,
+        self,
+        record_id: UUID,
+        staging_file_id: str,
+        original_file_name: str | None = None,
         background_tasks: "object | None" = None,
     ) -> Attachment:
         """Move a staged file to content-addressable storage and link to a health record.
@@ -170,6 +184,7 @@ class AttachmentService:
             raise ValueError(f"Staging file not found: {staging_file_id}")
 
         import mimetypes
+
         ext = Path(staging_file_id).suffix or ".bin"
 
         meta = _read_staging_meta(staging_file_id)
@@ -213,10 +228,16 @@ class AttachmentService:
         if background_tasks is not None:
             from app.core.thumbnails import generate_thumbnail_background
             from fastapi import BackgroundTasks
+
             if isinstance(background_tasks, BackgroundTasks):
                 background_tasks.add_task(
                     generate_thumbnail_background,
-                    self.db, attachment.id, dest_path, content_hash, mime_type, True,
+                    self.db,
+                    attachment.id,
+                    dest_path,
+                    content_hash,
+                    mime_type,
+                    True,
                 )
 
         return attachment

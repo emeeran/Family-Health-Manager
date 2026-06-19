@@ -1,4 +1,5 @@
 """Unit tests for security utilities."""
+
 from uuid import uuid4
 from app.core.security import (
     hash_password,

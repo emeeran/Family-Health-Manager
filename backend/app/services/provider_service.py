@@ -1,4 +1,5 @@
 """Provider service."""
+
 from uuid import UUID
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -63,9 +64,7 @@ class ProviderService:
     async def update_provider(self, provider_id: UUID, **kwargs) -> Provider:
         """Update provider details."""
         allowed = {"name", "provider_type", "speciality", "phone", "address"}
-        result = await self.db.execute(
-            select(Provider).where(Provider.id == provider_id)
-        )
+        result = await self.db.execute(select(Provider).where(Provider.id == provider_id))
         provider = result.scalar_one()
         return await update_model(self.db, provider, allowed_fields=allowed, **kwargs)
 
@@ -173,7 +172,9 @@ class ProviderService:
 
         return list(members.values())
 
-    async def remove_provider_assignment(self, assignment_id: UUID, household_id: UUID, member_id: UUID | None = None) -> None:
+    async def remove_provider_assignment(
+        self, assignment_id: UUID, household_id: UUID, member_id: UUID | None = None
+    ) -> None:
         """Remove provider assignment."""
         from app.models.base import FamilyMember
 
@@ -194,7 +195,9 @@ class ProviderService:
             await self.db.delete(assignment)
             await self.db.flush()
 
-    async def update_assignment_uhid(self, assignment_id: UUID, uhid: str | None) -> ProviderAssignment:
+    async def update_assignment_uhid(
+        self, assignment_id: UUID, uhid: str | None
+    ) -> ProviderAssignment:
         """Update UHID on a provider assignment."""
         result = await self.db.execute(
             select(ProviderAssignment).where(ProviderAssignment.id == assignment_id)

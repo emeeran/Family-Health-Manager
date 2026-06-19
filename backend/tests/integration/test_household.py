@@ -1,4 +1,5 @@
 """Integration tests for household endpoints."""
+
 import pytest
 
 pytestmark = pytest.mark.asyncio

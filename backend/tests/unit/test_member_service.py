@@ -1,4 +1,5 @@
 """Unit tests for member service."""
+
 import json
 import pytest
 from unittest.mock import AsyncMock, MagicMock

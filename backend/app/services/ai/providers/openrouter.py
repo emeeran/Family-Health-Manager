@@ -1,4 +1,5 @@
 """OpenRouter API provider."""
+
 import logging
 
 from app.core.config import get_settings
@@ -46,15 +47,20 @@ async def call_openrouter_vision(
     url = "https://openrouter.ai/api/v1/chat/completions"
     payload = {
         "model": settings.OPENROUTER_VISION_MODEL,
-        "messages": [{
-            "role": "user",
-            "content": [
-                {"type": "text", "text": extraction_prompt},
-                {"type": "image_url", "image_url": {
-                    "url": f"data:{mime_type};base64,{b64_data}",
-                }},
-            ],
-        }],
+        "messages": [
+            {
+                "role": "user",
+                "content": [
+                    {"type": "text", "text": extraction_prompt},
+                    {
+                        "type": "image_url",
+                        "image_url": {
+                            "url": f"data:{mime_type};base64,{b64_data}",
+                        },
+                    },
+                ],
+            }
+        ],
         "temperature": 0.1,
     }
     headers = {

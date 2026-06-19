@@ -15,12 +15,12 @@ class Reminder(Base):
     """Health reminder for family member."""
 
     __tablename__ = "reminders"
-    __table_args__ = (
-        Index("ix_reminders_active_start", "is_active", "start_datetime"),
-    )
+    __table_args__ = (Index("ix_reminders_active_start", "is_active", "start_datetime"),)
 
     id: Mapped[UUID] = mapped_column(primary_key=True, default=uuid4)
-    household_id: Mapped[UUID] = mapped_column(ForeignKey("households.id"), nullable=False, index=True)
+    household_id: Mapped[UUID] = mapped_column(
+        ForeignKey("households.id"), nullable=False, index=True
+    )
     family_member_id: Mapped[UUID | None] = mapped_column(
         ForeignKey("family_members.id"), nullable=True, index=True
     )
@@ -33,7 +33,10 @@ class Reminder(Base):
     end_datetime: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
     is_active: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
     created_at: Mapped[datetime] = mapped_column(
-        DateTime, default=lambda: datetime.now(timezone.utc), server_default="CURRENT_TIMESTAMP", nullable=False
+        DateTime,
+        default=lambda: datetime.now(timezone.utc),
+        server_default="CURRENT_TIMESTAMP",
+        nullable=False,
     )
 
     household: Mapped["Household"] = relationship(back_populates="reminders")
@@ -50,13 +53,20 @@ class Notification(Base):
     __tablename__ = "notifications"
 
     id: Mapped[UUID] = mapped_column(primary_key=True, default=uuid4)
-    reminder_id: Mapped[UUID] = mapped_column(ForeignKey("reminders.id"), nullable=False, index=True)
-    household_id: Mapped[UUID] = mapped_column(ForeignKey("households.id"), nullable=False, index=True)
+    reminder_id: Mapped[UUID] = mapped_column(
+        ForeignKey("reminders.id"), nullable=False, index=True
+    )
+    household_id: Mapped[UUID] = mapped_column(
+        ForeignKey("households.id"), nullable=False, index=True
+    )
     title: Mapped[str] = mapped_column(String(100), nullable=False)
     message: Mapped[str] = mapped_column(Text, nullable=False)
     is_read: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
     created_at: Mapped[datetime] = mapped_column(
-        DateTime, default=lambda: datetime.now(timezone.utc), server_default="CURRENT_TIMESTAMP", nullable=False
+        DateTime,
+        default=lambda: datetime.now(timezone.utc),
+        server_default="CURRENT_TIMESTAMP",
+        nullable=False,
     )
     read_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
 

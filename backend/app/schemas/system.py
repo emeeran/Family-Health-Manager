@@ -1,4 +1,5 @@
 """Schemas for instance-wide AI provider key management (admin only)."""
+
 from pydantic import BaseModel, Field
 
 # Provider ids that may have a managed credential.

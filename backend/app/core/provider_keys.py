@@ -48,9 +48,7 @@ _SETTINGS_ATTR: dict[str, str] = {
 }
 
 # Providers whose stored value is a secret (masked everywhere); Ollama is a URL.
-SECRET_PROVIDERS: frozenset[str] = frozenset(
-    {"openai", "gemini", "groq", "openrouter"}
-)
+SECRET_PROVIDERS: frozenset[str] = frozenset({"openai", "gemini", "groq", "openrouter"})
 
 # Short so a just-saved key is picked up quickly even without explicit
 # invalidation (e.g. from another worker process).

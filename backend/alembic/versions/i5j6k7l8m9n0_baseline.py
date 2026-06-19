@@ -25,6 +25,7 @@ Revision ID: i5j6k7l8m9n0
 Revises:
 Create Date: 2026-06-16
 """
+
 from alembic import op
 
 # revision identifiers, used by Alembic.

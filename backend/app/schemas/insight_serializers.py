@@ -10,6 +10,7 @@ occasionally wraps it in a code fence or trailing prose. Parsing server-side
 means the frontend receives a first-class structured object instead of an
 escaped string it has to re-parse.
 """
+
 from __future__ import annotations
 
 import json
@@ -34,8 +35,7 @@ _JSON_OBJECT_RE = re.compile(r"\{.*\}", re.DOTALL)
 def _pending_status(insight: "AIInsight") -> str:
     """Resolve a still-pending verification to ``pending`` or ``unverifiable``."""
     age = (
-        datetime.now(timezone.utc)
-        - insight.generated_at.replace(tzinfo=timezone.utc)
+        datetime.now(timezone.utc) - insight.generated_at.replace(tzinfo=timezone.utc)
     ).total_seconds()
     return "pending" if age < _PENDING_TIMEOUT_SECONDS else "unverifiable"
 
@@ -51,16 +51,12 @@ def serialize_verification(insight: "AIInsight") -> dict:
             "warnings": json.loads(insight.verification_warnings_json)
             if insight.verification_warnings_json
             else None,
-            "verified_at": insight.verification_at.isoformat()
-            if insight.verification_at
-            else None,
+            "verified_at": insight.verification_at.isoformat() if insight.verification_at else None,
         }
     return {"status": _pending_status(insight)}
 
 
-def serialize_insight_payload(
-    insight: "AIInsight", *, include_sections: bool = True
-) -> dict:
+def serialize_insight_payload(insight: "AIInsight", *, include_sections: bool = True) -> dict:
     """Standard insight payload. Optionally appends parsed ``sections``."""
     payload: dict = {
         "id": str(insight.id),

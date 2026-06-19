@@ -1,4 +1,5 @@
 """Unit tests for attachment service."""
+
 import pytest
 from unittest.mock import AsyncMock, MagicMock, patch
 from uuid import uuid4
@@ -52,9 +53,7 @@ async def test_upload_attachment(attachment_service, mock_db, household_id):
         new_callable=AsyncMock,
         return_value=(mock_path, "abcdef1234567890", ".pdf"),
     ):
-        attachment = await attachment_service.upload_attachment(
-            record_id, mock_file, household_id
-        )
+        attachment = await attachment_service.upload_attachment(record_id, mock_file, household_id)
 
         assert attachment.health_record_id == record_id
         assert attachment.mime_type == "application/pdf"

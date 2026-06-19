@@ -13,9 +13,7 @@ const PRECACHE_URLS = ["/", "/index.html"];
 // in-flight action isn't disrupted by the app swapping to a new version
 // mid-session.
 self.addEventListener("install", (event) => {
-  event.waitUntil(
-    caches.open(CACHE_NAME).then((cache) => cache.addAll(PRECACHE_URLS))
-  );
+  event.waitUntil(caches.open(CACHE_NAME).then((cache) => cache.addAll(PRECACHE_URLS)));
 });
 
 // Activate — evict ALL caches that aren't the current version (this purges

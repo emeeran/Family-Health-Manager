@@ -1,4 +1,5 @@
 """Integration tests for conversations and AI chat."""
+
 import pytest
 from unittest.mock import AsyncMock, patch
 
@@ -20,9 +21,7 @@ async def test_list_conversations_empty(auth_client):
 
 async def test_create_conversation(auth_client):
     """Create a conversation returns 201."""
-    resp = await auth_client.post(
-        "/api/v1/conversations", json=CONVERSATION_PAYLOAD
-    )
+    resp = await auth_client.post("/api/v1/conversations", json=CONVERSATION_PAYLOAD)
     assert resp.status_code == 201
     body = resp.json()
     assert body["scope"] == "general"
@@ -39,9 +38,7 @@ async def test_get_conversation(auth_client):
     context (SQLAlchemy MissingGreenlet). The endpoint returns 500
     with the current model definitions.
     """
-    create_resp = await auth_client.post(
-        "/api/v1/conversations", json=CONVERSATION_PAYLOAD
-    )
+    create_resp = await auth_client.post("/api/v1/conversations", json=CONVERSATION_PAYLOAD)
     conv_id = create_resp.json()["id"]
 
     resp = await auth_client.get(f"/api/v1/conversations/{conv_id}")
@@ -58,9 +55,7 @@ async def test_get_conversation(auth_client):
 
 async def test_send_message(auth_client):
     """Send message returns user_message and assistant_message (mocked AI)."""
-    create_resp = await auth_client.post(
-        "/api/v1/conversations", json=CONVERSATION_PAYLOAD
-    )
+    create_resp = await auth_client.post("/api/v1/conversations", json=CONVERSATION_PAYLOAD)
     conv_id = create_resp.json()["id"]
 
     with patch(
@@ -82,9 +77,7 @@ async def test_send_message(auth_client):
 
 async def test_delete_conversation(auth_client):
     """Delete conversation returns 204."""
-    create_resp = await auth_client.post(
-        "/api/v1/conversations", json=CONVERSATION_PAYLOAD
-    )
+    create_resp = await auth_client.post("/api/v1/conversations", json=CONVERSATION_PAYLOAD)
     conv_id = create_resp.json()["id"]
 
     resp = await auth_client.delete(f"/api/v1/conversations/{conv_id}")

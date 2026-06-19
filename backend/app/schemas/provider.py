@@ -1,4 +1,5 @@
 """Provider schemas."""
+
 from pydantic import BaseModel, Field, ConfigDict
 from datetime import datetime
 from uuid import UUID
@@ -45,4 +46,6 @@ class ProviderResponse(BaseModel):
     phone: str | None = Field(None, description="Phone number")
     address: str | None = Field(None, description="Clinic/hospital address")
     created_at: datetime = Field(..., description="Creation timestamp")
-    assigned_members: list[AssignedMember] = Field(default_factory=list, description="Assigned family members")
+    assigned_members: list[AssignedMember] = Field(
+        default_factory=list, description="Assigned family members"
+    )

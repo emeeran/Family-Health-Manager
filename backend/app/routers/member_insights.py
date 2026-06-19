@@ -1,4 +1,5 @@
 """Member AI insights router — generate and retrieve health insights."""
+
 import logging
 from uuid import UUID
 
@@ -50,6 +51,7 @@ async def generate_member_insights(
 
     try:
         from app.services.insight_service import spawn_insight_verification_task
+
         context = await ai_service._build_member_context(member_id, comprehensive=True)
         spawn_insight_verification_task(insight.id, context)
     except Exception:
@@ -113,6 +115,7 @@ async def get_latest_insight(
         return serialize_insight_payload(existing)
 
     from app.services.ai_service import AIService
+
     ai_service = AIService(db, household_id=household.id)
     prompt = COMPREHENSIVE_INSIGHT_PROMPT
     try:

@@ -20,6 +20,7 @@ Safety notes
   ``app/core/database.py``) and the legacy UUID-format mismatch guarantees
   spurious rows that are not corruption.
 """
+
 from __future__ import annotations
 
 import asyncio
@@ -174,10 +175,10 @@ def _sqlite_repair_sync(path: Path, operation: RepairOperation) -> dict:
         try:
             conn.execute("PRAGMA busy_timeout=30000")
             if operation == "checkpoint":
-                busy, log, checkpointed = conn.execute(
-                    "PRAGMA wal_checkpoint(TRUNCATE)"
-                ).fetchone()
-                message = f"WAL checkpointed — {checkpointed} frame(s) merged, log now {log} frame(s)."
+                busy, log, checkpointed = conn.execute("PRAGMA wal_checkpoint(TRUNCATE)").fetchone()
+                message = (
+                    f"WAL checkpointed — {checkpointed} frame(s) merged, log now {log} frame(s)."
+                )
                 if busy:
                     notes.append(
                         "Checkpoint was partial (a connection was active). "
@@ -277,7 +278,9 @@ async def _pg_repair(operation: RepairOperation) -> RepairResponse:
             if operation in ("checkpoint", "vacuum"):
                 # checkpoint and vacuum both map to VACUUM (ANALYZE) on Postgres.
                 await conn.execute(text("VACUUM (ANALYZE)"))
-                message = "VACUUM ANALYZE complete — dead tuples reclaimed, planner stats refreshed."
+                message = (
+                    "VACUUM ANALYZE complete — dead tuples reclaimed, planner stats refreshed."
+                )
             elif operation == "reindex":
                 # REINDEX DATABASE needs superuser on managed Postgres; reindex
                 # each app table concurrently instead (CONCURRENTLY = no exclusive lock).
@@ -285,7 +288,7 @@ async def _pg_repair(operation: RepairOperation) -> RepairResponse:
                 failed: list[str] = []
                 for name in Base.metadata.tables:
                     try:
-                        await conn.execute(text(f'REINDEX TABLE CONCURRENTLY {_quote(name)}'))
+                        await conn.execute(text(f"REINDEX TABLE CONCURRENTLY {_quote(name)}"))
                     except Exception as exc:  # noqa: BLE001 — collect, continue
                         failed.append(f"{name}: {exc}")
                 if failed:

@@ -1,4 +1,5 @@
 """Conversation router."""
+
 import asyncio
 import json
 import logging
@@ -46,9 +47,7 @@ async def list_conversations(
     db: AsyncSession = Depends(get_db),
 ):
     """List all conversations."""
-    result = await db.execute(
-        select(Conversation).where(Conversation.household_id == household.id)
-    )
+    result = await db.execute(select(Conversation).where(Conversation.household_id == household.id))
     convs = list(result.scalars().all())
     return [
         {
@@ -103,11 +102,7 @@ async def get_conversation(
             Conversation.id == conversation_id,
             Conversation.household_id == household.id,
         )
-        .options(
-            selectinload(Conversation.messages).selectinload(
-                Message.verification
-            )
-        )
+        .options(selectinload(Conversation.messages).selectinload(Message.verification))
     )
     conversation = result.scalar_one_or_none()
 
@@ -176,8 +171,9 @@ async def delete_conversation(
             .values(conversation_id=None)
         )
         await db.execute(
-            ResponseVerification.__table__.delete()
-            .where(ResponseVerification.message_id.in_(message_ids))
+            ResponseVerification.__table__.delete().where(
+                ResponseVerification.message_id.in_(message_ids)
+            )
         )
 
     await db.delete(conversation)
@@ -268,6 +264,7 @@ async def send_message_stream(
 
             # Fire verification in background with its own DB session
             if settings.AI_VERIFICATION_ENABLED and health_context and message_id:
+
                 async def _run_verification():
                     verify_db = SessionLocal()
                     try:
@@ -393,9 +390,7 @@ async def get_message_verification(
         raise HTTPException(status_code=404, detail="Conversation not found")
 
     result = await db.execute(
-        select(ResponseVerification).where(
-            ResponseVerification.message_id == message_id
-        )
+        select(ResponseVerification).where(ResponseVerification.message_id == message_id)
     )
     verification = result.scalar_one_or_none()
 

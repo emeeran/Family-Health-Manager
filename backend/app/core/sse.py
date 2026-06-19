@@ -1,4 +1,5 @@
 """SSE (Server-Sent Events) utilities."""
+
 import json
 import logging
 from collections.abc import AsyncIterator
@@ -19,6 +20,7 @@ def make_sse_stream(
     Commits the DB session on success, rolls back on error.
     Automatically fires insight verification when a complete event is seen.
     """
+
     async def event_stream():
         insight_id: str | None = None
         member_id: str | None = None
@@ -40,7 +42,10 @@ def make_sse_stream(
             if insight_id:
                 try:
                     from app.services.insight_service import spawn_insight_verification_task
-                    spawn_insight_verification_task(UUID(insight_id), "streaming insight", member_id=member_id)
+
+                    spawn_insight_verification_task(
+                        UUID(insight_id), "streaming insight", member_id=member_id
+                    )
                 except Exception:
                     logger.debug("Post-stream verification skipped")
         except Exception as exc:

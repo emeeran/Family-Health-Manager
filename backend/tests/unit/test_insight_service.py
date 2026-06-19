@@ -1,4 +1,5 @@
 """Unit tests for insight service."""
+
 import json
 import pytest
 from unittest.mock import AsyncMock, MagicMock, patch
@@ -15,7 +16,9 @@ class TestBuildPrompt:
     def service(self):
         return InsightService(AsyncMock())
 
-    def _make_record(self, record_type: RecordType, clinical_data: str = "", diagnosis: str = "") -> HealthRecord:
+    def _make_record(
+        self, record_type: RecordType, clinical_data: str = "", diagnosis: str = ""
+    ) -> HealthRecord:
         record = MagicMock(spec=HealthRecord)
         record.record_type = record_type
         record.clinical_data = clinical_data
@@ -30,12 +33,12 @@ class TestBuildPrompt:
         assert '{"glucose": 120}' in prompt
 
     def test_doctor_visit_prompt_with_medications(self, service):
-        clinical_data = json.dumps({
-            "_type": "structured",
-            "prescriptions": [
-                {"type": "Tab", "medicine": "Metformin", "dosage": "500mg"}
-            ],
-        })
+        clinical_data = json.dumps(
+            {
+                "_type": "structured",
+                "prescriptions": [{"type": "Tab", "medicine": "Metformin", "dosage": "500mg"}],
+            }
+        )
         record = self._make_record(RecordType.DOCTOR_VISIT, clinical_data, "Type 2 Diabetes")
         prompt = service._build_prompt(record)
         assert "reviewing physician" in prompt

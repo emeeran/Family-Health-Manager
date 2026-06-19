@@ -1,4 +1,5 @@
 """Dependency injection for routers."""
+
 import base64
 import json
 from typing import Annotated

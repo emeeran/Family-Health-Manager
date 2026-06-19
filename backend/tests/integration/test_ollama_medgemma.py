@@ -1,4 +1,5 @@
 """Integration tests for Ollama + MedGemma connectivity and accessibility."""
+
 import json
 import os
 import time
@@ -12,6 +13,7 @@ MODEL = "medgemma"
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
+
 
 async def _ollama_chat(prompt: str, images: list[str] | None = None) -> str | None:
     """Send a chat request to Ollama and return the response text."""
@@ -40,9 +42,7 @@ async def test_ollama_server_reachable():
         resp = await client.get(f"{OLLAMA_URL}/api/tags")
         assert resp.status_code == 200
         models = [m["name"] for m in resp.json().get("models", [])]
-        assert any(MODEL in m for m in models), (
-            f"Model '{MODEL}' not found. Available: {models}"
-        )
+        assert any(MODEL in m for m in models), f"Model '{MODEL}' not found. Available: {models}"
 
 
 # ---------------------------------------------------------------------------
@@ -131,6 +131,7 @@ async def test_ai_service_ollama_text_provider():
     AIService._ollama_client = None
     AIService._client_lock = None
     from app.services.ai import base as _base
+
     if _base.ollama_client:
         try:
             await _base.ollama_client.aclose()
@@ -146,9 +147,11 @@ async def test_ai_service_ollama_text_provider():
         OLLAMA_MODEL=MODEL,
         OLLAMA_TEXT_MODEL=MODEL,
     )
-    with patch("app.services.ai_service.settings", test_settings), \
-         patch("app.services.ai.providers.ollama.settings", test_settings), \
-         patch("app.core.config.get_settings", return_value=test_settings):
+    with (
+        patch("app.services.ai_service.settings", test_settings),
+        patch("app.services.ai.providers.ollama.settings", test_settings),
+        patch("app.core.config.get_settings", return_value=test_settings),
+    ):
         try:
             result = await ai_service._call_ollama_text("Say 'hello' in one word.")
         except Exception as exc:
@@ -181,6 +184,7 @@ async def test_ai_service_full_failover_with_ollama():
     AIService._client_lock = None
     # Also reset the base module's shared client
     from app.services.ai import base as _base
+
     if _base.ollama_client:
         try:
             await _base.ollama_client.aclose()
@@ -200,9 +204,11 @@ async def test_ai_service_full_failover_with_ollama():
         GROQ_API_KEY="",
         OPENROUTER_API_KEY="",
     )
-    with patch("app.services.ai_service.settings", test_settings), \
-         patch("app.services.ai.providers.ollama.settings", test_settings), \
-         patch("app.core.config.get_settings", return_value=test_settings):
+    with (
+        patch("app.services.ai_service.settings", test_settings),
+        patch("app.services.ai.providers.ollama.settings", test_settings),
+        patch("app.core.config.get_settings", return_value=test_settings),
+    ):
         try:
             result, provider = await ai_service._call_ai(
                 "What is 2+2? Reply with just the number.", ""

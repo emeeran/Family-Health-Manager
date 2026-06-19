@@ -1,4 +1,5 @@
 """Integration tests for drug interaction API endpoints."""
+
 import json
 from datetime import datetime, timezone, timedelta
 from unittest.mock import patch, AsyncMock
@@ -28,13 +29,14 @@ async def _create_doctor_visit_with_rx(auth_client, member_id, medicines, days_a
 
     record_date = (date.today() - timedelta(days=days_ago)).isoformat()
     prescriptions = [
-        {"medicine": m, "type": "Tab", "dosage": "1-0-1", "duration": "90 days"}
-        for m in medicines
+        {"medicine": m, "type": "Tab", "dosage": "1-0-1", "duration": "90 days"} for m in medicines
     ]
-    clinical_data = json.dumps({
-        "_type": "structured",
-        "prescriptions": prescriptions,
-    })
+    clinical_data = json.dumps(
+        {
+            "_type": "structured",
+            "prescriptions": prescriptions,
+        }
+    )
 
     resp = await auth_client.post(
         f"/api/v1/members/{member_id}/records",
@@ -78,6 +80,7 @@ async def _mock_check_interactions(medications):
 async def test_latest_interactions_member_not_found(auth_client):
     """404 for non-existent member."""
     from uuid import uuid4
+
     fake_id = str(uuid4())
     resp = await auth_client.get(f"/api/v1/members/{fake_id}/latest-drug-interactions")
     assert resp.status_code == 404
@@ -89,7 +92,9 @@ async def test_latest_interactions_under_2_medications(auth_client):
     # Only 1 medication
     await _create_doctor_visit_with_rx(auth_client, member_id, ["Metformin 500mg"])
 
-    with patch("app.services.ai_service.AIService.check_drug_interactions", new_callable=AsyncMock) as mock_ai:
+    with patch(
+        "app.services.ai_service.AIService.check_drug_interactions", new_callable=AsyncMock
+    ) as mock_ai:
         resp = await auth_client.get(f"/api/v1/members/{member_id}/latest-drug-interactions")
         assert resp.status_code == 200
         body = resp.json()
@@ -101,9 +106,14 @@ async def test_latest_interactions_under_2_medications(auth_client):
 async def test_latest_interactions_generates_and_caches(auth_client):
     """First call generates interactions; second returns from cache."""
     member_id = await _create_member(auth_client)
-    await _create_doctor_visit_with_rx(auth_client, member_id, ["Warfarin 5mg", "Aspirin 75mg", "Omeprazole 20mg"])
+    await _create_doctor_visit_with_rx(
+        auth_client, member_id, ["Warfarin 5mg", "Aspirin 75mg", "Omeprazole 20mg"]
+    )
 
-    with patch("app.services.ai_service.AIService.check_drug_interactions", side_effect=_mock_check_interactions):
+    with patch(
+        "app.services.ai_service.AIService.check_drug_interactions",
+        side_effect=_mock_check_interactions,
+    ):
         # First call — generates fresh
         resp1 = await auth_client.get(f"/api/v1/members/{member_id}/latest-drug-interactions")
         assert resp1.status_code == 200
@@ -125,10 +135,26 @@ async def test_latest_interactions_cache_scoped_to_member(auth_client):
     member_b = await _create_member(auth_client)
 
     await _create_doctor_visit_with_rx(auth_client, member_a, ["Warfarin 5mg", "Aspirin 75mg"])
-    await _create_doctor_visit_with_rx(auth_client, member_b, ["Metformin 500mg", "Glimepiride 2mg"])
+    await _create_doctor_visit_with_rx(
+        auth_client, member_b, ["Metformin 500mg", "Glimepiride 2mg"]
+    )
 
-    mock_interactions_a = [{"drugs": ["Warfarin", "Aspirin"], "severity": "high", "description": "Bleeding", "recommendation": "Monitor"}]
-    mock_interactions_b = [{"drugs": ["Metformin", "Glimepiride"], "severity": "low", "description": "Hypoglycemia risk", "recommendation": "Monitor sugar"}]
+    mock_interactions_a = [
+        {
+            "drugs": ["Warfarin", "Aspirin"],
+            "severity": "high",
+            "description": "Bleeding",
+            "recommendation": "Monitor",
+        }
+    ]
+    mock_interactions_b = [
+        {
+            "drugs": ["Metformin", "Glimepiride"],
+            "severity": "low",
+            "description": "Hypoglycemia risk",
+            "recommendation": "Monitor sugar",
+        }
+    ]
 
     call_count = 0
 
@@ -153,9 +179,15 @@ async def test_latest_interactions_cache_scoped_to_member(auth_client):
 async def test_latest_interactions_ai_failure_returns_empty(auth_client):
     """If AI fails, returns empty list (graceful degradation)."""
     member_id = await _create_member(auth_client)
-    await _create_doctor_visit_with_rx(auth_client, member_id, ["Lisinopril 10mg", "Amlodipine 5mg"])
+    await _create_doctor_visit_with_rx(
+        auth_client, member_id, ["Lisinopril 10mg", "Amlodipine 5mg"]
+    )
 
-    with patch("app.services.ai_service.AIService.check_drug_interactions", new_callable=AsyncMock, side_effect=RuntimeError("AI unavailable")):
+    with patch(
+        "app.services.ai_service.AIService.check_drug_interactions",
+        new_callable=AsyncMock,
+        side_effect=RuntimeError("AI unavailable"),
+    ):
         resp = await auth_client.get(f"/api/v1/members/{member_id}/latest-drug-interactions")
         assert resp.status_code == 200
         body = resp.json()
@@ -180,6 +212,7 @@ async def test_latest_interactions_no_medications_at_all(auth_client):
 async def test_fresh_interactions_member_not_found(auth_client):
     """404 for non-existent member."""
     from uuid import uuid4
+
     fake_id = str(uuid4())
     resp = await auth_client.get(f"/api/v1/members/{fake_id}/drug-interactions")
     assert resp.status_code == 404
@@ -198,14 +231,23 @@ async def test_fresh_interactions_under_2_medications(auth_client):
 async def test_fresh_interactions_calls_ai_every_time(auth_client):
     """Fresh endpoint calls AI each time — no caching."""
     member_id = await _create_member(auth_client)
-    await _create_doctor_visit_with_rx(auth_client, member_id, ["Lisinopril 10mg", "Amlodipine 5mg"])
+    await _create_doctor_visit_with_rx(
+        auth_client, member_id, ["Lisinopril 10mg", "Amlodipine 5mg"]
+    )
 
     call_count = 0
 
     async def mock_check(medications):
         nonlocal call_count
         call_count += 1
-        return [{"drugs": ["Lisinopril", "Amlodipine"], "severity": "low", "description": f"Call {call_count}", "recommendation": "Monitor"}]
+        return [
+            {
+                "drugs": ["Lisinopril", "Amlodipine"],
+                "severity": "low",
+                "description": f"Call {call_count}",
+                "recommendation": "Monitor",
+            }
+        ]
 
     with patch("app.services.ai_service.AIService.check_drug_interactions", side_effect=mock_check):
         resp1 = await auth_client.get(f"/api/v1/members/{member_id}/drug-interactions")
@@ -219,9 +261,15 @@ async def test_fresh_interactions_calls_ai_every_time(auth_client):
 async def test_fresh_interactions_ai_failure_returns_empty(auth_client):
     """AI failure → graceful empty response."""
     member_id = await _create_member(auth_client)
-    await _create_doctor_visit_with_rx(auth_client, member_id, ["Lisinopril 10mg", "Amlodipine 5mg"])
+    await _create_doctor_visit_with_rx(
+        auth_client, member_id, ["Lisinopril 10mg", "Amlodipine 5mg"]
+    )
 
-    with patch("app.services.ai_service.AIService.check_drug_interactions", new_callable=AsyncMock, side_effect=RuntimeError("timeout")):
+    with patch(
+        "app.services.ai_service.AIService.check_drug_interactions",
+        new_callable=AsyncMock,
+        side_effect=RuntimeError("timeout"),
+    ):
         resp = await auth_client.get(f"/api/v1/members/{member_id}/drug-interactions")
         assert resp.status_code == 200
         assert resp.json()["interactions"] == []
@@ -232,7 +280,10 @@ async def test_fresh_interactions_with_valid_medications(auth_client):
     member_id = await _create_member(auth_client)
     await _create_doctor_visit_with_rx(auth_client, member_id, ["Warfarin 5mg", "Aspirin 75mg"])
 
-    with patch("app.services.ai_service.AIService.check_drug_interactions", side_effect=_mock_check_interactions):
+    with patch(
+        "app.services.ai_service.AIService.check_drug_interactions",
+        side_effect=_mock_check_interactions,
+    ):
         resp = await auth_client.get(f"/api/v1/members/{member_id}/drug-interactions")
         assert resp.status_code == 200
         body = resp.json()
@@ -248,12 +299,16 @@ async def test_latest_interactions_expired_cache_regenerates(auth_client, db_ses
     from app.models.ai import AIInsight
 
     member_id = await _create_member(auth_client)
-    await _create_doctor_visit_with_rx(auth_client, member_id, ["Lisinopril 10mg", "Amlodipine 5mg"])
+    await _create_doctor_visit_with_rx(
+        auth_client, member_id, ["Lisinopril 10mg", "Amlodipine 5mg"]
+    )
 
     # Insert a stale cache entry (> 24h old)
     stale_insight = AIInsight(
         prompt=f"__drug_interactions__{member_id}",
-        response=json.dumps([{"drugs": ["STALE"], "severity": "low", "description": "old", "recommendation": "old"}]),
+        response=json.dumps(
+            [{"drugs": ["STALE"], "severity": "low", "description": "old", "recommendation": "old"}]
+        ),
         provider_used="auto",
         generated_at=datetime.now(timezone.utc) - timedelta(hours=48),
     )
@@ -261,7 +316,14 @@ async def test_latest_interactions_expired_cache_regenerates(auth_client, db_ses
     await db_session.commit()
 
     async def mock_check(medications):
-        return [{"drugs": ["Lisinopril", "Amlodipine"], "severity": "high", "description": "fresh", "recommendation": "fresh"}]
+        return [
+            {
+                "drugs": ["Lisinopril", "Amlodipine"],
+                "severity": "high",
+                "description": "fresh",
+                "recommendation": "fresh",
+            }
+        ]
 
     with patch("app.services.ai_service.AIService.check_drug_interactions", side_effect=mock_check):
         resp = await auth_client.get(f"/api/v1/members/{member_id}/latest-drug-interactions")
@@ -276,7 +338,9 @@ async def test_latest_interactions_malformed_cache_regenerates(auth_client, db_s
     from app.models.ai import AIInsight
 
     member_id = await _create_member(auth_client)
-    await _create_doctor_visit_with_rx(auth_client, member_id, ["Lisinopril 10mg", "Amlodipine 5mg"])
+    await _create_doctor_visit_with_rx(
+        auth_client, member_id, ["Lisinopril 10mg", "Amlodipine 5mg"]
+    )
 
     # Insert malformed cache
     bad_cache = AIInsight(
@@ -288,7 +352,14 @@ async def test_latest_interactions_malformed_cache_regenerates(auth_client, db_s
     await db_session.commit()
 
     async def mock_check(medications):
-        return [{"drugs": ["Lisinopril", "Amlodipine"], "severity": "moderate", "description": "regenerated", "recommendation": "check"}]
+        return [
+            {
+                "drugs": ["Lisinopril", "Amlodipine"],
+                "severity": "moderate",
+                "description": "regenerated",
+                "recommendation": "check",
+            }
+        ]
 
     with patch("app.services.ai_service.AIService.check_drug_interactions", side_effect=mock_check):
         resp = await auth_client.get(f"/api/v1/members/{member_id}/latest-drug-interactions")

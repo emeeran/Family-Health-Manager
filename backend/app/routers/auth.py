@@ -1,4 +1,5 @@
 """Authentication router."""
+
 import json
 import logging
 from pydantic import BaseModel
@@ -148,6 +149,7 @@ async def refresh_token(
     # Get expiry from the new access token
     import jwt as _jwt
     from datetime import datetime, timezone
+
     payload = _jwt.decode(
         new_access,
         settings.SECRET_KEY,
@@ -209,7 +211,9 @@ async def change_password(
         raise HTTPException(status_code=400, detail="Current password is incorrect")
 
     if request.current_password == request.new_password:
-        raise HTTPException(status_code=400, detail="New password must be different from current password")
+        raise HTTPException(
+            status_code=400, detail="New password must be different from current password"
+        )
 
     if not validate_password_strength(request.new_password):
         raise HTTPException(
@@ -269,6 +273,7 @@ async def setup_2fa(
 
     # Store secret and backup codes encrypted at rest (not yet enabled)
     from app.core.encryption import encrypt_secret
+
     user.totp_secret = encrypt_secret(secret)
     user.backup_codes = encrypt_secret(json.dumps(backup_codes))
     await db.flush()
@@ -293,6 +298,7 @@ async def verify_2fa_setup(
         raise HTTPException(status_code=400, detail="2FA is already enabled")
 
     from app.core.encryption import decrypt_secret
+
     if not TOTPService.verify_code(decrypt_secret(user.totp_secret), request.code):
         raise HTTPException(status_code=400, detail="Invalid code")
 
@@ -313,6 +319,7 @@ async def disable_2fa(
         raise HTTPException(status_code=400, detail="2FA is not enabled")
 
     from app.core.encryption import decrypt_secret, encrypt_secret
+
     # Accept either TOTP code or a backup code
     totp_secret = decrypt_secret(user.totp_secret)
     if totp_secret and TOTPService.verify_code(totp_secret, request.code):
@@ -350,6 +357,7 @@ async def login_2fa(
         raise HTTPException(status_code=401, detail="Invalid request")
 
     from app.core.encryption import decrypt_secret, encrypt_secret
+
     # Verify TOTP code or backup code
     if TOTPService.verify_code(decrypt_secret(user.totp_secret), request.code):
         pass
