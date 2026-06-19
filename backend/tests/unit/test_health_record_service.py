@@ -28,11 +28,18 @@ async def test_create_record(record_service, mock_db):
     """Test creating a health record."""
     member_id = uuid4()
 
-    # Mock the duplicate check query — no existing record
-    dup_result = MagicMock()
-    dup_result.scalar_one_or_none.return_value = None
-    mock_db.execute = AsyncMock(return_value=dup_result)
-    mock_db.refresh = AsyncMock()
+    # create_record issues two queries: a duplicate check, then a re-fetch with
+    # eager-loaded provider/attachments (so response serialization can't lazy-load).
+    created = HealthRecord(
+        family_member_id=member_id,
+        record_type=RecordType.LAB_REPORT,
+        record_date=date(2024, 1, 15),
+        clinical_data="HbA1c test",
+    )
+    result = MagicMock()
+    result.scalar_one_or_none.return_value = None  # dup check: no existing record
+    result.unique.return_value.scalar_one.return_value = created  # re-fetch
+    mock_db.execute = AsyncMock(return_value=result)
 
     record = await record_service.create_record(
         member_id=member_id,
@@ -43,6 +50,8 @@ async def test_create_record(record_service, mock_db):
 
     assert record.record_type == RecordType.LAB_REPORT
     assert record.family_member_id == member_id
+    mock_db.add.assert_called_once()
+    mock_db.flush.assert_awaited_once()
 
 
 @pytest.mark.asyncio
