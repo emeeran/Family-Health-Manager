@@ -51,6 +51,7 @@ class HealthRecordResponse(BaseModel):
     prescription_text: str | None = Field(None, description="Prescription notes")
     next_review_date: date | None = Field(None, description="Next review date")
     summary: str | None = Field(None, description="AI-generated consultation summary")
+    transcription_report: str | None = Field(None, description="AI-generated medical records transcription report")
     is_deleted: bool = Field(..., description="Soft-delete flag")
     created_at: datetime = Field(..., description="Creation timestamp")
     updated_at: datetime = Field(..., description="Last update timestamp")

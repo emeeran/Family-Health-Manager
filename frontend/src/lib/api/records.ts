@@ -213,6 +213,13 @@ export function regenerateSummary(memberId: string, recordId: string) {
   );
 }
 
+export function regenerateReport(memberId: string, recordId: string) {
+  return apiRequest<HealthRecordResponse>(
+    `/members/${memberId}/records/${recordId}/regenerate-report`,
+    { method: "POST" }
+  );
+}
+
 export interface BackfillSummariesResponse {
   updated_count: number;
   error_count?: number;

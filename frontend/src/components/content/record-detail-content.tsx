@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { Link } from "react-router-dom";
 import { useNavigate } from "react-router-dom";
 import { Button } from "@/components/ui/button";
@@ -6,15 +6,23 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { RecordTypeBadge } from "@/components/records/record-type-badge";
 import { StructuredDataDisplay } from "@/components/records/structured-data-display";
 import { RecordAttachments } from "@/components/records/record-attachments";
+import { TranscriptionReportView } from "@/components/records/transcription-report-view";
 import { ConfirmDialog } from "@/components/shared/confirm-dialog";
 import { VerificationBadge } from "@/components/shared/verification-badge";
 import { RECORD_TYPE_LABELS, GENDER_LABELS } from "@/lib/constants";
 import { computeAge, formatDate } from "@/lib/utils";
-import { deleteRecord, getRecord, getRecordInsight, regenerateSummary } from "@/lib/api/records";
+import {
+  deleteRecord,
+  getRecord,
+  getRecordInsight,
+  regenerateSummary,
+  regenerateReport,
+} from "@/lib/api/records";
 import { simpleMarkdown } from "@/lib/markdown";
+import { exportElementToPDF } from "@/lib/pdf-export";
 import { streamRequest } from "@/lib/api-client";
 import { toast } from "sonner";
-import { Printer, Sparkles, RefreshCw, AlertTriangle, FileText } from "lucide-react";
+import { Printer, Sparkles, RefreshCw, AlertTriangle, FileText, Download } from "lucide-react";
 import type { HealthRecordResponse, RecordInsight } from "@/lib/types/health-record";
 import type { FamilyMemberResponse } from "@/lib/types/member";
 
@@ -33,6 +41,8 @@ export function RecordDetailContent({ record: initialRecord, member }: RecordDet
   const [summaryRegenerating, setSummaryRegenerating] = useState(false);
   const [streamText, setStreamText] = useState("");
   const [streamStage, setStreamStage] = useState("");
+  const [reportRegenerating, setReportRegenerating] = useState(false);
+  const reportRef = useRef<HTMLDivElement>(null);
   const isLabReport = record.record_type === "lab_report";
 
   // Fetch AI insight on mount
@@ -161,6 +171,29 @@ export function RecordDetailContent({ record: initialRecord, member }: RecordDet
     }
   }
 
+  async function handleRegenerateReport() {
+    setReportRegenerating(true);
+    try {
+      const updated = await regenerateReport(member.id, record.id);
+      setRecord(updated);
+      toast.success("Transcription report regenerated");
+    } catch {
+      toast.error("Failed to regenerate report");
+    } finally {
+      setReportRegenerating(false);
+    }
+  }
+
+  async function handleExportReport() {
+    if (!reportRef.current) return;
+    try {
+      await exportElementToPDF(reportRef.current, `transcription-report-${record.id}.pdf`);
+      toast.success("Report exported");
+    } catch {
+      toast.error("Failed to export report");
+    }
+  }
+
   async function handleDelete() {
     try {
       await deleteRecord(member.id, record.id);
@@ -286,6 +319,63 @@ export function RecordDetailContent({ record: initialRecord, member }: RecordDet
             </div>
           )}
         </div>
+      )}
+
+      {/* Transcription Report (doctor visits & lab reports) */}
+      {(record.record_type === "doctor_visit" || record.record_type === "lab_report") && (
+        <Card>
+          <CardHeader className="pb-3 print:hidden">
+            <div className="flex items-center justify-between">
+              <CardTitle className="text-sm font-semibold flex items-center gap-2">
+                <FileText className="h-4 w-4" />
+                Transcription Report
+              </CardTitle>
+              <div className="flex items-center gap-1">
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  className="h-7 gap-1.5 text-xs"
+                  onClick={handleRegenerateReport}
+                  disabled={reportRegenerating}
+                >
+                  <RefreshCw className={`h-3 w-3 ${reportRegenerating ? "animate-spin" : ""}`} />
+                  {reportRegenerating ? "Generating..." : "Regenerate"}
+                </Button>
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  className="h-7 gap-1.5 text-xs"
+                  onClick={() => window.print()}
+                >
+                  <Printer className="h-3 w-3" />
+                  Print
+                </Button>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  className="h-7 gap-1.5 text-xs"
+                  onClick={handleExportReport}
+                >
+                  <Download className="h-3 w-3" />
+                  Export PDF
+                </Button>
+              </div>
+            </div>
+          </CardHeader>
+          <CardContent>
+            {reportRegenerating ? (
+              <div className="space-y-2">
+                <div className="h-4 bg-muted animate-pulse rounded w-3/4" />
+                <div className="h-4 bg-muted animate-pulse rounded w-1/2" />
+                <div className="h-4 bg-muted animate-pulse rounded w-2/3" />
+              </div>
+            ) : (
+              <div ref={reportRef} className="rounded-md bg-white p-5 shadow-sm">
+                <TranscriptionReportView record={record} member={member} documentStyle />
+              </div>
+            )}
+          </CardContent>
+        </Card>
       )}
 
       {/* Consultation Summary */}

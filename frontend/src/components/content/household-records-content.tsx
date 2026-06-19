@@ -36,6 +36,12 @@ export const HouseholdRecordsContent = memo(function HouseholdRecordsContent({
   const [view, setView] = useViewPreference("records-view", "list");
   const { openQuickView } = useRecordQuickView();
 
+  const membersById = useMemo(() => {
+    const map: Record<string, FamilyMemberResponse> = {};
+    for (const m of members) map[m.id] = m;
+    return map;
+  }, [members]);
+
   const handleRecordClick = useCallback(
     (r: HealthRecordResponse) => openQuickView(r.id, r.family_member_id),
     [openQuickView]
@@ -114,11 +120,17 @@ export const HouseholdRecordsContent = memo(function HouseholdRecordsContent({
           context="records"
         />
       ) : view === "list" ? (
-        <RecordsTable records={filtered} memberNames={memberNames} onRowClick={handleRecordClick} />
+        <RecordsTable
+          records={filtered}
+          memberNames={memberNames}
+          membersById={membersById}
+          onRowClick={handleRecordClick}
+        />
       ) : (
         <RecordsCards
           records={filtered}
           memberNames={memberNames}
+          membersById={membersById}
           onCardClick={handleRecordClick}
         />
       )}

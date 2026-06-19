@@ -46,6 +46,9 @@ class MemberService:
         allergies: list[dict] | None = None,
         emergency_contact_name: str | None = None,
         emergency_contact_phone: str | None = None,
+        patient_id: str | None = None,
+        phone: str | None = None,
+        address: str | None = None,
         height_cm: float | None = None,
         weight_kg: float | None = None,
         notes: str | None = None,
@@ -62,6 +65,9 @@ class MemberService:
             weight_kg=weight_kg,
             emergency_contact_name=emergency_contact_name,
             emergency_contact_phone=emergency_contact_phone,
+            patient_id=patient_id,
+            phone=phone,
+            address=address,
             notes=notes,
         )
 
@@ -114,6 +120,7 @@ class MemberService:
             "first_name", "last_name", "date_of_birth", "gender",
             "relationship_type", "height_cm", "weight_kg",
             "emergency_contact_name", "emergency_contact_phone",
+            "patient_id", "phone", "address",
             "blood_group", "family_history", "medical_history_summary",
             "allergies_json", "notes",
         }

@@ -143,7 +143,7 @@ class HealthRecordService:
         allowed = {
             "clinical_data", "diagnosis", "prescription_text",
             "next_review_date", "tags", "record_date", "record_time",
-            "record_type", "provider_id", "summary",
+            "record_type", "provider_id", "summary", "transcription_report",
         }
         result = await self.db.execute(
             select(HealthRecord)

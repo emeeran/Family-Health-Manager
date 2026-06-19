@@ -26,6 +26,7 @@ class HealthRecord(Base):
     diagnosis: Mapped[str | None] = mapped_column(Text, nullable=True)
     prescription_text: Mapped[str | None] = mapped_column(Text, nullable=True)
     summary: Mapped[str | None] = mapped_column(Text, nullable=True)
+    transcription_report: Mapped[str | None] = mapped_column(Text, nullable=True)
     next_review_date: Mapped[date | None] = mapped_column(Date, nullable=True)
     tags: Mapped[str | None] = mapped_column(Text, nullable=True)
     is_deleted: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False, index=True)

@@ -26,6 +26,9 @@ export interface FamilyMemberCreate {
   allergies?: AllergyEntry[] | null;
   emergency_contact_name?: string | null;
   emergency_contact_phone?: string | null;
+  patient_id?: string | null;
+  phone?: string | null;
+  address?: string | null;
   medical_history?: MedicalHistoryQuestionnaire | null;
   notes?: string | null;
 }
@@ -44,6 +47,9 @@ export interface FamilyMemberUpdate {
   allergies?: AllergyEntry[] | null;
   emergency_contact_name?: string | null;
   emergency_contact_phone?: string | null;
+  patient_id?: string | null;
+  phone?: string | null;
+  address?: string | null;
   notes?: string | null;
   is_active?: boolean | null;
 }
@@ -58,6 +64,9 @@ export interface FamilyMemberResponse {
   relationship: Relationship;
   medical_history_summary: string | null;
   blood_group: string | null;
+  patient_id?: string | null;
+  phone?: string | null;
+  address?: string | null;
   family_history: string | null;
   height_cm: number | null;
   weight_kg: number | null;

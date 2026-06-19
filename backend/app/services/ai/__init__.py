@@ -713,6 +713,223 @@ class AIService:
 
         return "\n".join(lines)
 
+    async def generate_transcription_report(
+        self,
+        extracted_data: dict,
+        member_ctx: dict | None = None,
+        provider_ctx: dict | None = None,
+    ) -> str:
+        """Generate a formal 'Medical Records Transcription Report'.
+
+        Produces the polished, numbered-section layout (Patient Identification
+        → Consultation → Treatment Plan → Diagnostic Summary → Discrepancy
+        Notes) from the extracted clinical fields plus member/provider
+        demographics. Uses the AI provider failover chain; falls back to a
+        deterministic template (_build_template_transcription_report) if every
+        provider fails, so the record always receives a report.
+        """
+        from pathlib import Path
+
+        context_str = self._build_report_context(extracted_data, member_ctx, provider_ctx)
+        if not context_str:
+            return ""
+
+        # Repo-root prompts/ dir (5 parents up from backend/app/services/ai/).
+        prompt_path = (
+            Path(__file__).resolve().parent.parent.parent.parent.parent
+            / "prompts" / "transcription_report.md"
+        )
+        try:
+            prompt_template = prompt_path.read_text()
+        except FileNotFoundError:
+            prompt_template = (
+                "Produce a 'Medical Records Transcription Report' with these numbered "
+                "sections in order, omitting any that have no data: 1. Patient Identification "
+                "& Demographics, 2. Outpatient Consultation & Clinical Findings, 3. Treatment "
+                "Plan & Medical Orders, 4. Diagnostic Summary, 5. Discrepancy & Verification "
+                "Notes. Use markdown tables for medications and lab results. Return only the "
+                "report.\n\n{extracted_data}"
+            )
+
+        prompt = prompt_template.replace("{extracted_data}", context_str)
+
+        try:
+            result, provider = await self._call_ai(prompt, "")
+            if result:
+                logger.info("Transcription report generated via %s", provider)
+                return self._strip_markdown_fences(result)
+        except Exception as exc:
+            logger.warning("AI transcription report failed, using template: %s", exc)
+
+        return self._build_template_transcription_report(extracted_data, member_ctx, provider_ctx)
+
+    @staticmethod
+    def _build_report_context(
+        extracted_data: dict, member_ctx: dict | None, provider_ctx: dict | None
+    ) -> str:
+        """Assemble the labelled data block fed to the report prompt."""
+        member_ctx = member_ctx or {}
+        provider_ctx = provider_ctx or {}
+        parts: list[str] = []
+
+        demo_labels = {
+            "name": "Patient Name",
+            "patient_id": "Patient ID / ID No",
+            "age_gender": "Age / Gender",
+            "phone": "Contact No",
+            "address": "Primary Address",
+            "blood_group": "Blood Group",
+        }
+        demo = [f"**{lbl}:** {member_ctx[k]}" for k, lbl in demo_labels.items() if member_ctx.get(k)]
+        if demo:
+            parts.append("PATIENT DEMOGRAPHICS\n" + "\n".join(demo))
+
+        if provider_ctx.get("name") or provider_ctx.get("speciality"):
+            prov: list[str] = []
+            if provider_ctx.get("name"):
+                prov.append(f"**Provider:** {provider_ctx['name']}")
+            if provider_ctx.get("speciality"):
+                prov.append(f"**Specialty/Qualifications:** {provider_ctx['speciality']}")
+            parts.append("PROVIDER\n" + "\n".join(prov))
+
+        field_labels = {
+            "record_type": "Record Type",
+            "record_date": "Visit/Document Date",
+            "record_time": "Time",
+            "chief_complaint": "Chief Complaint",
+            "diagnosis": "Diagnosis",
+            "existing_conditions": "Existing Conditions",
+            "investigations": "Investigations Ordered",
+            "prescription_text": "Prescription Text",
+            "clinical_data": "Clinical Notes",
+            "next_review_date": "Next Review Date",
+        }
+        clin = [
+            f"**{lbl}:** {extracted_data[k]}"
+            for k, lbl in field_labels.items()
+            if extracted_data.get(k)
+        ]
+        if clin:
+            parts.append("CLINICAL DATA\n" + "\n".join(clin))
+
+        prescriptions = extracted_data.get("prescriptions")
+        if isinstance(prescriptions, list) and prescriptions:
+            rows = [
+                f"- {rx.get('type', '')} {rx.get('medicine', '')} "
+                f"{rx.get('dosage', '')} {rx.get('timing', '')} "
+                f"× {rx.get('duration', '')} {rx.get('note', '')}".strip()
+                for rx in prescriptions
+            ]
+            parts.append("PRESCRIPTIONS\n" + "\n".join(rows))
+
+        lab_tests = extracted_data.get("lab_tests")
+        if isinstance(lab_tests, list) and lab_tests:
+            rows = [
+                f"- {lt.get('test_name', '')}: {lt.get('result', '')} "
+                f"{lt.get('units', '')} (ref: {lt.get('ref_value', '')}) "
+                f"— {lt.get('note', '')}".strip()
+                for lt in lab_tests
+            ]
+            parts.append("LAB TESTS\n" + "\n".join(rows))
+
+        return "\n\n".join(parts)
+
+    @staticmethod
+    def _build_template_transcription_report(
+        extracted_data: dict, member_ctx: dict | None, provider_ctx: dict | None
+    ) -> str:
+        """Deterministic fallback report (no AI) in the canonical format."""
+        member_ctx = member_ctx or {}
+        provider_ctx = provider_ctx or {}
+
+        institution = provider_ctx.get("name") or "Family Health Manager"
+        doc_date = extracted_data.get("record_date", "")
+        lines: list[str] = [f"# {institution}", "## Medical Records Transcription Report"]
+        if doc_date:
+            lines.append(f"**Document Date:** {doc_date}")
+        lines.append("")
+
+        # §1 Patient Identification & Demographics
+        demo: list[str] = []
+        if member_ctx.get("name"):
+            demo.append(f"- **Patient Name:** {member_ctx['name']}")
+        if member_ctx.get("patient_id"):
+            demo.append(f"- **Patient ID / ID No:** {member_ctx['patient_id']}")
+        if member_ctx.get("age_gender"):
+            demo.append(f"- **Age / Gender:** {member_ctx['age_gender']}")
+        if doc_date:
+            reg = f"- **Registration Date:** {doc_date}"
+            if extracted_data.get("record_time"):
+                reg += f" {extracted_data['record_time']}"
+            demo.append(reg)
+        if member_ctx.get("phone"):
+            demo.append(f"- **Contact No:** {member_ctx['phone']}")
+        if member_ctx.get("address"):
+            demo.append(f"- **Primary Address:** {member_ctx['address']}")
+        if demo:
+            lines.append("### 1. PATIENT IDENTIFICATION & DEMOGRAPHICS")
+            lines.extend(demo)
+            lines.append("")
+
+        # §2 Outpatient Consultation & Clinical Findings
+        s2: list[str] = []
+        prov_line = provider_ctx.get("name", "")
+        if provider_ctx.get("speciality"):
+            prov_line = f"{prov_line}, {provider_ctx['speciality']}" if prov_line else provider_ctx["speciality"]
+        if prov_line:
+            s2.append(f"- **Consultant Physician:** {prov_line}")
+        if extracted_data.get("chief_complaint"):
+            s2.append(f"- **History & Symptoms:** {extracted_data['chief_complaint']}")
+        if extracted_data.get("diagnosis"):
+            s2.append(f"- **Diagnosis:** {extracted_data['diagnosis']}")
+        if extracted_data.get("existing_conditions"):
+            s2.append(f"- **Existing Conditions:** {extracted_data['existing_conditions']}")
+        if s2:
+            lines.append("### 2. OUTPATIENT CONSULTATION & CLINICAL FINDINGS")
+            lines.extend(s2)
+            lines.append("")
+
+        # §3 Treatment Plan & Medical Orders
+        prescriptions = extracted_data.get("prescriptions")
+        if isinstance(prescriptions, list) and prescriptions:
+            lines.append("### 3. TREATMENT PLAN & MEDICAL ORDERS")
+            lines.append("| Medication / Clinical Order | Dosage & Instructions |")
+            lines.append("|---|---|")
+            for rx in prescriptions:
+                order = f"{rx.get('type', '')} {rx.get('medicine', '')}".strip()
+                instr = " ".join(
+                    str(x) for x in (rx.get("dosage"), rx.get("timing"), rx.get("duration")) if x
+                ).strip()
+                lines.append(f"| {order} | {instr} |")
+            if extracted_data.get("next_review_date"):
+                lines.append("")
+                lines.append(f"- **Follow-up:** {extracted_data['next_review_date']}")
+            lines.append("")
+
+        # §4 Diagnostic Summary
+        lab_tests = extracted_data.get("lab_tests")
+        if isinstance(lab_tests, list) and lab_tests:
+            lines.append("### 4. DIAGNOSTIC SUMMARY")
+            lines.append("| Test Name | Observed Value | Unit | Normal Reference Range |")
+            lines.append("|---|---|---|---|")
+            for lt in lab_tests:
+                lines.append(
+                    f"| {lt.get('test_name', '')} | {lt.get('result', '')} "
+                    f"| {lt.get('units', '')} | {lt.get('ref_value', '')} |"
+                )
+            lines.append("")
+
+        if extracted_data.get("clinical_data"):
+            lines.append("### Notes")
+            lines.append(str(extracted_data["clinical_data"]))
+            lines.append("")
+
+        lines.append(
+            "_This document serves as a verified structured transcription summary "
+            "of the referenced record._"
+        )
+        return "\n".join(lines)
+
     # ---- Provider methods (delegate to providers/) ----
 
     async def _call_ollama_text(self, prompt: str, model: str | None = None) -> str | None:

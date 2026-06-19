@@ -1,6 +1,6 @@
 import { useState, useMemo, useRef, useCallback, memo } from "react";
 import { useVirtualizer } from "@tanstack/react-virtual";
-import { ArrowUpDown, ArrowUp, ArrowDown, Eye } from "lucide-react";
+import { ArrowUpDown, ArrowUp, ArrowDown, FileText } from "lucide-react";
 import {
   Table,
   TableBody,
@@ -19,14 +19,16 @@ import {
   PopoverTrigger,
 } from "@/components/ui/popover";
 import { RecordTypeBadge } from "@/components/records/record-type-badge";
+import { TranscriptionReportView } from "@/components/records/transcription-report-view";
 import { extractReason, extractSummary } from "@/lib/record-utils";
 import { formatDate } from "@/lib/utils";
-import { simpleMarkdown } from "@/lib/markdown";
 import type { HealthRecordResponse } from "@/lib/types/health-record";
+import type { FamilyMemberResponse } from "@/lib/types/member";
 
 interface RecordsTableProps {
   records: HealthRecordResponse[];
   memberNames?: Record<string, string>;
+  membersById?: Record<string, FamilyMemberResponse>;
   onRowClick?: (record: HealthRecordResponse) => void;
   selectedIds?: Set<string>;
   onSelectionChange?: (ids: Set<string>) => void;
@@ -38,6 +40,57 @@ type SortDir = "asc" | "desc";
 const VIRTUALIZE_THRESHOLD = 80;
 const ESTIMATED_ROW_HEIGHT = 44;
 
+/* ── Shared hover popout: the "Medical Records Transcription Report" ── */
+
+function RecordReportPopover({
+  record,
+  member,
+}: {
+  record: HealthRecordResponse;
+  member?: FamilyMemberResponse | null;
+}) {
+  // The popout is only meaningful for visit/lab reports (the template renders
+  // from their structured fields; other types have no report format).
+  if (record.record_type !== "doctor_visit" && record.record_type !== "lab_report") {
+    return <span className="inline-flex items-center justify-center w-[22px] h-[22px]" />;
+  }
+  return (
+    <Popover modal={false}>
+      <PopoverTrigger
+        openOnHover
+        delay={300}
+        closeDelay={200}
+        className="inline-flex items-center justify-center rounded p-0.5 text-muted-foreground hover:text-blue-500 hover:bg-blue-50 transition-colors cursor-pointer"
+        aria-label="Preview transcription report"
+      >
+        <FileText className="h-3.5 w-3.5" />
+      </PopoverTrigger>
+      <PopoverContent
+        side="left"
+        sideOffset={8}
+        align="start"
+        className="w-[28rem] max-h-[420px] overflow-y-auto p-0"
+      >
+        <div className="p-3 space-y-2">
+          <PopoverHeader>
+            <PopoverTitle className="text-xs flex items-center gap-2">
+              <RecordTypeBadge type={record.record_type} />
+              {formatDate(record.record_date)}
+              {record.provider_name && (
+                <span className="text-muted-foreground font-normal">· {record.provider_name}</span>
+              )}
+            </PopoverTitle>
+          </PopoverHeader>
+          <TranscriptionReportView record={record} member={member} compact />
+          <PopoverDescription className="text-[10px] pt-1 border-t">
+            Click row to view full record
+          </PopoverDescription>
+        </div>
+      </PopoverContent>
+    </Popover>
+  );
+}
+
 /* ── Memoized row component ── */
 
 interface RecordRowProps {
@@ -45,6 +98,7 @@ interface RecordRowProps {
   hasSelection: boolean;
   isSelected: boolean;
   memberName?: string;
+  member?: FamilyMemberResponse | null;
   onRowClick?: (record: HealthRecordResponse) => void;
   onToggleRow: (id: string) => void;
 }
@@ -54,12 +108,12 @@ const RecordRow = memo(function RecordRow({
   hasSelection,
   isSelected,
   memberName,
+  member,
   onRowClick,
   onToggleRow,
 }: RecordRowProps) {
   const reason = extractReason(record);
   const summaryLine = extractSummary(record);
-  const hasConsultationSummary = !!record.summary;
 
   return (
     <TableRow className="cursor-pointer" onClick={() => onRowClick?.(record)}>
@@ -91,51 +145,9 @@ const RecordRow = memo(function RecordRow({
           <p className="text-xs text-muted-foreground/70 truncate mt-0.5">{summaryLine}</p>
         )}
       </TableCell>
-      {/* Eye icon — hover to preview consultation summary */}
+      {/* File icon — hover to preview the transcription report */}
       <TableCell className="py-2 w-[36px] text-center" onClick={(e) => e.stopPropagation()}>
-        {hasConsultationSummary ? (
-          <Popover modal={false}>
-            <PopoverTrigger
-              openOnHover
-              delay={300}
-              closeDelay={200}
-              className="inline-flex items-center justify-center rounded p-0.5 text-muted-foreground hover:text-blue-500 hover:bg-blue-50 transition-colors cursor-pointer"
-            >
-              <Eye className="h-3.5 w-3.5" />
-            </PopoverTrigger>
-            <PopoverContent
-              side="left"
-              sideOffset={8}
-              align="start"
-              className="w-96 max-h-[360px] overflow-y-auto p-0"
-            >
-              <div className="p-3 space-y-2">
-                <PopoverHeader>
-                  <PopoverTitle className="text-xs flex items-center gap-2">
-                    <RecordTypeBadge type={record.record_type} />
-                    {formatDate(record.record_date)}
-                    {record.provider_name && (
-                      <span className="text-muted-foreground font-normal">
-                        · {record.provider_name}
-                      </span>
-                    )}
-                  </PopoverTitle>
-                </PopoverHeader>
-                <div
-                  className="text-xs text-muted-foreground leading-relaxed prose prose-sm max-w-none prose-table:text-[11px] prose-th:px-1.5 prose-th:py-0.5 prose-td:px-1.5 prose-td:py-0.5 prose-th:bg-muted/50"
-                  dangerouslySetInnerHTML={{
-                    __html: simpleMarkdown(record.summary || ""),
-                  }}
-                />
-                <PopoverDescription className="text-[10px] pt-1 border-t">
-                  Click row to view full record
-                </PopoverDescription>
-              </div>
-            </PopoverContent>
-          </Popover>
-        ) : (
-          <span className="inline-flex items-center justify-center w-[22px] h-[22px]" />
-        )}
+        <RecordReportPopover record={record} member={member} />
       </TableCell>
       {memberName !== undefined && (
         <TableCell className="py-2 w-[120px]">
@@ -149,6 +161,7 @@ const RecordRow = memo(function RecordRow({
 export const RecordsTable = memo(function RecordsTable({
   records,
   memberNames,
+  membersById,
   onRowClick,
   selectedIds,
   onSelectionChange,
@@ -233,6 +246,11 @@ export const RecordsTable = memo(function RecordsTable({
     enabled: needsVirtualization,
   });
 
+  const memberFor = useCallback(
+    (record: HealthRecordResponse) => membersById?.[record.family_member_id],
+    [membersById]
+  );
+
   return (
     <div className="rounded-lg border bg-card">
       <Table>
@@ -283,7 +301,7 @@ export const RecordsTable = memo(function RecordsTable({
               </button>
             </TableHead>
             <TableHead className="w-[36px] px-1">
-              <span className="sr-only">Summary</span>
+              <span className="sr-only">Report</span>
             </TableHead>
             {memberNames && (
               <TableHead className="w-[120px]">
@@ -375,49 +393,7 @@ export const RecordsTable = memo(function RecordsTable({
                         className="py-2 w-[36px] text-center"
                         onClick={(e) => e.stopPropagation()}
                       >
-                        {record.summary ? (
-                          <Popover modal={false}>
-                            <PopoverTrigger
-                              openOnHover
-                              delay={300}
-                              closeDelay={200}
-                              className="inline-flex items-center justify-center rounded p-0.5 text-muted-foreground hover:text-blue-500 hover:bg-blue-50 transition-colors cursor-pointer"
-                            >
-                              <Eye className="h-3.5 w-3.5" />
-                            </PopoverTrigger>
-                            <PopoverContent
-                              side="left"
-                              sideOffset={8}
-                              align="start"
-                              className="w-96 max-h-[360px] overflow-y-auto p-0"
-                            >
-                              <div className="p-3 space-y-2">
-                                <PopoverHeader>
-                                  <PopoverTitle className="text-xs flex items-center gap-2">
-                                    <RecordTypeBadge type={record.record_type} />
-                                    {formatDate(record.record_date)}
-                                    {record.provider_name && (
-                                      <span className="text-muted-foreground font-normal">
-                                        · {record.provider_name}
-                                      </span>
-                                    )}
-                                  </PopoverTitle>
-                                </PopoverHeader>
-                                <div
-                                  className="text-xs text-muted-foreground leading-relaxed prose prose-sm max-w-none prose-table:text-[11px] prose-th:px-1.5 prose-th:py-0.5 prose-td:px-1.5 prose-td:py-0.5 prose-th:bg-muted/50"
-                                  dangerouslySetInnerHTML={{
-                                    __html: simpleMarkdown(record.summary || ""),
-                                  }}
-                                />
-                                <PopoverDescription className="text-[10px] pt-1 border-t">
-                                  Click row to view full record
-                                </PopoverDescription>
-                              </div>
-                            </PopoverContent>
-                          </Popover>
-                        ) : (
-                          <span className="inline-flex items-center justify-center w-[22px] h-[22px]" />
-                        )}
+                        <RecordReportPopover record={record} member={memberFor(record)} />
                       </TableCell>
                       {memberNames && (
                         <TableCell className="py-2 w-[120px]">
@@ -442,6 +418,7 @@ export const RecordsTable = memo(function RecordsTable({
                   hasSelection={hasSelection}
                   isSelected={selectedIds?.has(record.id) ?? false}
                   memberName={memberNames?.[record.family_member_id]}
+                  member={memberFor(record)}
                   onRowClick={handleRowClick}
                   onToggleRow={toggleRow}
                 />

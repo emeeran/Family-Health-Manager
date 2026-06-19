@@ -192,3 +192,81 @@ async def test_get_conversation_history(ai_service, mock_db):
     history = await ai_service._get_conversation_history(conversation_id)
 
     assert "User: Hello" in history
+
+
+# ── Transcription report generation ──
+
+def _report_extracted_data() -> dict:
+    return {
+        "record_type": "doctor_visit",
+        "record_date": "2024-01-15",
+        "chief_complaint": "Lower abdominal pain",
+        "diagnosis": "Pelvic Inflammatory Disease",
+        "prescriptions": [
+            {"type": "Tab", "medicine": "Doxycycline", "dosage": "100mg",
+             "timing": "BD", "duration": "10 days"}
+        ],
+        "lab_tests": [
+            {"test_name": "Haemoglobin", "result": "8.6", "units": "gm%",
+             "ref_value": "12.0-15.5"}
+        ],
+    }
+
+
+def _report_member_ctx() -> dict:
+    return {"name": "Mrs. Jenitha", "patient_id": "KF2446",
+            "age_gender": "41 Years / Female", "phone": "7598287415",
+            "address": "Chennai, Tamil Nadu, India"}
+
+
+def _report_provider_ctx() -> dict:
+    return {"name": "Dr. Sangeetha S", "speciality": "Obstetrician & Gynaecologist"}
+
+
+@pytest.mark.asyncio
+async def test_generate_transcription_report_uses_ai(ai_service):
+    """When the AI provider responds, its output is returned (fences stripped)."""
+    ai_report = "## Medical Records Transcription Report\n\nAI-generated body."
+    with patch.object(ai_service, "_call_ai", new_callable=AsyncMock,
+                      return_value=(ai_report, "mock-provider")):
+        result = await ai_service.generate_transcription_report(
+            _report_extracted_data(), _report_member_ctx(), _report_provider_ctx()
+        )
+    assert "Medical Records Transcription Report" in result
+    assert "AI-generated body." in result
+
+
+@pytest.mark.asyncio
+async def test_generate_transcription_report_falls_back_to_template(ai_service):
+    """When every AI provider fails, the deterministic template is used."""
+    with patch.object(ai_service, "_call_ai", new_callable=AsyncMock,
+                      side_effect=RuntimeError("all providers down")):
+        result = await ai_service.generate_transcription_report(
+            _report_extracted_data(), _report_member_ctx(), _report_provider_ctx()
+        )
+    # Institution header is the provider name.
+    assert result.startswith("# Dr. Sangeetha S")
+    assert "Medical Records Transcription Report" in result
+    assert "Mrs. Jenitha" in result
+    assert "KF2446" in result
+    # Medications + lab tables are populated from structured data.
+    assert "Doxycycline" in result
+    assert "Haemoglobin" in result
+
+
+def test_build_template_transcription_report_omits_empty_sections():
+    """A pure lab report (no prescriptions) omits the Treatment Plan section."""
+    extracted = {
+        "record_type": "lab_report",
+        "record_date": "2024-02-01",
+        "lab_tests": [{"test_name": "HbA1c", "result": "8.9", "ref_value": "< 6.0%"}],
+    }
+    member_ctx = {"name": "Mr. Test", "age_gender": "50 Years / Male"}
+    report = AIService._build_template_transcription_report(extracted, member_ctx, {})
+
+    assert "1. PATIENT IDENTIFICATION & DEMOGRAPHICS" in report
+    assert "4. DIAGNOSTIC SUMMARY" in report
+    assert "HbA1c" in report
+    # No prescriptions → section 3 (Treatment Plan) must be absent.
+    assert "3. TREATMENT PLAN & MEDICAL ORDERS" not in report
+

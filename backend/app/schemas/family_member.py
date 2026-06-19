@@ -37,6 +37,9 @@ class FamilyMemberCreate(BaseModel):
     allergies: list[AllergyEntry] | None = Field(None, description="Structured allergies")
     emergency_contact_name: str | None = Field(None, max_length=100, description="Emergency contact name")
     emergency_contact_phone: str | None = Field(None, max_length=30, description="Emergency contact phone")
+    patient_id: str | None = Field(None, max_length=50, description="Patient ID / hospital number (report header)")
+    phone: str | None = Field(None, max_length=30, description="Contact phone (report header)")
+    address: str | None = Field(None, description="Primary address (report header)")
     notes: str | None = Field(None, description="General notes about the member")
     medical_history: MedicalHistoryQuestionnaire | None = Field(
         None, description="Initial medical history"
@@ -59,6 +62,9 @@ class FamilyMemberUpdate(BaseModel):
     allergies: list[AllergyEntry] | None = Field(None, description="Structured allergies")
     emergency_contact_name: str | None = Field(None, max_length=100, description="Emergency contact name")
     emergency_contact_phone: str | None = Field(None, max_length=30, description="Emergency contact phone")
+    patient_id: str | None = Field(None, max_length=50, description="Patient ID / hospital number (report header)")
+    phone: str | None = Field(None, max_length=30, description="Contact phone (report header)")
+    address: str | None = Field(None, description="Primary address (report header)")
     notes: str | None = Field(None, description="General notes about the member")
     is_active: bool | None = Field(None, description="Active status")
 
@@ -76,6 +82,9 @@ class FamilyMemberResponse(BaseModel):
     relationship: Relationship = Field(..., description="Relationship to household primary", alias="relationship_type")
     medical_history_summary: str | None = Field(None, description="Medical history summary")
     blood_group: str | None = Field(None, description="Blood group (e.g. A+, O-)")
+    patient_id: str | None = Field(None, description="Patient ID / hospital number (report header)")
+    phone: str | None = Field(None, description="Contact phone (report header)")
+    address: str | None = Field(None, description="Primary address (report header)")
     family_history: str | None = Field(None, description="Family medical history")
     height_cm: float | None = Field(None, description="Height in cm")
     weight_kg: float | None = Field(None, description="Weight in kg")

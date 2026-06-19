@@ -33,6 +33,9 @@ function createMemberClientAction(navigate: ReturnType<typeof useNavigate>) {
         allergies,
         emergency_contact_name: (formData.get("emergency_contact_name") as string) || null,
         emergency_contact_phone: (formData.get("emergency_contact_phone") as string) || null,
+        patient_id: (formData.get("patient_id") as string) || null,
+        phone: (formData.get("phone") as string) || null,
+        address: (formData.get("address") as string) || null,
         medical_history: {
           conditions: (formData.get("conditions") as string) || null,
           allergies: (formData.get("allergies") as string) || null,

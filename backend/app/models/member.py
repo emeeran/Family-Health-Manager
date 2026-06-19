@@ -25,6 +25,11 @@ class FamilyMember(Base):
     relationship_type: Mapped[Relationship] = mapped_column(Enum(Relationship), nullable=False)
     medical_history_summary: Mapped[str | None] = mapped_column(Text, nullable=True)
     blood_group: Mapped[str | None] = mapped_column(String(10), nullable=True)
+    # Demographics used to populate the patient-identification header of a
+    # "Medical Records Transcription Report" (see prompts/transcription_report.md).
+    patient_id: Mapped[str | None] = mapped_column(String(50), nullable=True)
+    phone: Mapped[str | None] = mapped_column(String(30), nullable=True)
+    address: Mapped[str | None] = mapped_column(Text, nullable=True)
     family_history: Mapped[str | None] = mapped_column(Text, nullable=True)
     height_cm: Mapped[float | None] = mapped_column(Float, nullable=True)
     weight_kg: Mapped[float | None] = mapped_column(Float, nullable=True)

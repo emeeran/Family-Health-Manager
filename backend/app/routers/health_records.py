@@ -395,6 +395,128 @@ async def _generate_summary_background(
         logger.warning("Background summary generation failed for %s: %s", record_id, exc)
 
 
+def _extracted_data_from_record(record: HealthRecord) -> dict:
+    """Build the extracted-data dict (for AI report generation) from a record."""
+    extracted_data: dict = {}
+    if record.diagnosis:
+        extracted_data["diagnosis"] = record.diagnosis
+    if record.prescription_text:
+        extracted_data["prescription_text"] = record.prescription_text
+    extracted_data["record_type"] = record.record_type.value
+    extracted_data["record_date"] = str(record.record_date)
+    if record.record_time:
+        extracted_data["record_time"] = str(record.record_time)
+    if record.next_review_date:
+        extracted_data["next_review_date"] = str(record.next_review_date)
+    if record.provider_name:
+        extracted_data["provider_name"] = record.provider_name
+    try:
+        parsed_cd = json.loads(record.clinical_data)
+        if isinstance(parsed_cd, dict):
+            for key in ("prescriptions", "lab_tests", "chief_complaint",
+                        "existing_conditions", "investigations"):
+                if parsed_cd.get(key):
+                    extracted_data[key] = parsed_cd[key]
+            notes = parsed_cd.get("_notes") or parsed_cd.get("notes")
+            if notes:
+                extracted_data["clinical_data"] = notes
+    except (json.JSONDecodeError, ValueError, TypeError):
+        if record.clinical_data:
+            extracted_data["clinical_data"] = record.clinical_data
+    return extracted_data
+
+
+def _member_report_context(member: FamilyMember | None) -> dict:
+    """Patient-identification demographics for the report header."""
+    if not member:
+        return {}
+    ctx: dict = {"name": f"{member.first_name} {member.last_name}".strip()}
+    if getattr(member, "patient_id", None):
+        ctx["patient_id"] = member.patient_id
+    if getattr(member, "phone", None):
+        ctx["phone"] = member.phone
+    if getattr(member, "address", None):
+        ctx["address"] = member.address
+    if getattr(member, "blood_group", None):
+        ctx["blood_group"] = member.blood_group
+
+    age_gender: list[str] = []
+    dob = getattr(member, "date_of_birth", None)
+    if dob:
+        today = date.today()
+        age = today.year - dob.year - ((today.month, today.day) < (dob.month, dob.day))
+        if age >= 0:
+            age_gender.append(f"{age} Years")
+    gender = getattr(member, "gender", None)
+    if gender:
+        age_gender.append(gender.value if hasattr(gender, "value") else str(gender))
+    if age_gender:
+        ctx["age_gender"] = " / ".join(age_gender)
+    return ctx
+
+
+def _provider_report_context(provider) -> dict:
+    """Provider context (institution + specialty) for the report header."""
+    if not provider:
+        return {}
+    ctx: dict = {}
+    if getattr(provider, "name", None):
+        ctx["name"] = provider.name
+    if getattr(provider, "speciality", None):
+        ctx["speciality"] = provider.speciality
+    return ctx
+
+
+async def _generate_transcription_report_background(
+    record_id: UUID, household_id: UUID
+) -> None:
+    """Generate and persist the 'Medical Records Transcription Report' after a
+    doctor_visit / lab_report record is created or updated.
+
+    Runs as a FastAPI BackgroundTask so the request returns immediately. The
+    report fills in asynchronously; on any failure the record stays valid
+    without one (it can be regenerated via /regenerate-report).
+    """
+    from app.core.database import SessionLocal
+
+    try:
+        async with SessionLocal() as db:
+            result = await db.execute(
+                select(HealthRecord)
+                .options(
+                    joinedload(HealthRecord.family_member),
+                    joinedload(HealthRecord.provider),
+                )
+                .where(HealthRecord.id == record_id)
+            )
+            record = result.unique().scalar_one_or_none()
+            if not record:
+                return
+
+            extracted_data = _extracted_data_from_record(record)
+            if not extracted_data:
+                return
+
+            member_ctx = _member_report_context(record.family_member)
+            provider_ctx = _provider_report_context(record.provider)
+
+            ai_service = AIService(db, household_id=household_id)
+            report = await ai_service.generate_transcription_report(
+                extracted_data, member_ctx, provider_ctx
+            )
+            if report:
+                await db.execute(
+                    update(HealthRecord)
+                    .where(HealthRecord.id == record_id)
+                    .values(transcription_report=report)
+                )
+                await db.commit()
+                await cache.invalidate_async(f"household_records:{household_id}")
+                await cache.invalidate_async(f"dashboard_summary:{household_id}")
+    except Exception as exc:
+        logger.warning("Background transcription report failed for %s: %s", record_id, exc)
+
+
 @router.post("", status_code=201, response_model=HealthRecordResponse)
 async def create_record(
     member_id: UUID,
@@ -480,6 +602,15 @@ async def create_record(
             record.id,
             deferred_summary_data,
             household.id,
+        )
+
+    # Generate the 'Medical Records Transcription Report' in the background for
+    # doctor visits and lab reports (attached to the record, printable/exportable).
+    if request.record_type in (RecordType.DOCTOR_VISIT, RecordType.LAB_REPORT):
+        if background_tasks is None:
+            background_tasks = BackgroundTasks()
+        background_tasks.add_task(
+            _generate_transcription_report_background, record.id, household.id
         )
 
     if staging_file_ids:
@@ -849,6 +980,7 @@ async def update_record(
     household: Household = Depends(get_household_from_token),
     _member: FamilyMember = Depends(require_member_in_household),
     db: AsyncSession = Depends(get_db),
+    background_tasks: BackgroundTasks = None,
 ):
     """Update a health record."""
     record_service = HealthRecordService(db)
@@ -947,6 +1079,18 @@ async def update_record(
             )
         except Exception:
             logger.warning("Failed to create follow-up reminder on update for record %s", record_id)
+
+    # Re-generate the transcription report when the clinical content of a
+    # doctor_visit / lab_report changes.
+    if record.record_type in (RecordType.DOCTOR_VISIT, RecordType.LAB_REPORT) and any(
+        k in update_data
+        for k in ("clinical_data", "diagnosis", "prescription_text", "next_review_date")
+    ):
+        if background_tasks is None:
+            background_tasks = BackgroundTasks()
+        background_tasks.add_task(
+            _generate_transcription_report_background, record.id, household.id
+        )
 
     await cache.invalidate_async(f"household_records:{household.id}")
     await cache.invalidate_async(f"dashboard_summary:{household.id}")
@@ -1165,4 +1309,46 @@ async def regenerate_summary(
         raise HTTPException(status_code=502, detail=f"Summary generation failed: {exc}")
 
     record = await record_service.update_record(record_id, summary=summary)
+    return record
+
+
+@router.post("/{record_id}/regenerate-report", response_model=HealthRecordResponse)
+async def regenerate_transcription_report(
+    member_id: UUID,
+    record_id: UUID,
+    household: Household = Depends(get_household_from_token),
+    _member: FamilyMember = Depends(require_member_in_household),
+    db: AsyncSession = Depends(get_db),
+):
+    """Regenerate the medical records transcription report for a health record."""
+    result = await db.execute(
+        select(HealthRecord)
+        .options(
+            joinedload(HealthRecord.family_member),
+            joinedload(HealthRecord.provider),
+            joinedload(HealthRecord.attachments),
+        )
+        .where(HealthRecord.id == record_id)
+    )
+    record = result.unique().scalar_one_or_none()
+    if not record or record.family_member_id != member_id:
+        raise HTTPException(status_code=404, detail="Record not found")
+
+    extracted_data = _extracted_data_from_record(record)
+    if not extracted_data:
+        raise HTTPException(status_code=422, detail="No clinical data to build a report from")
+
+    member_ctx = _member_report_context(record.family_member)
+    provider_ctx = _provider_report_context(record.provider)
+
+    ai_service = AIService(db, household_id=household.id)
+    try:
+        report = await ai_service.generate_transcription_report(
+            extracted_data, member_ctx, provider_ctx
+        )
+    except Exception as exc:
+        raise HTTPException(status_code=502, detail=f"Report generation failed: {exc}")
+
+    record_service = HealthRecordService(db)
+    record = await record_service.update_record(record_id, transcription_report=report)
     return record

@@ -45,6 +45,7 @@ export interface HealthRecordResponse {
   prescription_text: string | null;
   next_review_date: string | null;
   summary: string | null;
+  transcription_report?: string | null;
   tags: string[] | null;
   is_deleted: boolean;
   created_at: string;

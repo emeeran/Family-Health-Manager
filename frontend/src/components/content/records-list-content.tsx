@@ -241,6 +241,7 @@ export const RecordsListContent = memo(function RecordsListContent({
       ) : (
         <RecordsTable
           records={filtered}
+          membersById={member.id ? { [member.id]: member } : undefined}
           onRowClick={handleRowClick}
           selectedIds={selectedIds}
           onSelectionChange={setSelectedIds}

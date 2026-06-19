@@ -41,6 +41,38 @@ async def test_create_record(auth_client):
     assert body["is_deleted"] is False
 
 
+async def test_create_doctor_visit_exposes_report_field(auth_client):
+    """A created doctor_visit response carries the transcription_report field."""
+    member_id = await _create_member(auth_client)
+    resp = await auth_client.post(
+        f"/api/v1/members/{member_id}/records", json=RECORD_PAYLOAD
+    )
+    assert resp.status_code == 201
+    assert "transcription_report" in resp.json()
+
+
+async def test_regenerate_report_builds_transcription_report(auth_client):
+    """The regenerate-report endpoint persists a transcription report.
+
+    With no AI providers configured in the test env, the deterministic
+    template fallback is used — the report must still be produced.
+    """
+    member_id = await _create_member(auth_client)
+    create = await auth_client.post(
+        f"/api/v1/members/{member_id}/records", json=RECORD_PAYLOAD
+    )
+    record_id = create.json()["id"]
+
+    resp = await auth_client.post(
+        f"/api/v1/members/{member_id}/records/{record_id}/regenerate-report"
+    )
+    assert resp.status_code == 200
+    report = resp.json()["transcription_report"]
+    assert report
+    assert "Medical Records Transcription Report" in report
+
+
+
 async def test_list_records(auth_client):
     """List records returns created records."""
     member_id = await _create_member(auth_client)

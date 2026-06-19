@@ -145,6 +145,9 @@ const memberSchema = z.object({
   family_history: z.string().optional(),
   emergency_contact_name: z.string().optional(),
   emergency_contact_phone: z.string().optional(),
+  patient_id: z.string().optional(),
+  phone: z.string().optional(),
+  address: z.string().optional(),
 });
 
 type MemberFormValues = z.infer<typeof memberSchema>;
@@ -506,6 +509,51 @@ export function MemberForm({ action, defaultValues, member }: MemberFormProps) {
               placeholder="e.g. +91 9876543210"
             />
           </div>
+        </div>
+      </div>
+
+      {/* Report / Patient Details — populate the transcription report header */}
+      <div className="space-y-3">
+        <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">
+          Report / Patient Details
+        </p>
+        <p className="text-[11px] text-muted-foreground/80 -mt-1">
+          Used to auto-fill the patient-identification header of each transcription report.
+        </p>
+        <div className="grid gap-3 md:grid-cols-2">
+          <div className="space-y-1">
+            <Label htmlFor="patient_id" className="text-xs">
+              Patient ID / Hospital No.
+            </Label>
+            <Input
+              id="patient_id"
+              {...register("patient_id")}
+              className="h-9"
+              placeholder="e.g. KF2446 / 102634"
+            />
+          </div>
+          <div className="space-y-1">
+            <Label htmlFor="phone" className="text-xs">
+              Contact Phone
+            </Label>
+            <Input
+              id="phone"
+              {...register("phone")}
+              className="h-9"
+              placeholder="e.g. +91 9876543210"
+            />
+          </div>
+        </div>
+        <div className="space-y-1">
+          <Label htmlFor="address" className="text-xs">
+            Primary Address
+          </Label>
+          <Textarea
+            id="address"
+            {...register("address")}
+            className="min-h-[60px]"
+            placeholder="e.g. Chennai, Tamil Nadu, India"
+          />
         </div>
       </div>
 
