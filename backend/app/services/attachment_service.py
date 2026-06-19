@@ -9,6 +9,7 @@ from fastapi import UploadFile
 
 from app.models.base import Attachment, HealthRecord
 from app.core.storage import (
+    ALLOWED_MIME_TYPES,
     stream_file,
     delete_file,
     get_staging_dir,
@@ -23,7 +24,6 @@ from app.core.storage import (
 class AttachmentService:
     """Attachment management service."""
 
-    ALLOWED_MIME_TYPES = {"application/pdf", "image/jpeg", "image/png", "image/webp"}
     MAX_FILE_SIZE = 25 * 1024 * 1024  # 25MB
 
     def __init__(self, db: AsyncSession):
@@ -48,9 +48,9 @@ class AttachmentService:
 
         # Validate MIME type
         mime = file.content_type or "application/octet-stream"
-        if mime not in self.ALLOWED_MIME_TYPES:
+        if mime not in ALLOWED_MIME_TYPES:
             raise ValueError(
-                f"File type {mime} not allowed. Allowed: {', '.join(sorted(self.ALLOWED_MIME_TYPES))}"
+                f"File type {mime} not allowed. Allowed: {', '.join(sorted(ALLOWED_MIME_TYPES))}"
             )
 
         result = await self.db.execute(
