@@ -17,6 +17,7 @@ import {
 import { createPreventiveReminder } from "@/lib/api/members";
 import { formatDate } from "@/lib/utils";
 import { GENDER_LABELS } from "@/lib/constants";
+import { useInsightStream } from "@/lib/hooks/use-insight-stream";
 import { toast } from "sonner";
 import type { MemberDetailResponse, PreventiveRecommendation } from "@/lib/types/member";
 import type { GeneratedInsight } from "@/lib/api/members";
@@ -157,6 +158,9 @@ export const AiAssistantTab = memo(function AiAssistantTab({ data }: AiAssistant
         }
       : null
   );
+
+  // Powers the Regenerate button inside the full-screen insight report.
+  const insightRegen = useInsightStream(member.id, { onComplete: setInsight });
   const [preConsultNote, setPreConsultNote] = useState<GeneratedInsight | null>(
     latest_preconsult_note
       ? {
@@ -253,6 +257,11 @@ ${sectionHtml}
           memberGender={GENDER_LABELS[member.gender]}
           memberId={member.id}
           onBack={() => setShowReport(false)}
+          onRegenerate={() => insightRegen.generate()}
+          regenerating={insightRegen.loading}
+          regenerateStage={insightRegen.streamStage}
+          regenerateText={insightRegen.streamText}
+          onCancelRegenerate={insightRegen.cancel}
         />
       </Suspense>
     );

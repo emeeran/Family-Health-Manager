@@ -134,139 +134,112 @@ async def get_ai_status(
             return "Connection refused — is the service running?"
         return str(exc)[:100]
 
-    for prov in config.providers:
+    import asyncio
+
+    async def _probe(prov) -> dict:
+        """Send a tiny test prompt to one provider; raise on failure."""
         label = PROVIDER_LABELS.get(prov.id, prov.id)
         model = prov.model
+        result: str | None = None
+        start = time.monotonic()
 
-        try:
-            if prov.id == "ollama":
-                from app.services.ai.providers.ollama import call_ollama_text
+        if prov.id == "ollama":
+            # Availability = "server reachable AND configured model installed",
+            # determined from the instant /api/tags endpoint. A generation
+            # probe is the wrong signal here: on CPU-only inference the
+            # configured model must cold-load (~15–20s+) before the first
+            # token, which routinely exceeded this probe's 20s cap and made a
+            # healthy Ollama look "down". Tags never loads a model.
+            from app.core.config import get_settings
+            from app.core.ollama_service import ollama_status
+            from app.core.provider_keys import resolve_provider_value
 
-                start = time.monotonic()
-                result = await call_ollama_text(test_prompt, model=model or None)
-                elapsed = time.monotonic() - start
-                providers.append(
-                    {
-                        "name": label,
-                        "id": prov.id,
-                        "model": model,
-                        "available": bool(result),
-                        "response_ms": round(elapsed * 1000),
-                    }
-                )
-            elif prov.id == "gemini":
-                if not await is_provider_configured("gemini"):
-                    providers.append(
-                        {
-                            "name": label,
-                            "id": prov.id,
-                            "model": model,
-                            "available": False,
-                            "error": "No API key",
-                        }
-                    )
-                    continue
-                from app.services.ai.providers.gemini import call_gemini_text
-
-                start = time.monotonic()
-                result = await call_gemini_text(test_prompt, model=model)
-                elapsed = time.monotonic() - start
-                providers.append(
-                    {
-                        "name": label,
-                        "id": prov.id,
-                        "model": model,
-                        "available": bool(result),
-                        "response_ms": round(elapsed * 1000),
-                    }
-                )
-            elif prov.id == "openrouter":
-                if not await is_provider_configured("openrouter"):
-                    providers.append(
-                        {
-                            "name": label,
-                            "id": prov.id,
-                            "model": model,
-                            "available": False,
-                            "error": "No API key",
-                        }
-                    )
-                    continue
-                from app.services.ai.providers.openrouter import call_openrouter_text
-
-                start = time.monotonic()
-                result = await call_openrouter_text(test_prompt, model=model)
-                elapsed = time.monotonic() - start
-                providers.append(
-                    {
-                        "name": label,
-                        "id": prov.id,
-                        "model": model,
-                        "available": bool(result),
-                        "response_ms": round(elapsed * 1000),
-                    }
-                )
-            elif prov.id == "groq":
-                if not await is_provider_configured("groq"):
-                    providers.append(
-                        {
-                            "name": label,
-                            "id": prov.id,
-                            "model": model,
-                            "available": False,
-                            "error": "No API key",
-                        }
-                    )
-                    continue
-                from app.services.ai.providers.groq import call_groq_text
-
-                start = time.monotonic()
-                result = await call_groq_text(test_prompt, model=model)
-                elapsed = time.monotonic() - start
-                providers.append(
-                    {
-                        "name": label,
-                        "id": prov.id,
-                        "model": model,
-                        "available": bool(result),
-                        "response_ms": round(elapsed * 1000),
-                    }
-                )
-            elif prov.id == "openai":
-                if not await is_provider_configured("openai"):
-                    providers.append(
-                        {
-                            "name": label,
-                            "id": prov.id,
-                            "model": model,
-                            "available": False,
-                            "error": "No API key",
-                        }
-                    )
-                    continue
-                from app.services.ai.providers.openai import call_openai_text
-
-                start = time.monotonic()
-                result = await call_openai_text(test_prompt, model=model)
-                elapsed = time.monotonic() - start
-                providers.append(
-                    {
-                        "name": label,
-                        "id": prov.id,
-                        "model": model,
-                        "available": bool(result),
-                        "response_ms": round(elapsed * 1000),
-                    }
-                )
-        except Exception as exc:
-            providers.append(
-                {
+            base_url = await resolve_provider_value("ollama")
+            use_model = model or get_settings().OLLAMA_TEXT_MODEL
+            if not base_url:
+                return {
                     "name": label,
                     "id": prov.id,
-                    "model": model,
+                    "model": use_model,
                     "available": False,
-                    "error": _friendly_error(exc),
+                    "error": "No Ollama URL configured",
                 }
-            )
+            reachable, present = await ollama_status(use_model, base_url)
+            if not reachable:
+                return {
+                    "name": label,
+                    "id": prov.id,
+                    "model": use_model,
+                    "available": False,
+                    "response_ms": round((time.monotonic() - start) * 1000),
+                    "error": "Connection refused — is Ollama running?",
+                }
+            if not present:
+                return {
+                    "name": label,
+                    "id": prov.id,
+                    "model": use_model,
+                    "available": False,
+                    "response_ms": round((time.monotonic() - start) * 1000),
+                    "error": f"Model '{use_model}' not installed",
+                }
+            return {
+                "name": label,
+                "id": prov.id,
+                "model": use_model,
+                "available": True,
+                "response_ms": round((time.monotonic() - start) * 1000),
+            }
+        elif prov.id == "gemini":
+            if not await is_provider_configured("gemini"):
+                return {"name": label, "id": prov.id, "model": model, "available": False, "error": "No API key"}
+            from app.services.ai.providers.gemini import call_gemini_text
+
+            result = await call_gemini_text(test_prompt, model=model)
+        elif prov.id == "openrouter":
+            if not await is_provider_configured("openrouter"):
+                return {"name": label, "id": prov.id, "model": model, "available": False, "error": "No API key"}
+            from app.services.ai.providers.openrouter import call_openrouter_text
+
+            result = await call_openrouter_text(test_prompt, model=model)
+        elif prov.id == "groq":
+            if not await is_provider_configured("groq"):
+                return {"name": label, "id": prov.id, "model": model, "available": False, "error": "No API key"}
+            from app.services.ai.providers.groq import call_groq_text
+
+            result = await call_groq_text(test_prompt, model=model)
+        elif prov.id == "openai":
+            if not await is_provider_configured("openai"):
+                return {"name": label, "id": prov.id, "model": model, "available": False, "error": "No API key"}
+            from app.services.ai.providers.openai import call_openai_text
+
+            result = await call_openai_text(test_prompt, model=model)
+        else:
+            return {"name": label, "id": prov.id, "model": model, "available": False, "error": "Unknown provider"}
+
+        return {
+            "name": label,
+            "id": prov.id,
+            "model": model,
+            "available": bool(result),
+            "response_ms": round((time.monotonic() - start) * 1000),
+        }
+
+    async def _check_one(prov) -> dict:
+        """Probe one provider in parallel with a hard cap so one slow provider
+        can't stall the whole status check."""
+        label = PROVIDER_LABELS.get(prov.id, prov.id)
+        model = prov.model
+        try:
+            return await asyncio.wait_for(_probe(prov), timeout=20)
+        except asyncio.TimeoutError:
+            return {"name": label, "id": prov.id, "model": model, "available": False, "error": "Timed out"}
+        except Exception as exc:
+            return {"name": label, "id": prov.id, "model": model, "available": False, "error": _friendly_error(exc)}
+
+    # Run all provider checks concurrently — wall-clock is the slowest provider
+    # (≤ the per-provider cap), not the sum. Order is preserved by gather.
+    checked = await asyncio.gather(*(_check_one(p) for p in config.providers))
+    providers.extend(checked)
 
     return {"providers": providers}

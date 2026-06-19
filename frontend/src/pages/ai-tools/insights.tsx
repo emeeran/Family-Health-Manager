@@ -5,6 +5,7 @@ import { InsightCard } from "@/components/members/insight-card";
 import { InsightReport } from "@/components/members/insight-report-viewer";
 import { getLatestInsight } from "@/lib/api/members";
 import { getMember } from "@/lib/api/members";
+import { useInsightStream } from "@/lib/hooks/use-insight-stream";
 import type { GeneratedInsight } from "@/lib/api/members";
 import type { FamilyMemberResponse } from "@/lib/types/member";
 
@@ -14,6 +15,9 @@ export default function AiToolsInsightsPage() {
   const [insight, setInsight] = useState<GeneratedInsight | null>(null);
   const [showReport, setShowReport] = useState(false);
   const [member, setMember] = useState<FamilyMemberResponse | null>(null);
+
+  // Powers the Regenerate button inside the full-screen insight report.
+  const insightRegen = useInsightStream(memberId, { onComplete: setInsight });
 
   useEffect(() => {
     if (!memberId) return;
@@ -39,6 +43,11 @@ export default function AiToolsInsightsPage() {
           memberGender={member?.gender || ""}
           memberId={memberId}
           onBack={() => setShowReport(false)}
+          onRegenerate={() => insightRegen.generate()}
+          regenerating={insightRegen.loading}
+          regenerateStage={insightRegen.streamStage}
+          regenerateText={insightRegen.streamText}
+          onCancelRegenerate={insightRegen.cancel}
         />
       </AiToolsSubPage>
     );

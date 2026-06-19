@@ -1,11 +1,10 @@
-import { useState, useRef, memo } from "react";
+import { useState, memo } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { VerificationBadge } from "@/components/shared/verification-badge";
-import { streamRequest } from "@/lib/api-client";
-import { generateMemberInsights, type GeneratedInsight, type InsightMode } from "@/lib/api/members";
+import { useInsightStream } from "@/lib/hooks/use-insight-stream";
+import type { GeneratedInsight, InsightMode } from "@/lib/api/members";
 import { Brain, Sparkles, Loader2, CheckCircle2 } from "lucide-react";
-import { toast } from "sonner";
 import { useVerificationPolling } from "@/lib/hooks/use-verification-polling";
 import { cn } from "@/lib/utils";
 
@@ -64,11 +63,7 @@ export const InsightCard = memo(function InsightCard({
   onViewReport,
   existingInsight,
 }: InsightCardProps) {
-  const [loading, setLoading] = useState(false);
   const [insight, setInsight] = useState<GeneratedInsight | null>(existingInsight);
-  const [streamText, setStreamText] = useState("");
-  const [streamStage, setStreamStage] = useState("");
-  const [error, setError] = useState<string | null>(null);
   const [mode, setMode] = useState<InsightMode>(() => {
     try {
       return (localStorage.getItem("insightMode") as InsightMode) || "comprehensive";
@@ -76,7 +71,13 @@ export const InsightCard = memo(function InsightCard({
       return "comprehensive";
     }
   });
-  const cancelRef = useRef<(() => void) | null>(null);
+
+  const { loading, streamText, streamStage, error, generate, cancel } = useInsightStream(memberId, {
+    onComplete: (result) => {
+      setInsight(result);
+      onInsightReady(result);
+    },
+  });
 
   function chooseMode(m: InsightMode) {
     setMode(m);
@@ -84,61 +85,6 @@ export const InsightCard = memo(function InsightCard({
       localStorage.setItem("insightMode", m);
     } catch {
       /* localStorage unavailable — keep session-only state */
-    }
-  }
-
-  async function handleGenerate() {
-    setLoading(true);
-    setError(null);
-    setStreamText("");
-    setStreamStage("Starting...");
-    try {
-      let fullText = "";
-      const { promise, cancel } = streamRequest(
-        `/members/${memberId}/generate-insights/stream?mode=${mode}`,
-        {
-          onEvent: (event) => {
-            const e = event as Record<string, unknown>;
-            const stage = e.stage as string;
-            if (stage === "context") {
-              setStreamStage((e.message as string) || "Preparing...");
-            } else if (stage === "provider") {
-              setStreamStage(`Generating via ${e.provider}...`);
-            } else if (stage === "token") {
-              fullText += e.content as string;
-              setStreamText(fullText);
-            } else if (stage === "complete") {
-              const result: GeneratedInsight = {
-                id: e.insight_id as string,
-                response: fullText,
-                provider_used: e.provider as string,
-                generated_at: new Date().toISOString(),
-                verification: null,
-                // Server may post-process sections on the stream in future; until
-                // then the viewer falls back to client-side parseSections.
-                sections: (e.sections as GeneratedInsight["sections"]) ?? null,
-              };
-              setInsight(result);
-              setStreamStage("");
-              onInsightReady(result);
-              generateMemberInsights(memberId, mode)
-                .then(() => {})
-                .catch(() => {});
-            } else if (stage === "error") {
-              toast.error((e.message as string) || "Generation failed");
-            }
-          },
-        }
-      );
-      cancelRef.current = cancel;
-      await promise;
-    } catch (err) {
-      const msg = err instanceof Error ? err.message : "Failed to generate insights";
-      setError(msg);
-    } finally {
-      setLoading(false);
-      setStreamStage("");
-      cancelRef.current = null;
     }
   }
 
@@ -163,7 +109,7 @@ export const InsightCard = memo(function InsightCard({
             )}
             <Button
               size="sm"
-              onClick={handleGenerate}
+              onClick={() => generate(mode)}
               disabled={loading}
               className="bg-gradient-to-r from-(--brand-accent) to-orange-600 text-white hover:from-orange-700 hover:to-orange-700"
             >
@@ -184,7 +130,7 @@ export const InsightCard = memo(function InsightCard({
                 size="sm"
                 variant="ghost"
                 className="text-xs text-muted-foreground"
-                onClick={() => cancelRef.current?.()}
+                onClick={cancel}
               >
                 Cancel
               </Button>
@@ -213,7 +159,7 @@ export const InsightCard = memo(function InsightCard({
         ) : error ? (
           <div className="p-3 rounded-lg bg-destructive/10 border border-destructive/20 space-y-2">
             <p className="text-sm text-destructive font-medium">{error}</p>
-            <Button size="sm" variant="outline" onClick={handleGenerate}>
+            <Button size="sm" variant="outline" onClick={() => generate(mode)}>
               <Sparkles className="h-3.5 w-3.5 mr-1" />
               Retry
             </Button>

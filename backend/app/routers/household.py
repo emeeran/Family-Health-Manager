@@ -95,13 +95,20 @@ async def update_settings(
     household: Household = Depends(get_household_from_token),
     db: AsyncSession = Depends(get_db),
 ):
-    """Update feature toggle settings for the household."""
-    settings_json = request.settings.model_dump_json()
+    """Update feature toggle settings for the household.
+
+    Only fields the client actually sent are overwritten; everything else —
+    notably the saved ``ai_providers`` (provider models + primary) — is
+    preserved, so toggling a feature never resets provider configuration.
+    """
+    existing = _parse_settings(household)
+    updates = request.settings.model_dump(exclude_unset=True)
+    merged = existing.model_copy(update=updates)
     result = await db.execute(select(Household).where(Household.id == household.id))
     db_household = result.scalar_one()
-    db_household.settings_json = settings_json
+    db_household.settings_json = merged.model_dump_json()
     await db.flush()
-    return HouseholdSettingsResponse(settings=request.settings)
+    return HouseholdSettingsResponse(settings=merged)
 
 
 @router.get("/ai-provider-config", response_model=AIProviderConfigResponse)

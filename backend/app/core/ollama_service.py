@@ -25,6 +25,40 @@ async def is_ollama_running(url: str | None = None) -> bool:
         return False
 
 
+async def ollama_status(
+    model: str | None = None, url: str | None = None
+) -> tuple[bool, bool]:
+    """Instant reachability + model-presence check via ``/api/tags``.
+
+    Returns ``(reachable, model_present)``. Unlike a generation probe, this
+    never triggers a model load, so it returns in milliseconds and a cold
+    CPU-only server is never mistaken for a dead one. Used by the AI Status
+    panel, where the question is "is Ollama connected and is the model
+    installed?" — not "how fast can it generate?".
+
+    ``model`` is matched on its base name (tag stripped), so ``"medgemma"``
+    matches an installed ``"medgemma:4b"`` / ``"medgemma:latest"`` and an
+    exact ``"qwen3:4b"`` matches ``"qwen3:4b"``. ``model=None`` skips the
+    presence check (returns ``present=True`` when reachable).
+    """
+    base_url = url or _settings.OLLAMA_LOCAL_URL
+    try:
+        async with httpx.AsyncClient(timeout=8) as client:
+            resp = await client.get(f"{base_url}/api/tags")
+            if resp.status_code != 200:
+                return False, False
+            models = [m.get("name", "") for m in resp.json().get("models", [])]
+    except (httpx.ConnectError, httpx.TimeoutException, OSError):
+        return False, False
+    if not model:
+        return True, True
+    base = model.split(":", 1)[0]
+    present = any(
+        m == model or m.split(":", 1)[0] == base for m in models
+    )
+    return True, present
+
+
 async def ensure_model_pulled(model: str, url: str | None = None) -> bool:
     """Check if a model is available locally; pull it if missing."""
     base_url = url or _settings.OLLAMA_LOCAL_URL

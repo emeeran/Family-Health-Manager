@@ -23,6 +23,8 @@ import {
   FlaskConical,
   CalendarClock,
   Info,
+  Loader2,
+  RefreshCw,
 } from "lucide-react";
 
 // Re-exported for legacy callers (overview-tab, ai-assistant-tab inline PDFs).
@@ -304,6 +306,11 @@ export function InsightReport({
   memberId,
   onBack,
   sections: sectionsProp,
+  onRegenerate,
+  regenerating,
+  regenerateStage,
+  regenerateText,
+  onCancelRegenerate,
 }: {
   response: string;
   provider: string;
@@ -317,6 +324,16 @@ export function InsightReport({
   onBack: () => void;
   /** Server-parsed sections (preferred); falls back to client-side parseSections. */
   sections?: InsightSection[] | null;
+  /** When provided, a Regenerate button is shown in the command bar. */
+  onRegenerate?: () => void;
+  /** True while regeneration is streaming; shows an inline progress panel. */
+  regenerating?: boolean;
+  /** Stage label for the in-flight regeneration. */
+  regenerateStage?: string;
+  /** Tokens streamed so far during regeneration. */
+  regenerateText?: string;
+  /** Abort an in-flight regeneration. */
+  onCancelRegenerate?: () => void;
 }) {
   const articleRef = useRef<HTMLDivElement>(null);
   const sections = sectionsProp ?? parseSections(response);
@@ -385,14 +402,69 @@ export function InsightReport({
             </span>
             <VerificationBadge verification={verification} />
           </div>
-          <Button variant="outline" size="sm" className="h-7" onClick={handleExportPDF}>
-            <Download className="h-3.5 w-3.5" />
-            PDF
-          </Button>
+          <div className="flex items-center gap-2">
+            {onRegenerate && (
+              <Button
+                variant="outline"
+                size="sm"
+                className="h-7"
+                onClick={onRegenerate}
+                disabled={regenerating}
+              >
+                {regenerating ? (
+                  <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                ) : (
+                  <RefreshCw className="h-3.5 w-3.5" />
+                )}
+                {regenerating ? "Analyzing..." : "Regenerate"}
+              </Button>
+            )}
+            <Button
+              variant="outline"
+              size="sm"
+              className="h-7"
+              onClick={handleExportPDF}
+              disabled={regenerating}
+              title={regenerating ? "Finish regenerating first" : "Export to PDF"}
+            >
+              <Download className="h-3.5 w-3.5" />
+              PDF
+            </Button>
+          </div>
         </div>
       </div>
 
       <div className="mx-auto max-w-[820px] px-3 py-6">
+        {/* Inline regeneration progress — streams live over the stale report */}
+        {regenerating && (
+          <div className="mb-4 rounded-xl border border-(--brand-accent)/30 bg-muted/30 p-4 print:hidden">
+            <div className="flex items-center justify-between gap-2">
+              <div className="flex min-w-0 items-center gap-2">
+                <Loader2 className="h-4 w-4 shrink-0 animate-spin text-(--brand-accent)" />
+                <span className="truncate text-sm font-medium text-(--brand-accent)">
+                  {regenerateStage || "Analyzing records..."}
+                </span>
+              </div>
+              {onCancelRegenerate && (
+                <Button
+                  size="sm"
+                  variant="ghost"
+                  className="h-7 shrink-0 text-xs text-muted-foreground"
+                  onClick={onCancelRegenerate}
+                >
+                  Cancel
+                </Button>
+              )}
+            </div>
+            {regenerateText && (
+              <p className="mt-2 max-h-40 overflow-y-auto whitespace-pre-wrap text-sm leading-relaxed text-foreground/80">
+                {regenerateText}
+                <span className="ml-0.5 inline-block h-4 w-1.5 animate-pulse bg-(--brand-accent) align-text-bottom" />
+              </p>
+            )}
+          </div>
+        )}
+
         {/* Sticky section nav (under the command bar) */}
         {sections.length > 1 && (
           <div className="sticky top-10 z-10 -mx-3 mb-4 border-b border-border bg-background/95 px-3 py-2 backdrop-blur-sm print:hidden">

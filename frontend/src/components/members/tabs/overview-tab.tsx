@@ -35,6 +35,7 @@ import { createPreventiveReminder } from "@/lib/api/members";
 import { GENDER_LABELS, RELATIONSHIP_LABELS } from "@/lib/constants";
 import { deleteMember } from "@/lib/api/members";
 import { formatDate, formatRelativeTime } from "@/lib/utils";
+import { useInsightStream } from "@/lib/hooks/use-insight-stream";
 import { toast } from "sonner";
 import type { MemberDetailResponse, PreventiveRecommendation } from "@/lib/types/member";
 import type { GeneratedInsight } from "@/lib/api/members";
@@ -144,6 +145,9 @@ export const OverviewTab = memo(function OverviewTab({ data }: OverviewTabProps)
         }
       : null
   );
+
+  // Powers the Regenerate button inside the full-screen insight report.
+  const insightRegen = useInsightStream(member.id, { onComplete: setInsight });
   const [smartReport, setSmartReport] = useState<GeneratedInsight | null>(
     latest_smart_report
       ? {
@@ -360,6 +364,11 @@ ${histParts.length > 0 ? `<h2>Medical History</h2><div style="line-height:1.8;ma
           memberId={member.id}
           onBack={() => setShowReport(false)}
           sections={insight.sections}
+          onRegenerate={() => insightRegen.generate()}
+          regenerating={insightRegen.loading}
+          regenerateStage={insightRegen.streamStage}
+          regenerateText={insightRegen.streamText}
+          onCancelRegenerate={insightRegen.cancel}
         />
       </Suspense>
     );
