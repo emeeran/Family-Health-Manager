@@ -1008,9 +1008,7 @@ class AIService:
 
         return await call_openrouter_text(prompt, model=model or "deepseek/deepseek-v4-flash")
 
-    async def _ollama_chat(
-        self, model: str, prompt: str, num_predict: int = 4096
-    ) -> str | None:
+    async def _ollama_chat(self, model: str, prompt: str, num_predict: int = 4096) -> str | None:
         from app.services.ai.providers.ollama import ollama_chat
 
         return await ollama_chat(model, prompt, num_predict=num_predict)

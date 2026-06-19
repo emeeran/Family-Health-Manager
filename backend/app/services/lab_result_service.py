@@ -61,4 +61,3 @@ class LabResultService:
         if inserted:
             await self.db.flush()
         return inserted
-
