@@ -247,9 +247,11 @@ ${sectionHtml}
           provider={insight.provider_used}
           generatedAt={insight.generated_at}
           verification={insight.verification}
+          sections={insight.sections}
           memberName={`${member.first_name} ${member.last_name}`}
           memberDob={formatDate(member.date_of_birth)}
           memberGender={GENDER_LABELS[member.gender]}
+          memberId={member.id}
           onBack={() => setShowReport(false)}
         />
       </Suspense>

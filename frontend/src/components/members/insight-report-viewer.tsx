@@ -1,13 +1,29 @@
 import { useEffect, useRef, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { VerificationBadge } from "@/components/shared/verification-badge";
-import { ReportShell } from "@/components/members/reports/report-shell";
-import { MarkdownSections } from "@/components/members/reports/markdown-sections";
+import { InsightSectionBlock } from "@/components/members/reports/insight-section";
+import { Hba1cTrendChart } from "@/components/members/reports/hba1c-trend-chart";
 import { exportElementToPDF } from "@/lib/pdf-export";
 import { parseSections, sectionKey } from "@/lib/parse-sections";
 import type { InsightSection } from "@/lib/parse-sections";
+import { getHba1cHistory } from "@/lib/api/members";
+import type { Hba1cHistoryEntry } from "@/lib/types/member";
+import { deriveKpis, deriveRiskLevel, type Severity } from "@/lib/insight-extract";
 import type { VerificationResult } from "@/lib/types/message";
-import { ArrowLeft, Download, Brain, ClipboardList } from "lucide-react";
+import { cn } from "@/lib/utils";
+import {
+  ArrowLeft,
+  Download,
+  Brain,
+  ClipboardList,
+  AlertTriangle,
+  ShieldAlert,
+  ShieldCheck,
+  Activity,
+  FlaskConical,
+  CalendarClock,
+  Info,
+} from "lucide-react";
 
 // Re-exported for legacy callers (overview-tab, ai-assistant-tab inline PDFs).
 export { parseSections };
@@ -124,7 +140,158 @@ function renderNoteBody(text: string, { checkable = false }: { checkable?: boole
   });
 }
 
-/* ── InsightReport ── */
+/* ── InsightReport: editorial clinical document ── */
+
+const KEY_ACCENT: Record<string, string> = {
+  overview: "#5b7fff",
+  conditions: "#dc2626",
+  labs: "#4ade80",
+  risk: "#fb923c",
+  recommendations: "#06b6d4",
+  follow_up: "#ec4899",
+  other: "#737373",
+};
+
+function MetaItem({
+  label,
+  value,
+  mono = false,
+}: {
+  label: string;
+  value: string;
+  mono?: boolean;
+}) {
+  return (
+    <div className="min-w-0">
+      <div className="text-[10px] font-semibold uppercase tracking-[0.08em] text-gray-400">
+        {label}
+      </div>
+      <div
+        className={cn(
+          "mt-1 truncate text-[13px] font-medium text-gray-800",
+          mono && "font-mono text-gray-600"
+        )}
+      >
+        {value}
+      </div>
+    </div>
+  );
+}
+
+function KpiStrip({ kpis }: { kpis: ReturnType<typeof deriveKpis> }) {
+  const items = [
+    { n: kpis.conditions, label: "Active conditions", accent: "#dc2626", Icon: Activity },
+    { n: kpis.labs, label: "Lab findings", accent: "#4ade80", Icon: FlaskConical },
+    { n: kpis.risks, label: "Risks flagged", accent: "#fb923c", Icon: ShieldAlert },
+    { n: kpis.followUps, label: "Follow-ups", accent: "#ec4899", Icon: CalendarClock },
+  ];
+  return (
+    <div className="grid grid-cols-2 gap-2.5 sm:grid-cols-4">
+      {items.map((it, i) => (
+        <div
+          key={i}
+          className="rounded-xl border border-gray-200 bg-gradient-to-b from-white to-gray-50/70 p-3.5 transition-colors hover:border-gray-300"
+        >
+          <div className="flex items-center justify-between gap-1.5">
+            <span className="text-[10px] font-semibold uppercase tracking-[0.05em] text-gray-400">
+              {it.label}
+            </span>
+            <it.Icon className="h-3.5 w-3.5" style={{ color: it.accent }} />
+          </div>
+          <div
+            className="mt-2 text-[26px] font-bold leading-none tabular-nums"
+            style={{ color: it.accent }}
+          >
+            {it.n}
+          </div>
+        </div>
+      ))}
+    </div>
+  );
+}
+
+const RISK_STYLE: Record<
+  Severity,
+  {
+    wrap: string;
+    badge: string;
+    Icon: typeof AlertTriangle;
+    textCls: string;
+    label: string;
+  }
+> = {
+  high: {
+    wrap: "border-red-200 bg-gradient-to-r from-red-50 to-red-50/20",
+    badge: "bg-red-100 text-red-600 ring-red-200",
+    Icon: AlertTriangle,
+    textCls: "text-red-900",
+    label: "High overall risk",
+  },
+  moderate: {
+    wrap: "border-amber-200 bg-gradient-to-r from-amber-50 to-amber-50/20",
+    badge: "bg-amber-100 text-amber-600 ring-amber-200",
+    Icon: ShieldAlert,
+    textCls: "text-amber-900",
+    label: "Moderate overall risk",
+  },
+  low: {
+    wrap: "border-emerald-200 bg-gradient-to-r from-emerald-50 to-emerald-50/20",
+    badge: "bg-emerald-100 text-emerald-600 ring-emerald-200",
+    Icon: ShieldCheck,
+    textCls: "text-emerald-900",
+    label: "Low overall risk",
+  },
+};
+
+function RiskBanner({ level }: { level: Severity }) {
+  const s = RISK_STYLE[level];
+  const Icon = s.Icon;
+  return (
+    <div className={cn("flex items-center gap-3 rounded-xl border px-4 py-3", s.wrap)}>
+      <span
+        className={cn(
+          "flex h-9 w-9 shrink-0 items-center justify-center rounded-full ring-1",
+          s.badge
+        )}
+      >
+        <Icon className="h-4 w-4" />
+      </span>
+      <div className="min-w-0">
+        <div className={cn("text-[13px] font-bold leading-tight", s.textCls)}>{s.label}</div>
+        <div className="text-[11px] text-gray-500">
+          Derived from your risk &amp; active-condition assessments
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function SectionNav({ sections }: { sections: InsightSection[] }) {
+  if (sections.length < 2) return null;
+  const scrollTo = (e: React.MouseEvent, id: string) => {
+    e.preventDefault();
+    document.getElementById(id)?.scrollIntoView({ behavior: "smooth", block: "start" });
+  };
+  return (
+    <nav className="flex flex-wrap gap-1.5">
+      {sections.map((s, i) => {
+        const id = `insight-sec-${i}`;
+        const accent = KEY_ACCENT[s.key ?? "other"] ?? "var(--muted-foreground)";
+        return (
+          <a
+            key={id}
+            href={`#${id}`}
+            onClick={(e) => scrollTo(e, id)}
+            className="inline-flex items-center gap-1.5 rounded-full border border-gray-200 bg-white px-2.5 py-1 text-[11px] font-medium text-gray-600 transition-colors hover:border-gray-300 hover:text-gray-900"
+          >
+            <span className="h-1.5 w-1.5 rounded-full" style={{ backgroundColor: accent }} />
+            {s.title}
+          </a>
+        );
+      })}
+    </nav>
+  );
+}
 
 export function InsightReport({
   response,
@@ -134,6 +301,7 @@ export function InsightReport({
   memberName,
   memberDob,
   memberGender,
+  memberId,
   onBack,
   sections: sectionsProp,
 }: {
@@ -144,12 +312,32 @@ export function InsightReport({
   memberName: string;
   memberDob: string;
   memberGender: string;
+  /** Used to fetch the real HbA1c trend series for the chart. */
+  memberId?: string;
   onBack: () => void;
   /** Server-parsed sections (preferred); falls back to client-side parseSections. */
   sections?: InsightSection[] | null;
 }) {
   const articleRef = useRef<HTMLDivElement>(null);
   const sections = sectionsProp ?? parseSections(response);
+  const kpis = deriveKpis(sections);
+  const riskLevel = deriveRiskLevel(sections);
+  const [hba1c, setHba1c] = useState<Hba1cHistoryEntry[] | null>(null);
+
+  useEffect(() => {
+    if (!memberId) return;
+    let alive = true;
+    getHba1cHistory(memberId)
+      .then((d) => {
+        if (alive) setHba1c(d);
+      })
+      .catch(() => {
+        if (alive) setHba1c(null);
+      });
+    return () => {
+      alive = false;
+    };
+  }, [memberId]);
 
   useEffect(() => {
     function handleKeyDown(e: KeyboardEvent) {
@@ -168,28 +356,127 @@ export function InsightReport({
     }
   }
 
-  const meta = [memberDob && `DOB ${memberDob}`, memberGender].filter(Boolean).join(" · ");
+  const genDate = new Date(generatedAt);
+  const dateStr = genDate.toLocaleDateString(undefined, {
+    year: "numeric",
+    month: "long",
+    day: "numeric",
+  });
+  const pad = (n: number) => String(n).padStart(2, "0");
+  const reportId = `HA-${genDate.getFullYear()}${pad(genDate.getMonth() + 1)}${pad(genDate.getDate())}-${pad(genDate.getHours())}${pad(genDate.getMinutes())}`;
 
   return (
-    <ReportShell
-      title="Health Assessment"
-      memberName={memberName}
-      subtitle={meta || undefined}
-      generatedAt={generatedAt}
-      provider={provider}
-      verification={verification}
-      onBack={onBack}
-      onExportPDF={handleExportPDF}
-      maxWidth={900}
-    >
-      <div ref={articleRef} className="space-y-3">
-        <div className="flex items-center gap-1.5 text-[11px] font-semibold uppercase tracking-[0.15em] text-muted-foreground">
-          <Brain className="h-3.5 w-3.5" />
-          AI Health Assessment
+    <div className="min-h-screen bg-background">
+      {/* Slim sticky command bar (theme-aware; sits off the document) */}
+      <div className="sticky top-0 z-20 border-b border-border bg-background/95 backdrop-blur-sm print:hidden">
+        <div className="mx-auto flex h-10 max-w-[820px] items-center justify-between gap-2 px-3">
+          <div className="flex min-w-0 items-center gap-2">
+            <Button
+              variant="ghost"
+              size="sm"
+              className="h-7 w-7 p-0"
+              onClick={onBack}
+              aria-label="Back"
+            >
+              <ArrowLeft className="h-4 w-4" />
+            </Button>
+            <span className="truncate text-[13px] font-semibold text-foreground">
+              Health Assessment
+            </span>
+            <VerificationBadge verification={verification} />
+          </div>
+          <Button variant="outline" size="sm" className="h-7" onClick={handleExportPDF}>
+            <Download className="h-3.5 w-3.5" />
+            PDF
+          </Button>
         </div>
-        <MarkdownSections sections={sections} variant="report" />
       </div>
-    </ReportShell>
+
+      <div className="mx-auto max-w-[820px] px-3 py-6">
+        {/* Sticky section nav (under the command bar) */}
+        {sections.length > 1 && (
+          <div className="sticky top-10 z-10 -mx-3 mb-4 border-b border-border bg-background/95 px-3 py-2 backdrop-blur-sm print:hidden">
+            <SectionNav sections={sections} />
+          </div>
+        )}
+
+        {/* The document page — fixed light (PDF-like) regardless of app theme */}
+        <article
+          ref={articleRef}
+          className="overflow-hidden rounded-2xl border border-gray-200 bg-white shadow-xl shadow-gray-200/50 ring-1 ring-gray-100"
+        >
+          {/* Accent top bar */}
+          <div className="h-1.5 bg-gradient-to-r from-[#ff6b35] via-[#fb923c] to-[#5b7fff]" />
+          {/* Header */}
+          <header className="px-6 py-7 sm:px-9">
+            <div className="flex items-start justify-between gap-4">
+              <div className="min-w-0">
+                <div className="flex items-center gap-1.5 text-[11px] font-semibold uppercase tracking-[0.2em] text-[#ff6b35]">
+                  <Brain className="h-3.5 w-3.5" />
+                  AI Health Assessment
+                </div>
+                <h1 className="mt-2 text-2xl font-bold leading-tight tracking-tight text-gray-900 sm:text-[28px]">
+                  Health Assessment Report
+                </h1>
+                <p className="mt-1.5 text-[13px] text-gray-500">
+                  Comprehensive clinical review of your recorded health data
+                </p>
+              </div>
+              <div className="hidden h-14 w-14 shrink-0 items-center justify-center rounded-2xl bg-gradient-to-br from-orange-50 to-amber-50 ring-1 ring-orange-100 sm:flex">
+                <Brain className="h-7 w-7 text-[#ff6b35]" />
+              </div>
+            </div>
+            <div className="mt-6 grid grid-cols-2 gap-x-6 gap-y-4 border-t border-gray-100 pt-5 sm:grid-cols-3 lg:grid-cols-5">
+              <MetaItem label="Patient" value={memberName} />
+              <MetaItem label="Date of birth" value={memberDob || "—"} />
+              <MetaItem
+                label="Gender"
+                value={
+                  memberGender ? memberGender.charAt(0).toUpperCase() + memberGender.slice(1) : "—"
+                }
+              />
+              <MetaItem label="Curated" value={dateStr} />
+              <MetaItem label="Report ID" value={reportId} mono />
+            </div>
+          </header>
+
+          {/* Body */}
+          <div className="space-y-6 px-6 py-7 sm:px-9">
+            <KpiStrip kpis={kpis} />
+            {riskLevel && <RiskBanner level={riskLevel} />}
+            {hba1c && hba1c.length >= 2 && <Hba1cTrendChart data={hba1c} />}
+
+            <div className="space-y-8">
+              {sections.map((s, i) => (
+                <InsightSectionBlock key={i} section={s} id={`insight-sec-${i}`} index={i + 1} />
+              ))}
+            </div>
+
+            <div className="flex gap-2.5 rounded-xl bg-gray-50 p-3.5 ring-1 ring-gray-100">
+              <Info className="mt-0.5 h-4 w-4 shrink-0 text-gray-400" />
+              <p className="text-[11.5px] leading-relaxed text-gray-500">
+                <span className="font-semibold text-gray-600">Note:</span> This information is for
+                educational purposes only and is not a substitute for professional medical advice.
+                Please consult your doctor for personalised guidance.
+              </p>
+            </div>
+          </div>
+
+          {/* Footer */}
+          <footer className="flex flex-wrap items-center justify-between gap-2 border-t border-gray-200 px-6 py-3 text-[11px] text-gray-500 sm:px-9">
+            <span className="font-semibold uppercase tracking-wide">AI HEALTH ASSESSMENT</span>
+            <span>
+              {memberName} · {dateStr}
+            </span>
+          </footer>
+        </article>
+        {provider && (
+          <p className="mt-2 text-center text-[10px] text-muted-foreground">
+            Generated via {provider}
+          </p>
+        )}
+      </div>
+    </div>
   );
 }
 

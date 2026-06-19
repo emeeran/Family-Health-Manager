@@ -12,7 +12,7 @@ from app.core.deps import get_household_from_token
 from app.core.sse import make_sse_stream
 from app.models.ai import AIInsight
 from app.models.base import Household
-from app.prompts.insight_prompts import COMPREHENSIVE_INSIGHT_PROMPT
+from app.prompts.insight_prompts import BRIEF_INSIGHT_PROMPT, COMPREHENSIVE_INSIGHT_PROMPT
 from app.schemas.insight_serializers import serialize_insight_payload
 from app.services.member_service import MemberService
 
@@ -21,9 +21,15 @@ logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/members", tags=["AI Insights"])
 
 
+def _prompt_for(mode: str) -> str:
+    """Select the insight prompt for the requested generation mode."""
+    return BRIEF_INSIGHT_PROMPT if mode == "brief" else COMPREHENSIVE_INSIGHT_PROMPT
+
+
 @router.post("/{member_id}/generate-insights")
 async def generate_member_insights(
     member_id: UUID,
+    mode: str = "comprehensive",
     household: Household = Depends(get_household_from_token),
     db: AsyncSession = Depends(get_db),
 ):
@@ -37,12 +43,13 @@ async def generate_member_insights(
         raise HTTPException(status_code=404, detail="Member not found")
 
     ai_service = AIService(db, household_id=household.id)
-    prompt = COMPREHENSIVE_INSIGHT_PROMPT
+    prompt = _prompt_for(mode)
     try:
         insight = await ai_service.generate_insight(
             prompt=prompt,
             member_id=member_id,
             comprehensive=True,
+            mode=mode,
         )
         await db.commit()
     except Exception as exc:
@@ -63,6 +70,7 @@ async def generate_member_insights(
 @router.post("/{member_id}/generate-insights/stream")
 async def generate_member_insights_stream(
     member_id: UUID,
+    mode: str = "comprehensive",
     household: Household = Depends(get_household_from_token),
     db: AsyncSession = Depends(get_db),
 ):
@@ -76,13 +84,14 @@ async def generate_member_insights_stream(
         raise HTTPException(status_code=404, detail="Member not found")
 
     ai_service = AIService(db, household_id=household.id)
-    prompt = COMPREHENSIVE_INSIGHT_PROMPT
+    prompt = _prompt_for(mode)
 
     return make_sse_stream(
         ai_service.generate_insight_stream(
             prompt=prompt,
             member_id=member_id,
             comprehensive=True,
+            mode=mode,
         ),
         db,
     )

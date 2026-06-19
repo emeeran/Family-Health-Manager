@@ -25,37 +25,38 @@ export function sectionKey(title: string): string {
   return "other";
 }
 
+/** Strip leading/trailing markdown markers and a leading "N." from a heading line. */
+function cleanHeading(line: string): string {
+  return line
+    .replace(/^[*\s#]+/, "") // leading *, #, space
+    .replace(/^\d+\.\s*/, "") // leading "N. "
+    .replace(/\*+/g, "") // any remaining bold markers
+    .replace(/\s*[-:—]\s*$/, "") // trailing " -" / ":"
+    .trim();
+}
+
 export function parseSections(markdown: string): InsightSection[] {
-  const parts = markdown.split(/(?=^(?:\d+\.\s*\*{1,2}|#{1,3}\s))/m);
+  if (!markdown || !markdown.trim()) return [];
+  // Split before each heading line. The model emits headings in several shapes —
+  // "**1. Title**" (stars wrap the whole line), "1. **Title**", "### Title", or
+  // plain "1. Title" — so match an optional leading "**" + "N." or a "#" prefix.
+  const parts = markdown.split(/(?=^(?:\*{0,2}\s*\d+\.\s|#{1,3}\s))/m);
   const sections: InsightSection[] = [];
   for (const part of parts) {
     const trimmed = part.trim();
     if (!trimmed) continue;
+    const nl = trimmed.indexOf("\n");
     let title = "";
-    let body = trimmed;
-    const headingMatch = trimmed.match(
-      /^(?:#{1,3}\s*|\d+\.\s*\*{0,2})(.+?)(?:\*{0,2}(?:\s+[-:—]\s*|[-:—]\s+)|\n)/
-    );
-    if (headingMatch) {
-      title = headingMatch[1]
-        .replace(/\*+/g, "")
-        .replace(/\s*[-:—]\s*$/, "")
-        .trim();
-      body = trimmed.slice(headingMatch[0].length).trim();
+    let body = "";
+    if (nl === -1) {
+      title = cleanHeading(trimmed);
     } else {
-      const firstNewline = trimmed.indexOf("\n");
-      if (firstNewline > 0 && firstNewline < 80) {
-        title = trimmed
-          .slice(0, firstNewline)
-          .replace(/^[#\d.*\s]+/, "")
-          .replace(/\*+/g, "")
-          .trim();
-        body = trimmed.slice(firstNewline + 1).trim();
-      }
+      title = cleanHeading(trimmed.slice(0, nl));
+      body = trimmed.slice(nl + 1).trim();
     }
     if (title && body) sections.push({ title, body, key: sectionKey(title) });
   }
   if (sections.length === 0)
-    sections.push({ title: "Health Insights", body: markdown, key: "other" });
+    sections.push({ title: "Health Insights", body: markdown.trim(), key: "other" });
   return sections;
 }

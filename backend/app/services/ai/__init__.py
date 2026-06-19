@@ -15,6 +15,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.config import get_settings
 from app.models.base import AIInsight, Message, MessageRole
+from app.schemas.ai_provider_config import AIProviderConfig, ProviderConfigItem
 
 # Re-export sub-module constants used by tests / callers
 from app.services.ai.document_extractor import EXTRACTION_PROMPT  # noqa: F401
@@ -154,8 +155,13 @@ class AIService:
         conversation_id: UUID | None = None,
         member_id: UUID | None = None,
         comprehensive: bool = False,
+        mode: str = "comprehensive",
     ) -> AIInsight:
-        """Generate AI insight using local Ollama models (medgemma/gemma4)."""
+        """Generate AI insight using local Ollama models (medgemma/gemma4).
+
+        ``mode`` ("comprehensive" | "brief") sets the Ollama ``num_predict`` cap
+        (4096 / 1400) so a brief report generates ~2x faster on local hardware.
+        """
         context = ""
         if member_id:
             cache_key = str(member_id)
@@ -170,7 +176,8 @@ class AIService:
         elif health_record_id:
             context = await self._build_record_context(health_record_id)
 
-        response, provider = await self._call_ollama_insight(prompt, context)
+        num_predict = 1400 if mode == "brief" else 4096
+        response, provider = await self._call_ollama_insight(prompt, context, num_predict)
 
         insight = AIInsight(
             health_record_id=health_record_id,
@@ -192,6 +199,7 @@ class AIService:
         member_id: UUID | None = None,
         comprehensive: bool = False,
         postprocess: Callable[[str, AIInsight], dict | None] | None = None,
+        mode: str = "comprehensive",
     ) -> AsyncGenerator[str, None]:
         """Generate AI insight with SSE progress events."""
         from app.services.ai import base as _base
@@ -225,12 +233,16 @@ class AIService:
             f"{system_note}{context}\n\nUser: {prompt}\n\nAssistant:" if context else prompt
         )
 
+        # Brief mode caps output (~2x faster on local Ollama); comprehensive uses
+        # the provider default (4096).
+        num_predict = 1400 if mode == "brief" else 4096
+
         full_response = ""
         provider = ""
 
         config = await self._get_provider_config()
 
-        # Primary: Ollama models (local streaming) — use configured model
+        # Local: Ollama models (streaming)
         ollama_cfg = next((p for p in config.providers if p.id == "ollama"), None)
         ollama_model = (
             ollama_cfg.model if ollama_cfg and ollama_cfg.model else settings.OLLAMA_MODEL
@@ -240,53 +252,70 @@ class AIService:
             ollama_models.append(
                 (settings.OLLAMA_TEXT_MODEL, f"Ollama {settings.OLLAMA_TEXT_MODEL}")
             )
-        for model, label in ollama_models:
-            try:
-                yield sse({"stage": "provider", "provider": label})
-                chunks = []
-                async for kind, payload in _base.stream_with_heartbeat(
-                    self._ollama_chat_stream(model, full_prompt)
-                ):
-                    if kind == "beat":
-                        yield sse({"stage": "ping"})
-                    elif kind == "chunk" and isinstance(payload, str):
-                        chunks.append(payload)
-                        yield sse({"stage": "token", "content": payload})
-                    elif kind == "error" and isinstance(payload, BaseException):
-                        raise payload
-                result = "".join(chunks)
-                if result:
-                    full_response = result
-                    provider = label
-                    break
-            except Exception as exc:
-                logger.warning(
-                    "Ollama streaming model %s failed: %s", label, _base.exc_description(exc)
-                )
 
-        # Fallback: cloud providers (non-streaming) — use household-configured models
-        if not full_response:
-            cloud_providers: list[tuple] = []
-            for prov in config.providers:
-                if not prov.enabled or prov.id == "ollama":
-                    continue
-                provider_fn = self._get_provider_fn(prov.id)
-                if not provider_fn:
-                    continue
-                label = f"{PROVIDER_LABELS.get(prov.id, prov.id)} ({prov.model})"
-                cloud_providers.append((provider_fn, label, prov.model))
+        # Cloud: household-configured providers (array order preserved)
+        cloud_providers: list[tuple] = []
+        for prov in config.providers:
+            if not prov.enabled or prov.id == "ollama":
+                continue
+            provider_fn = self._get_provider_fn(prov.id)
+            if not provider_fn:
+                continue
+            label = f"{PROVIDER_LABELS.get(prov.id, prov.id)} ({prov.model})"
+            cloud_providers.append((provider_fn, label, prov.model))
 
-            if cloud_providers:
+        async def local_phase() -> AsyncGenerator[str, None]:
+            nonlocal full_response, provider
+            for model, label in ollama_models:
                 try:
-                    yield sse({"stage": "provider", "provider": "Cloud AI"})
-                    full_response, provider = await self._race_providers(
-                        full_prompt, cloud_providers
-                    )
-                    if full_response:
-                        for i in range(0, len(full_response), 40):
-                            yield sse({"stage": "token", "content": full_response[i : i + 40]})
+                    yield sse({"stage": "provider", "provider": label})
+                    chunks = []
+                    async for kind, payload in _base.stream_with_heartbeat(
+                        self._ollama_chat_stream(model, full_prompt, num_predict)
+                    ):
+                        if kind == "beat":
+                            yield sse({"stage": "ping"})
+                        elif kind == "chunk" and isinstance(payload, str):
+                            chunks.append(payload)
+                            yield sse({"stage": "token", "content": payload})
+                        elif kind == "error" and isinstance(payload, BaseException):
+                            raise payload
+                    result = "".join(chunks)
+                    if result:
+                        full_response = result
+                        provider = label
+                        return
                 except Exception as exc:
-                    logger.warning("Cloud providers failed for streaming insight: %s", exc)
+                    logger.warning(
+                        "Ollama streaming model %s failed: %s", label, _base.exc_description(exc)
+                    )
+
+        async def cloud_phase() -> AsyncGenerator[str, None]:
+            nonlocal full_response, provider
+            if full_response or not cloud_providers:
+                return
+            try:
+                yield sse({"stage": "provider", "provider": "Cloud AI"})
+                resp, prov = await self._race_providers(full_prompt, cloud_providers)
+                if resp:
+                    full_response = resp
+                    provider = prov
+                    for i in range(0, len(resp), 40):
+                        yield sse({"stage": "token", "content": resp[i : i + 40]})
+            except Exception as exc:
+                logger.warning("Cloud providers failed for streaming insight: %s", exc)
+
+        # Primary group first, the other as automatic fallback.
+        phases = (
+            [cloud_phase, local_phase]
+            if config.primary_provider == "cloud"
+            else [local_phase, cloud_phase]
+        )
+        for phase_fn in phases:
+            async for event in phase_fn():
+                yield event
+            if full_response:
+                break
 
         # Stage 3: Save
         yield sse({"stage": "context", "message": "Saving insight..."})
@@ -1019,15 +1048,19 @@ class AIService:
 
         return await call_openrouter_text(prompt, model=model or "deepseek/deepseek-v4-flash")
 
-    async def _ollama_chat(self, model: str, prompt: str) -> str | None:
+    async def _ollama_chat(
+        self, model: str, prompt: str, num_predict: int = 4096
+    ) -> str | None:
         from app.services.ai.providers.ollama import ollama_chat
 
-        return await ollama_chat(model, prompt)
+        return await ollama_chat(model, prompt, num_predict=num_predict)
 
-    async def _ollama_chat_stream(self, model: str, prompt: str) -> AsyncGenerator[str, None]:
+    async def _ollama_chat_stream(
+        self, model: str, prompt: str, num_predict: int = 4096
+    ) -> AsyncGenerator[str, None]:
         from app.services.ai.providers.ollama import ollama_chat_stream
 
-        async for chunk in ollama_chat_stream(model, prompt):
+        async for chunk in ollama_chat_stream(model, prompt, num_predict=num_predict):
             yield chunk
 
     # ---- Provider config loading ----
@@ -1073,6 +1106,19 @@ class AIService:
             return getattr(self, method_name)
         return None
 
+    @staticmethod
+    def _ordered_providers(config: AIProviderConfig) -> list[ProviderConfigItem]:
+        """Order providers so the primary group (local or cloud) is tried first.
+
+        ``primary_provider`` selects the group; within each group the original
+        array order is preserved so manual reordering still applies.
+        """
+        local = [p for p in config.providers if p.id == "ollama"]
+        cloud = [p for p in config.providers if p.id != "ollama"]
+        if config.primary_provider == "cloud":
+            return cloud + local
+        return local + cloud
+
     # ---- Internal AI call routing ----
 
     async def _call_ai(self, prompt: str, context: str) -> tuple[str, str]:
@@ -1101,7 +1147,7 @@ class AIService:
         )
 
         config = await self._get_provider_config()
-        for prov in config.providers:
+        for prov in self._ordered_providers(config):
             if not prov.enabled:
                 continue
             provider_fn = self._get_provider_fn(prov.id)
@@ -1141,7 +1187,7 @@ class AIService:
         from app.services.ai import base as _base
 
         config = await self._get_provider_config()
-        for prov in config.providers:
+        for prov in self._ordered_providers(config):
             if not prov.enabled:
                 continue
             provider_fn = self._get_provider_fn(prov.id)
@@ -1162,7 +1208,9 @@ class AIService:
                 continue
         raise ValueError("All verification providers failed")
 
-    async def _call_ollama_insight(self, prompt: str, context: str) -> tuple[str, str]:
+    async def _call_ollama_insight(
+        self, prompt: str, context: str, num_predict: int = 4096
+    ) -> tuple[str, str]:
         """Generate insight — Ollama first, cloud providers as fallback."""
         from app.schemas.ai_provider_config import PROVIDER_LABELS
 
@@ -1173,7 +1221,7 @@ class AIService:
 
         config = await self._get_provider_config()
 
-        # Primary: Ollama models (local first for privacy and speed)
+        # Local: Ollama models
         ollama_cfg = next((p for p in config.providers if p.id == "ollama"), None)
         ollama_model = (
             ollama_cfg.model if ollama_cfg and ollama_cfg.model else settings.OLLAMA_MODEL
@@ -1183,22 +1231,8 @@ class AIService:
             ollama_models.append(
                 (settings.OLLAMA_TEXT_MODEL, f"Ollama {settings.OLLAMA_TEXT_MODEL}")
             )
-        for model, label in ollama_models:
-            try:
-                result = await self._ollama_chat(model, full_prompt)
-                if result:
-                    # Performance: log token-sized metrics at DEBUG for usage tracking
-                    logger.debug(
-                        "AI call: provider=%s prompt_chars=%d response_chars=%d",
-                        label,
-                        len(full_prompt),
-                        len(result),
-                    )
-                    return result, label
-            except Exception as exc:
-                logger.debug("Ollama model %s failed: %s", label, exc)
 
-        # Fallback: cloud providers — use household-configured models
+        # Cloud: household-configured providers (array order preserved)
         cloud_providers: list[tuple] = []
         for prov in config.providers:
             if not prov.enabled or prov.id == "ollama":
@@ -1209,13 +1243,43 @@ class AIService:
             label = f"{PROVIDER_LABELS.get(prov.id, prov.id)} ({prov.model})"
             cloud_providers.append((provider_fn, label, prov.model))
 
-        if cloud_providers:
+        async def _try_local() -> tuple[str, str] | None:
+            for model, label in ollama_models:
+                try:
+                    result = await self._ollama_chat(model, full_prompt, num_predict)
+                    if result:
+                        logger.debug(
+                            "AI call: provider=%s prompt_chars=%d response_chars=%d",
+                            label,
+                            len(full_prompt),
+                            len(result),
+                        )
+                        return result, label
+                except Exception as exc:
+                    logger.debug("Ollama model %s failed: %s", label, exc)
+            return None
+
+        async def _try_cloud() -> tuple[str, str] | None:
+            if not cloud_providers:
+                return None
             try:
                 result, provider = await self._race_providers(full_prompt, cloud_providers)
                 if result:
                     return result, provider
             except Exception as exc:
                 logger.debug("All cloud providers failed for insight: %s", exc)
+            return None
+
+        # Primary group first, the other as fallback.
+        phases = (
+            [_try_cloud, _try_local]
+            if config.primary_provider == "cloud"
+            else [_try_local, _try_cloud]
+        )
+        for phase in phases:
+            result = await phase()
+            if result:
+                return result
 
         raise ValueError("All AI providers failed for insight generation")
 

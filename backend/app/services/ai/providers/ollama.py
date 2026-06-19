@@ -107,7 +107,7 @@ async def call_ollama_text(
     return content
 
 
-async def ollama_chat(model: str, prompt: str) -> str | None:
+async def ollama_chat(model: str, prompt: str, num_predict: int = 4096) -> str | None:
     """Call local Ollama with a specific model."""
     base_url = await resolve_provider_value("ollama")
     if not base_url:
@@ -117,7 +117,7 @@ async def ollama_chat(model: str, prompt: str) -> str | None:
         "model": model,
         "messages": [{"role": "user", "content": prompt}],
         "stream": False,
-        "options": {"num_ctx": 32768, "num_predict": 4096, "temperature": 0.3},
+        "options": {"num_ctx": 32768, "num_predict": num_predict, "temperature": 0.3},
     }
     timeout = _ollama_timeout(len(prompt))
 
@@ -134,7 +134,9 @@ async def ollama_chat(model: str, prompt: str) -> str | None:
         raise
 
 
-async def ollama_chat_stream(model: str, prompt: str) -> AsyncGenerator[str, None]:
+async def ollama_chat_stream(
+    model: str, prompt: str, num_predict: int = 4096
+) -> AsyncGenerator[str, None]:
     """Stream tokens from local Ollama model.
 
     Uses a generous read timeout so CPU-only inference has headroom to load the
@@ -152,7 +154,7 @@ async def ollama_chat_stream(model: str, prompt: str) -> AsyncGenerator[str, Non
         "model": model,
         "messages": [{"role": "user", "content": prompt}],
         "stream": True,
-        "options": {"num_ctx": 32768, "num_predict": 4096, "temperature": 0.3},
+        "options": {"num_ctx": 32768, "num_predict": num_predict, "temperature": 0.3},
     }
     timeout = _ollama_timeout(len(prompt), streaming=True)
 

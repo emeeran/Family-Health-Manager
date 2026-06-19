@@ -128,8 +128,10 @@ export interface GeneratedInsight {
   sections?: InsightSection[] | null;
 }
 
-export function generateMemberInsights(memberId: string) {
-  return apiRequest<GeneratedInsight>(`/members/${memberId}/generate-insights`, {
+export type InsightMode = "comprehensive" | "brief";
+
+export function generateMemberInsights(memberId: string, mode: InsightMode = "comprehensive") {
+  return apiRequest<GeneratedInsight>(`/members/${memberId}/generate-insights?mode=${mode}`, {
     method: "POST",
   });
 }

@@ -1,5 +1,7 @@
 """AI provider configuration schemas."""
 
+from typing import Literal
+
 from pydantic import BaseModel
 
 from app.core.config import get_settings
@@ -42,9 +44,15 @@ class ProviderConfigItem(BaseModel):
 
 
 class AIProviderConfig(BaseModel):
-    """Ordered list of provider configurations. Array order = failover order."""
+    """Provider configuration: ordered list + which group (cloud/local) to try first.
+
+    ``providers`` array order is the failover order *within* each group;
+    ``primary_provider`` decides whether the local (Ollama) or cloud group is
+    tried first, with the other as automatic fallback.
+    """
 
     providers: list[ProviderConfigItem]
+    primary_provider: Literal["cloud", "local"] = "local"
 
 
 class AIProviderConfigResponse(BaseModel):

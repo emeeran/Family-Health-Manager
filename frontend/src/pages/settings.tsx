@@ -454,11 +454,12 @@ function AIProvidersTab() {
       .finally(() => setConfigLoading(false));
   }, []);
 
-  async function saveConfig(providers: ProviderConfigItem[]) {
+  async function saveConfig(providers: ProviderConfigItem[], primaryProvider?: "cloud" | "local") {
     if (!config) return;
+    const primary_provider = primaryProvider ?? config.config.primary_provider;
     setSaving(true);
     try {
-      const result = await updateAIProviderConfig({ providers });
+      const result = await updateAIProviderConfig({ providers, primary_provider });
       setConfig(result);
     } catch {
       toast.error("Failed to save provider config");
@@ -502,14 +503,14 @@ function AIProvidersTab() {
   function handleToggle(index: number, enabled: boolean) {
     if (!config) return;
     const updated = config.config.providers.map((p, i) => (i === index ? { ...p, enabled } : p));
-    setConfig({ ...config, config: { providers: updated } });
+    setConfig({ ...config, config: { ...config.config, providers: updated } });
     saveConfig(updated);
   }
 
   function handleModelChange(index: number, model: string) {
     if (!config) return;
     const updated = config.config.providers.map((p, i) => (i === index ? { ...p, model } : p));
-    setConfig({ ...config, config: { providers: updated } });
+    setConfig({ ...config, config: { ...config.config, providers: updated } });
     saveConfig(updated);
   }
 
@@ -517,7 +518,7 @@ function AIProvidersTab() {
     if (index === 0 || !config) return;
     const arr = [...config.config.providers];
     [arr[index - 1], arr[index]] = [arr[index], arr[index - 1]];
-    setConfig({ ...config, config: { providers: arr } });
+    setConfig({ ...config, config: { ...config.config, providers: arr } });
     saveConfig(arr);
   }
 
@@ -525,8 +526,17 @@ function AIProvidersTab() {
     if (!config || index >= config.config.providers.length - 1) return;
     const arr = [...config.config.providers];
     [arr[index], arr[index + 1]] = [arr[index + 1], arr[index]];
-    setConfig({ ...config, config: { providers: arr } });
+    setConfig({ ...config, config: { ...config.config, providers: arr } });
     saveConfig(arr);
+  }
+
+  function handlePrimaryChange(primaryProvider: "cloud" | "local") {
+    if (!config) return;
+    setConfig({
+      ...config,
+      config: { ...config.config, primary_provider: primaryProvider },
+    });
+    saveConfig(config.config.providers, primaryProvider);
   }
 
   if (configLoading) {
@@ -555,6 +565,32 @@ function AIProvidersTab() {
     <div className="space-y-6 pt-2">
       {/* API Keys — admin-managed, encrypted at rest */}
       <ProviderKeysCard />
+
+      {/* Primary provider — Cloud vs Local */}
+      <div className="flex items-center justify-between gap-3 rounded-lg border border-border p-3">
+        <div className="min-w-0">
+          <h3 className="text-sm font-medium">Primary provider</h3>
+          <p className="mt-0.5 text-xs text-muted-foreground">
+            Tried first; the other is used as automatic fallback.
+          </p>
+        </div>
+        <div className="inline-flex items-center rounded-md border border-border bg-muted/40 p-0.5">
+          {(["local", "cloud"] as const).map((opt) => (
+            <button
+              key={opt}
+              type="button"
+              onClick={() => handlePrimaryChange(opt)}
+              className={`rounded px-3 py-1 text-xs font-medium transition-colors ${
+                config.config.primary_provider === opt
+                  ? "bg-background text-foreground shadow-sm"
+                  : "text-muted-foreground hover:text-foreground"
+              }`}
+            >
+              {opt === "local" ? "Local" : "Cloud"}
+            </button>
+          ))}
+        </div>
+      </div>
 
       {/* Section A: Provider Configuration */}
       <div className="space-y-3">

@@ -32,9 +32,12 @@ export default function AiToolsInsightsPage() {
           response={insight.response}
           provider={insight.provider_used}
           generatedAt={insight.generated_at}
+          verification={insight.verification}
+          sections={insight.sections}
           memberName={member ? `${member.first_name} ${member.last_name}` : ""}
           memberDob={member?.date_of_birth || ""}
           memberGender={member?.gender || ""}
+          memberId={memberId}
           onBack={() => setShowReport(false)}
         />
       </AiToolsSubPage>

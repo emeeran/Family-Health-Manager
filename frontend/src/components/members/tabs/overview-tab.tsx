@@ -357,6 +357,7 @@ ${histParts.length > 0 ? `<h2>Medical History</h2><div style="line-height:1.8;ma
           memberName={`${member.first_name} ${member.last_name}`}
           memberDob={formatDate(member.date_of_birth)}
           memberGender={GENDER_LABELS[member.gender]}
+          memberId={member.id}
           onBack={() => setShowReport(false)}
           sections={insight.sections}
         />

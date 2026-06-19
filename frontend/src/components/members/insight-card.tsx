@@ -3,11 +3,51 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { VerificationBadge } from "@/components/shared/verification-badge";
 import { streamRequest } from "@/lib/api-client";
-import { generateMemberInsights } from "@/lib/api/members";
+import { generateMemberInsights, type GeneratedInsight, type InsightMode } from "@/lib/api/members";
 import { Brain, Sparkles, Loader2, CheckCircle2 } from "lucide-react";
 import { toast } from "sonner";
-import type { GeneratedInsight } from "@/lib/api/members";
 import { useVerificationPolling } from "@/lib/hooks/use-verification-polling";
+import { cn } from "@/lib/utils";
+
+function ModeToggle({
+  mode,
+  onChange,
+  disabled,
+}: {
+  mode: InsightMode;
+  onChange: (m: InsightMode) => void;
+  disabled?: boolean;
+}) {
+  const options: { value: InsightMode; label: string; title: string }[] = [
+    { value: "comprehensive", label: "Comprehensive", title: "Full detailed report (slower)" },
+    { value: "brief", label: "Concise", title: "Shorter report, ~2× faster" },
+  ];
+  return (
+    <div
+      className={cn(
+        "inline-flex items-center rounded-md border border-border bg-muted/40 p-0.5",
+        disabled && "pointer-events-none opacity-50"
+      )}
+    >
+      {options.map((o) => (
+        <button
+          key={o.value}
+          type="button"
+          title={o.title}
+          onClick={() => onChange(o.value)}
+          className={cn(
+            "rounded px-2 py-0.5 text-[11px] font-medium transition-colors",
+            mode === o.value
+              ? "bg-background text-foreground shadow-sm"
+              : "text-muted-foreground hover:text-foreground"
+          )}
+        >
+          {o.label}
+        </button>
+      ))}
+    </div>
+  );
+}
 
 export interface InsightCardProps {
   memberId: string;
@@ -29,7 +69,23 @@ export const InsightCard = memo(function InsightCard({
   const [streamText, setStreamText] = useState("");
   const [streamStage, setStreamStage] = useState("");
   const [error, setError] = useState<string | null>(null);
+  const [mode, setMode] = useState<InsightMode>(() => {
+    try {
+      return (localStorage.getItem("insightMode") as InsightMode) || "comprehensive";
+    } catch {
+      return "comprehensive";
+    }
+  });
   const cancelRef = useRef<(() => void) | null>(null);
+
+  function chooseMode(m: InsightMode) {
+    setMode(m);
+    try {
+      localStorage.setItem("insightMode", m);
+    } catch {
+      /* localStorage unavailable — keep session-only state */
+    }
+  }
 
   async function handleGenerate() {
     setLoading(true);
@@ -38,39 +94,42 @@ export const InsightCard = memo(function InsightCard({
     setStreamStage("Starting...");
     try {
       let fullText = "";
-      const { promise, cancel } = streamRequest(`/members/${memberId}/generate-insights/stream`, {
-        onEvent: (event) => {
-          const e = event as Record<string, unknown>;
-          const stage = e.stage as string;
-          if (stage === "context") {
-            setStreamStage((e.message as string) || "Preparing...");
-          } else if (stage === "provider") {
-            setStreamStage(`Generating via ${e.provider}...`);
-          } else if (stage === "token") {
-            fullText += e.content as string;
-            setStreamText(fullText);
-          } else if (stage === "complete") {
-            const result: GeneratedInsight = {
-              id: e.insight_id as string,
-              response: fullText,
-              provider_used: e.provider as string,
-              generated_at: new Date().toISOString(),
-              verification: null,
-              // Server may post-process sections on the stream in future; until
-              // then the viewer falls back to client-side parseSections.
-              sections: (e.sections as GeneratedInsight["sections"]) ?? null,
-            };
-            setInsight(result);
-            setStreamStage("");
-            onInsightReady(result);
-            generateMemberInsights(memberId)
-              .then(() => {})
-              .catch(() => {});
-          } else if (stage === "error") {
-            toast.error((e.message as string) || "Generation failed");
-          }
-        },
-      });
+      const { promise, cancel } = streamRequest(
+        `/members/${memberId}/generate-insights/stream?mode=${mode}`,
+        {
+          onEvent: (event) => {
+            const e = event as Record<string, unknown>;
+            const stage = e.stage as string;
+            if (stage === "context") {
+              setStreamStage((e.message as string) || "Preparing...");
+            } else if (stage === "provider") {
+              setStreamStage(`Generating via ${e.provider}...`);
+            } else if (stage === "token") {
+              fullText += e.content as string;
+              setStreamText(fullText);
+            } else if (stage === "complete") {
+              const result: GeneratedInsight = {
+                id: e.insight_id as string,
+                response: fullText,
+                provider_used: e.provider as string,
+                generated_at: new Date().toISOString(),
+                verification: null,
+                // Server may post-process sections on the stream in future; until
+                // then the viewer falls back to client-side parseSections.
+                sections: (e.sections as GeneratedInsight["sections"]) ?? null,
+              };
+              setInsight(result);
+              setStreamStage("");
+              onInsightReady(result);
+              generateMemberInsights(memberId, mode)
+                .then(() => {})
+                .catch(() => {});
+            } else if (stage === "error") {
+              toast.error((e.message as string) || "Generation failed");
+            }
+          },
+        }
+      );
       cancelRef.current = cancel;
       await promise;
     } catch (err) {
@@ -95,7 +154,8 @@ export const InsightCard = memo(function InsightCard({
             <Brain className="h-5 w-5 text-(--brand-accent)" />
             AI Health Insights
           </CardTitle>
-          <div className="flex gap-2">
+          <div className="flex items-center gap-2">
+            <ModeToggle mode={mode} onChange={chooseMode} disabled={loading} />
             {currentInsight && (
               <Button size="sm" variant="outline" onClick={onViewReport}>
                 View Report

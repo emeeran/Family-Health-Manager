@@ -6,6 +6,8 @@ export interface ProviderConfigItem {
 
 export interface AIProviderConfig {
   providers: ProviderConfigItem[];
+  /** Which provider group is tried first; the other is automatic fallback. */
+  primary_provider: "cloud" | "local";
 }
 
 export interface AIProviderConfigResponse {
