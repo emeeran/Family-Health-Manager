@@ -102,21 +102,6 @@ class ProviderService:
         )
         return list(result.all())
 
-    async def get_provider_members(self, provider_id: UUID) -> list[tuple[ProviderAssignment, str]]:
-        """Get all members assigned to a provider with their names and UHIDs.
-
-        Returns list of (assignment, member_name) tuples.
-        """
-        from app.models.base import FamilyMember
-
-        result = await self.db.execute(
-            select(ProviderAssignment, FamilyMember)
-            .join(FamilyMember, ProviderAssignment.family_member_id == FamilyMember.id)
-            .where(ProviderAssignment.provider_id == provider_id)
-        )
-        rows = result.all()
-        return [(assignment, member) for assignment, member in rows]
-
     async def get_members_for_provider(self, provider_id: UUID) -> list[dict]:
         """Get members linked to a provider via assignments AND health records.
 

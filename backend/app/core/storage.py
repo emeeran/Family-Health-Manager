@@ -240,47 +240,6 @@ def validate_file(file: UploadFile) -> None:
         raise ValueError(f"File size {size} exceeds maximum {MAX_FILE_SIZE}")
 
 
-async def save_file(file: UploadFile, prefix: str = "attachments") -> tuple[Path, str]:
-    """
-    Save uploaded file using streaming I/O and return path and filename.
-
-    Returns: (file_path, unique_filename)
-    """
-    validate_file(file)
-
-    storage_dir = Path(settings.STORAGE_PATH) / prefix
-    storage_dir.mkdir(parents=True, exist_ok=True)
-
-    ext = Path(file.filename or "").suffix or ".bin"
-    unique_filename = f"{uuid.uuid4()}{ext}"
-    file_path = storage_dir / unique_filename
-
-    _validate_storage_path(file_path)
-
-    declared_mime = file.content_type or "application/octet-stream"
-    magic_checked = False
-
-    async with aiofiles.open(file_path, "wb") as f:
-        while True:
-            chunk = await file.read(CHUNK_SIZE)
-            if not chunk:
-                break
-            # Validate magic bytes from first chunk
-            if not magic_checked:
-                if not _magic_matches(chunk, declared_mime):
-                    await aiofiles.os.remove(file_path)
-                    raise ValueError(f"File content does not match declared type {declared_mime}")
-                magic_checked = True
-            await f.write(chunk)
-
-    # Virus scan (no-op if ClamAV not installed)
-    if not scan_file(file_path):
-        await aiofiles.os.remove(file_path)
-        raise ValueError("File failed virus scan")
-
-    return file_path, unique_filename
-
-
 async def save_file_hashed(file: UploadFile) -> tuple[Path, str, str]:
     """Stream an upload to a temp file, then optimize + encrypt + store.
 
@@ -452,15 +411,6 @@ async def hash_existing_file(file_path: Path) -> str:
                 break
             hasher.update(chunk)
     return hasher.hexdigest()
-
-
-async def get_file(file_path: Path) -> bytes:
-    """Read file content from storage."""
-    if not file_path.exists():
-        raise FileNotFoundError(f"File not found: {file_path}")
-    _validate_storage_path(file_path)
-    async with aiofiles.open(file_path, "rb") as f:
-        return await f.read()
 
 
 async def stream_file(file_path: Path) -> AsyncGenerator[bytes, None]:

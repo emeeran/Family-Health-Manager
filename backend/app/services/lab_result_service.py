@@ -4,7 +4,6 @@ import logging
 from datetime import date
 from uuid import UUID
 
-from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.parsing import parse_clinical_data
@@ -63,46 +62,3 @@ class LabResultService:
             await self.db.flush()
         return inserted
 
-    async def get_results_for_member(
-        self,
-        member_id: UUID,
-        test_name: str | None = None,
-    ) -> list[LabResult]:
-        """Query lab results for a member, optionally filtered by test name."""
-        query = (
-            select(LabResult)
-            .where(LabResult.family_member_id == member_id)
-            .order_by(LabResult.record_date.desc())
-        )
-        if test_name:
-            query = query.where(LabResult.test_name.ilike(f"%{test_name}%"))
-        result = await self.db.execute(query)
-        return list(result.scalars().all())
-
-    async def get_trends(
-        self,
-        member_id: UUID,
-        test_names: list[str] | None = None,
-    ) -> list[dict]:
-        """Get date/result pairs for charting trends.
-
-        Returns list of dicts: {test_name, record_date, result, units, ref_value}
-        """
-        query = (
-            select(LabResult)
-            .where(LabResult.family_member_id == member_id)
-            .order_by(LabResult.test_name, LabResult.record_date)
-        )
-        if test_names:
-            query = query.where(LabResult.test_name.in_(test_names))
-        result = await self.db.execute(query)
-        return [
-            {
-                "test_name": lr.test_name,
-                "record_date": lr.record_date.isoformat() if lr.record_date else None,
-                "result": lr.result,
-                "units": lr.units,
-                "ref_value": lr.ref_value,
-            }
-            for lr in result.scalars().all()
-        ]

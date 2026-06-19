@@ -5,22 +5,6 @@ from datetime import datetime
 from uuid import UUID
 
 
-class UserCreate(BaseModel):
-    """User registration request."""
-
-    username: str = Field(..., min_length=3, max_length=50, description="Unique username")
-    password: str = Field(
-        ..., min_length=8, max_length=128, description="Password with strength requirements"
-    )
-
-
-class UserUpdate(BaseModel):
-    """User update request."""
-
-    password: str | None = Field(None, min_length=8, max_length=128, description="New password")
-    is_active: bool | None = Field(None, description="Active status")
-
-
 class UserResponse(BaseModel):
     """User response."""
 

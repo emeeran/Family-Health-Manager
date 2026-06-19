@@ -80,8 +80,10 @@ async def _fetch_ollama(client: httpx.AsyncClient) -> list[str]:
         resp = await client.get(f"{base_url}/api/tags")
         resp.raise_for_status()
         return sorted(m["name"] for m in resp.json().get("models", []))
-    except Exception:
-        # Ollama may not be running — return empty list silently
+    except Exception as exc:
+        # Ollama may not be running or misconfigured — return empty list, but
+        # leave a debug trace so a silent empty model list is diagnosable.
+        logger.debug("Ollama model fetch failed: %s", exc)
         return []
 
 

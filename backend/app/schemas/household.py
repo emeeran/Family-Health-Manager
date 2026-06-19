@@ -34,12 +34,6 @@ class HouseholdSettingsUpdate(BaseModel):
     settings: FeatureSettings
 
 
-class HouseholdCreate(BaseModel):
-    """Household creation request."""
-
-    name: str = Field(..., min_length=1, max_length=100, description="Household name")
-
-
 class HouseholdUpdate(BaseModel):
     """Household update request."""
 

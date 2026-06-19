@@ -17,9 +17,6 @@ from app.core.config import get_settings
 from app.models.base import AIInsight, Message, MessageRole
 from app.schemas.ai_provider_config import AIProviderConfig, ProviderConfigItem
 
-# Re-export sub-module constants used by tests / callers
-from app.services.ai.document_extractor import EXTRACTION_PROMPT  # noqa: F401
-
 settings = get_settings()
 logger = logging.getLogger(__name__)
 
@@ -62,34 +59,9 @@ class AIService:
 
     # ---- Class-level attributes preserved for test compatibility ----
     _member_context_cache: dict[str, str] = {}
-    _MAX_CACHE_SIZE = 64
     _cloud_client: httpx.AsyncClient | None = None
     _ollama_client: httpx.AsyncClient | None = None
     _client_lock: asyncio.Lock | None = None
-
-    # ---- Lazy lock / shared client accessors (delegate to base module) ----
-
-    @classmethod
-    def _get_lock(cls) -> asyncio.Lock:
-        from app.services.ai import base as _base
-
-        return _base.get_lock()
-
-    @classmethod
-    async def _get_cloud_client(cls) -> httpx.AsyncClient:
-        from app.services.ai import base as _base
-
-        client = await _base.get_cloud_client()
-        cls._cloud_client = _base.cloud_client
-        return client
-
-    @classmethod
-    async def _get_ollama_client(cls) -> httpx.AsyncClient:
-        from app.services.ai import base as _base
-
-        client = await _base.get_ollama_client()
-        cls._ollama_client = _base.ollama_client
-        return client
 
     @classmethod
     def invalidate_member_cache(cls, member_id: "UUID | str") -> None:  # noqa: F821
@@ -124,12 +96,6 @@ class AIService:
         from app.services.ai.context_builder import summarize_clinical_data
 
         return summarize_clinical_data(raw)
-
-    @staticmethod
-    def _build_lab_trends_from_records(records: list) -> str:
-        from app.services.ai.context_builder import build_lab_trends_from_records
-
-        return build_lab_trends_from_records(records)
 
     @staticmethod
     def _fmt_date(d: object) -> str:
@@ -580,12 +546,6 @@ class AIService:
         return await parse_search_query(query, member_list, self._call_ai)
 
     # ---- Document extraction ----
-
-    async def classify_document(self, file_path: str, mime_type: str):
-        """Classify a document into a record type using AI with keyword fallback."""
-        from app.services.ai.document_extractor import classify_document
-
-        return await classify_document(file_path, mime_type, self._call_ai)
 
     async def extract_medical_data(
         self, file_path: str, mime_type: str, content_hash: str | None = None
@@ -1350,11 +1310,6 @@ class AIService:
         from app.services.ai.context_builder import build_member_context, fmt_date
 
         return await build_member_context(self.db, member_id, fmt_date, comprehensive=comprehensive)
-
-    async def _build_medication_summary(self, member_id: UUID) -> str:
-        from app.services.ai.context_builder import build_medication_summary
-
-        return await build_medication_summary(self.db, member_id)
 
     async def _build_household_context(self, household_id: UUID) -> str:
         from app.services.ai.context_builder import build_household_context, fmt_date

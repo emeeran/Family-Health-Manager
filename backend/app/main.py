@@ -413,6 +413,7 @@ async def health_detail(
             "free_gb": round(usage.free / (1024**3), 1),
         }
     except Exception:
+        logger.warning("Health check: disk usage failed", exc_info=True)
         checks["disk"] = "unknown"
 
     # Ollama check

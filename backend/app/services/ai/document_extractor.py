@@ -106,51 +106,6 @@ Return this exact JSON structure:
 }"""
 
 
-async def classify_document(file_path: str, mime_type: str, call_ai_fn) -> "RecordType":  # noqa: F821
-    """Classify a document into a record type using AI with keyword fallback."""
-    from app.models.base import RecordType
-
-    # Try to get text content first
-    text = ""
-    if mime_type == "application/pdf":
-        text = extract_pdf_text(file_path) or ""
-
-    # Try AI classification
-    classification_prompt = (
-        "Classify this medical document into exactly one category. "
-        "Return ONLY one of these words: doctor_visit, lab_report, rx_eyeglass, blood_glucose, misc_record\n\n"
-        f"Document content (first 1000 chars):\n{text[:1000]}"
-    )
-    try:
-        response, _ = await call_ai_fn(classification_prompt, "")
-        if response:
-            cleaned = response.strip().lower().strip("\"'`")
-            for rt in RecordType:
-                if rt.value in cleaned:
-                    return rt
-    except Exception as exc:
-        logger.warning("AI classification failed, using keyword fallback: %s", exc)
-
-    # Keyword fallback
-    text_lower = text.lower()
-    if any(
-        kw in text_lower for kw in ("prescription", "rx", "medicine", "tablet", "capsule", "syrup")
-    ):
-        return RecordType.DOCTOR_VISIT
-    if any(kw in text_lower for kw in ("eye", "vision", "sph", "cyl", "lens", "optical")):
-        return RecordType.RX_EYEGLASS
-    if any(
-        kw in text_lower
-        for kw in ("hba1c", "diabetes monitoring", "fasting glucose", "postprandial")
-    ):
-        return RecordType.BLOOD_GLUCOSE
-    if any(
-        kw in text_lower for kw in ("lab", "test", "blood", "hemoglobin", "cholesterol", "urine")
-    ):
-        return RecordType.LAB_REPORT
-    return RecordType.MISC_RECORD
-
-
 async def extract_medical_data(
     db: AsyncSession, file_path: str, mime_type: str, last_provider_ref: list
 ) -> ExtractionResult:
