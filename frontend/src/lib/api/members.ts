@@ -15,6 +15,8 @@ import type {
 } from "../types/member";
 import type { MedicationDiffResponse } from "../types/health-record";
 import type { VerificationResult } from "../types/message";
+import type { InsightSection } from "../parse-sections";
+import type { SmartReportData } from "../types/smart-report";
 
 export function listMembers(params?: { is_active?: string }) {
   return apiRequest<FamilyMemberResponse[]>("/members", { params });
@@ -118,6 +120,12 @@ export interface GeneratedInsight {
   provider_used: string;
   generated_at: string;
   verification: VerificationResult | null;
+  /** Smart Report only — structured object parsed server-side. */
+  report?: SmartReportData | null;
+  /** Smart Report only — the raw JSON string (fallback for prose render). */
+  raw_response?: string;
+  /** Insights only — server-parsed markdown sections with stable keys. */
+  sections?: InsightSection[] | null;
 }
 
 export function generateMemberInsights(memberId: string) {

@@ -1,7 +1,5 @@
 """Member AI insights router — generate and retrieve health insights."""
-import json
 import logging
-from datetime import datetime, timezone
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException
@@ -14,6 +12,7 @@ from app.core.sse import make_sse_stream
 from app.models.ai import AIInsight
 from app.models.base import Household
 from app.prompts.insight_prompts import COMPREHENSIVE_INSIGHT_PROMPT
+from app.schemas.insight_serializers import serialize_insight_payload
 from app.services.member_service import MemberService
 
 logger = logging.getLogger(__name__)
@@ -56,20 +55,7 @@ async def generate_member_insights(
     except Exception:
         logger.debug("Insight verification skipped")
 
-    return {
-        "id": str(insight.id),
-        "response": insight.response,
-        "provider_used": insight.provider_used,
-        "generated_at": insight.generated_at.isoformat(),
-        "verification": {
-            "status": insight.verification_status,
-            "claims_checked": insight.verification_claims_checked,
-            "verifier_provider": insight.verification_verifier,
-            "summary": insight.verification_summary,
-            "warnings": json.loads(insight.verification_warnings_json) if insight.verification_warnings_json else None,
-            "verified_at": insight.verification_at.isoformat() if insight.verification_at else None,
-        } if insight.verification_status != "pending" or insight.verification_at else {"status": "pending"},
-    }
+    return serialize_insight_payload(insight)
 
 
 @router.post("/{member_id}/generate-insights/stream")
@@ -124,20 +110,7 @@ async def get_latest_insight(
     existing = result.scalar_one_or_none()
 
     if existing:
-        return {
-            "id": str(existing.id),
-            "response": existing.response,
-            "provider_used": existing.provider_used,
-            "generated_at": existing.generated_at.isoformat(),
-            "verification": {
-                "status": existing.verification_status,
-                "claims_checked": existing.verification_claims_checked,
-                "verifier_provider": existing.verification_verifier,
-                "summary": existing.verification_summary,
-                "warnings": json.loads(existing.verification_warnings_json) if existing.verification_warnings_json else None,
-                "verified_at": existing.verification_at.isoformat() if existing.verification_at else None,
-            } if existing.verification_status != "pending" or existing.verification_at else {"status": "pending" if (datetime.now(timezone.utc) - existing.generated_at.replace(tzinfo=timezone.utc)).total_seconds() < 300 else "unverifiable"},
-        }
+        return serialize_insight_payload(existing)
 
     from app.services.ai_service import AIService
     ai_service = AIService(db, household_id=household.id)
@@ -151,10 +124,4 @@ async def get_latest_insight(
         logger.error("Auto insight generation failed: %s", exc)
         raise HTTPException(status_code=502, detail="AI service unavailable. Please try again.")
 
-    return {
-        "id": str(insight.id),
-        "response": insight.response,
-        "provider_used": insight.provider_used,
-        "generated_at": insight.generated_at.isoformat(),
-        "verification": {"status": "pending"},
-    }
+    return serialize_insight_payload(insight)

@@ -6,6 +6,7 @@ import { streamRequest } from "@/lib/api-client";
 import { ClipboardList, Sparkles, Loader2, CheckCircle2 } from "lucide-react";
 import { toast } from "sonner";
 import type { GeneratedInsight } from "@/lib/api/members";
+import type { SmartReportData } from "@/lib/types/smart-report";
 import { useVerificationPolling } from "@/lib/hooks/use-verification-polling";
 
 export interface SmartReportCardProps {
@@ -25,7 +26,6 @@ export const SmartReportCard = memo(function SmartReportCard({
 }: SmartReportCardProps) {
   const [loading, setLoading] = useState(false);
   const [report, setReport] = useState<GeneratedInsight | null>(existingReport);
-  const [streamText, setStreamText] = useState("");
   const [streamStage, setStreamStage] = useState("");
   const [error, setError] = useState<string | null>(null);
   const cancelRef = useRef<(() => void) | null>(null);
@@ -33,7 +33,6 @@ export const SmartReportCard = memo(function SmartReportCard({
   async function handleGenerate() {
     setLoading(true);
     setError(null);
-    setStreamText("");
     setStreamStage("Starting...");
     try {
       let fullText = "";
@@ -47,13 +46,22 @@ export const SmartReportCard = memo(function SmartReportCard({
             setStreamStage(`Generating via ${e.provider}...`);
           } else if (stage === "token") {
             fullText += e.content as string;
-            setStreamText(fullText);
           } else if (stage === "complete") {
+            // Backend post-processes the final frame with the parsed report
+            // (race-free — no second round-trip). `fullText` is kept only as a
+            // defensive fallback when the payload isn't post-processed.
+            const reportObj =
+              typeof e.report === "object" && e.report !== null
+                ? (e.report as SmartReportData)
+                : null;
+            const raw = (e.raw_response as string) ?? fullText;
             const result: GeneratedInsight = {
-              id: e.insight_id as string,
-              response: fullText,
+              id: (e.insight_id as string) ?? (e.id as string),
+              response: raw,
+              raw_response: raw,
+              report: reportObj,
               provider_used: e.provider as string,
-              generated_at: new Date().toISOString(),
+              generated_at: (e.generated_at as string) ?? new Date().toISOString(),
               verification: null,
             };
             setReport(result);
@@ -126,35 +134,28 @@ export const SmartReportCard = memo(function SmartReportCard({
         </div>
       </CardHeader>
       <CardContent>
-        {loading && streamText ? (
-          <div className="p-3 rounded-lg bg-muted/30">
-            {streamStage && (
-              <p className="text-xs text-purple-600 font-medium mb-2">{streamStage}</p>
-            )}
-            <p className="text-sm text-foreground/80 whitespace-pre-wrap leading-relaxed max-h-40 overflow-y-auto">
-              {streamText}
-              <span className="inline-block w-1.5 h-4 bg-purple-600 animate-pulse ml-0.5 align-text-bottom" />
-            </p>
-          </div>
-        ) : loading ? (
-          <div className="flex items-center gap-3 p-3 rounded-lg bg-muted/30">
+        {loading ? (
+          <div className="flex items-center gap-3 rounded-lg bg-muted/30 p-3">
             <Loader2 className="h-5 w-5 animate-spin text-purple-600" />
-            <p className="text-sm text-foreground/70 font-medium">
-              {streamStage || "Analyzing records..."}
-            </p>
+            <div className="min-w-0">
+              <p className="text-sm font-medium text-foreground/80">
+                {streamStage || "Analyzing records..."}
+              </p>
+              <p className="text-[11px] text-muted-foreground">Compiling structured report…</p>
+            </div>
           </div>
         ) : error ? (
-          <div className="p-3 rounded-lg bg-destructive/10 border border-destructive/20 space-y-2">
-            <p className="text-sm text-destructive font-medium">{error}</p>
+          <div className="space-y-2 rounded-lg border border-destructive/20 bg-destructive/10 p-3">
+            <p className="text-sm font-medium text-destructive">{error}</p>
             <Button size="sm" variant="outline" onClick={handleGenerate}>
-              <Sparkles className="h-3.5 w-3.5 mr-1" />
+              <Sparkles className="mr-1 h-3.5 w-3.5" />
               Retry
             </Button>
           </div>
         ) : currentReport ? (
-          <div className="flex items-center gap-2 p-3 rounded-lg bg-emerald-50 border border-emerald-200">
-            <CheckCircle2 className="h-4 w-4 text-emerald-600 shrink-0" />
-            <p className="text-sm text-emerald-800">
+          <div className="flex items-center gap-2 rounded-lg border border-emerald-500/20 bg-emerald-500/10 p-3">
+            <CheckCircle2 className="h-4 w-4 shrink-0 text-emerald-600 dark:text-emerald-400" />
+            <p className="text-sm text-emerald-700 dark:text-emerald-400">
               Report generated{" "}
               {new Date(currentReport.generated_at).toLocaleDateString(undefined, {
                 month: "short",

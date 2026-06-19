@@ -30,7 +30,6 @@ import { VaccinationsSection } from "@/components/members/vaccinations-section";
 import {
   InsightReport,
   PreConsultationNoteViewer,
-  parseSections,
 } from "@/components/members/insight-report-viewer";
 import { createPreventiveReminder } from "@/lib/api/members";
 import { GENDER_LABELS, RELATIONSHIP_LABELS } from "@/lib/constants";
@@ -307,45 +306,6 @@ ${histParts.length > 0 ? `<h2>Medical History</h2><div style="line-height:1.8;ma
     setTimeout(() => win.print(), 200);
   }
 
-  function handlePreConsultPDF() {
-    if (!preConsultNote) return;
-    const esc = (s: string) =>
-      s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
-    const mn = `${member.first_name} ${member.last_name}`;
-    const now = new Date().toLocaleDateString("en-GB", {
-      day: "2-digit",
-      month: "short",
-      year: "numeric",
-    });
-    const dateStr = new Date(preConsultNote.generated_at).toLocaleDateString("en-GB", {
-      day: "2-digit",
-      month: "short",
-      year: "numeric",
-    });
-    const sections = parseSections(preConsultNote.response);
-    const sectionHtml = sections
-      .map(
-        (s) =>
-          `<div style="margin-bottom:14px;padding-left:12px;border-left:3px solid #14B8A6"><div style="font-weight:bold;font-size:11px;margin-bottom:4px;color:#0f766e">${esc(s.title)}</div><div style="font-size:10px;line-height:1.7;color:#374151">${esc(
-            s.body
-          )
-            .replace(/\[ \]/g, "☐")
-            .replace(/\*\*([^*]+)\*\*/g, "<strong>$1</strong>")
-            .replace(/\*([^*]+)\*/g, "<em>$1</em>")
-            .replace(/\n/g, "<br>")}</div></div>`
-      )
-      .join("");
-    const html = `<!DOCTYPE html><html><head><title>Pre-Consultation Note — ${esc(mn)}</title><style>@page { margin: 0.75in 1in; } * { margin: 0; box-sizing: border-box; } body { font-family: Arial, Helvetica, sans-serif; color: #1f2937; font-size: 11px; }</style></head>
-<body><div style="text-align:center;margin-bottom:16px;border-bottom:2px solid #14B8A6;padding-bottom:12px"><div style="font-size:14px;font-weight:bold">${esc(mn)} — Pre-Consultation Note</div><div style="font-size:10px;color:#6b7280;margin-top:4px">${dateStr} &middot; via ${esc(preConsultNote.provider_used)}</div><div style="font-size:9px;color:#9ca3af;margin-top:2px">Exported ${now}</div></div>
-${sectionHtml}
-<div style="margin-top:16px;padding-top:6px;border-top:1px solid #d1d5db;font-size:9px;color:#9ca3af">AI-generated for informational purposes only. Review with your healthcare provider.</div></body></html>`;
-    const win = window.open("", "_blank");
-    if (!win) return;
-    win.document.write(html);
-    win.document.close();
-    setTimeout(() => win.print(), 200);
-  }
-
   function handleInsightReady(result: GeneratedInsight) {
     setInsight(result);
     setShowReport(true);
@@ -360,7 +320,7 @@ ${sectionHtml}
         verification={preConsultNote.verification}
         memberName={`${member.first_name} ${member.last_name}`}
         onBack={() => setShowPreConsult(false)}
-        onExportPDF={handlePreConsultPDF}
+        onExportPDF={() => window.print()}
       />
     );
   }
@@ -374,6 +334,8 @@ ${sectionHtml}
         verification={smartReport.verification}
         memberName={`${member.first_name} ${member.last_name}`}
         onBack={() => setShowSmartReport(false)}
+        report={smartReport.report}
+        rawResponse={smartReport.raw_response}
       />
     );
   }
@@ -396,6 +358,7 @@ ${sectionHtml}
           memberDob={formatDate(member.date_of_birth)}
           memberGender={GENDER_LABELS[member.gender]}
           onBack={() => setShowReport(false)}
+          sections={insight.sections}
         />
       </Suspense>
     );

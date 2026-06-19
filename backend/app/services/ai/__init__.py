@@ -5,7 +5,7 @@ Public API is identical to the original monolithic ai_service.py.
 import asyncio
 import json
 import logging
-from collections.abc import AsyncGenerator
+from collections.abc import AsyncGenerator, Callable
 from datetime import date
 from uuid import UUID
 
@@ -180,6 +180,7 @@ class AIService:
         conversation_id: UUID | None = None,
         member_id: UUID | None = None,
         comprehensive: bool = False,
+        postprocess: Callable[[str, AIInsight], dict | None] | None = None,
     ) -> AsyncGenerator[str, None]:
         """Generate AI insight with SSE progress events."""
         from app.services.ai import base as _base
@@ -278,9 +279,19 @@ class AIService:
         self.db.add(insight)
         await self.db.flush()
 
-        complete_event = {"stage": "complete", "insight_id": str(insight.id), "provider": provider}
+        complete_event: dict = {"stage": "complete", "insight_id": str(insight.id), "provider": provider}
         if member_id:
             complete_event["member_id"] = str(member_id)
+        # Let a caller (e.g. the Smart Report router) enrich the final frame
+        # with a parsed payload. Race-free: the data ships in the same SSE
+        # frame as the completion signal, so no second round-trip is needed.
+        if postprocess is not None:
+            try:
+                extra = postprocess(full_response, insight)
+                if extra:
+                    complete_event.update(extra)
+            except Exception as exc:  # never block the complete event
+                logger.warning("Insight stream postprocess failed: %s", exc)
         yield sse(complete_event)
 
     # ---- Chat (kept inline for test patching) ----

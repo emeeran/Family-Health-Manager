@@ -21,6 +21,10 @@ from app.models.base import (
 )
 from app.schemas.family_member import FamilyMemberResponse, MedicalHistoryQuestionnaire
 from app.schemas.provider_assignment import ProviderAssignmentResponse
+from app.schemas.insight_serializers import (
+    serialize_insight_payload,
+    serialize_smart_report_payload,
+)
 from app.services.health_score_service import compute_health_score as _compute_health_score
 from app.services.health_score_service import get_conditions_count, extract_hba1c_history
 
@@ -507,20 +511,7 @@ class MemberService:
         insight = result.scalar_one_or_none()
         if not insight:
             return None
-        return {
-            "id": str(insight.id),
-            "response": insight.response,
-            "provider_used": insight.provider_used,
-            "generated_at": insight.generated_at.isoformat(),
-            "verification": {
-                "status": insight.verification_status,
-                "claims_checked": insight.verification_claims_checked,
-                "verifier_provider": insight.verification_verifier,
-                "summary": insight.verification_summary,
-                "warnings": json.loads(insight.verification_warnings_json) if insight.verification_warnings_json else None,
-                "verified_at": insight.verification_at.isoformat() if insight.verification_at else None,
-            } if insight.verification_status != "pending" or insight.verification_at else {"status": "pending" if (datetime.now(timezone.utc) - insight.generated_at.replace(tzinfo=timezone.utc)).total_seconds() < 300 else "unverifiable"},
-        }
+        return serialize_insight_payload(insight)
 
     async def _detail_latest_preconsult(self, member_id: UUID) -> dict | None:
         result = await self.db.execute(
@@ -531,20 +522,7 @@ class MemberService:
         insight = result.scalar_one_or_none()
         if not insight:
             return None
-        return {
-            "id": str(insight.id),
-            "response": insight.response,
-            "provider_used": insight.provider_used,
-            "generated_at": insight.generated_at.isoformat(),
-            "verification": {
-                "status": insight.verification_status,
-                "claims_checked": insight.verification_claims_checked,
-                "verifier_provider": insight.verification_verifier,
-                "summary": insight.verification_summary,
-                "warnings": json.loads(insight.verification_warnings_json) if insight.verification_warnings_json else None,
-                "verified_at": insight.verification_at.isoformat() if insight.verification_at else None,
-            } if insight.verification_status != "pending" or insight.verification_at else {"status": "pending" if (datetime.now(timezone.utc) - insight.generated_at.replace(tzinfo=timezone.utc)).total_seconds() < 300 else "unverifiable"},
-        }
+        return serialize_insight_payload(insight)
 
     async def _detail_latest_smart_report(self, member_id: UUID) -> dict | None:
         result = await self.db.execute(
@@ -555,20 +533,7 @@ class MemberService:
         insight = result.scalar_one_or_none()
         if not insight:
             return None
-        return {
-            "id": str(insight.id),
-            "response": insight.response,
-            "provider_used": insight.provider_used,
-            "generated_at": insight.generated_at.isoformat(),
-            "verification": {
-                "status": insight.verification_status,
-                "claims_checked": insight.verification_claims_checked,
-                "verifier_provider": insight.verification_verifier,
-                "summary": insight.verification_summary,
-                "warnings": json.loads(insight.verification_warnings_json) if insight.verification_warnings_json else None,
-                "verified_at": insight.verification_at.isoformat() if insight.verification_at else None,
-            } if insight.verification_status != "pending" or insight.verification_at else {"status": "pending" if (datetime.now(timezone.utc) - insight.generated_at.replace(tzinfo=timezone.utc)).total_seconds() < 300 else "unverifiable"},
-        }
+        return serialize_smart_report_payload(insight)
 
     async def _detail_upcoming_reminders(self, member_id: UUID) -> list[dict]:
         now = datetime.now(timezone.utc)

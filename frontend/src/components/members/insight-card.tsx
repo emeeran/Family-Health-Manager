@@ -56,6 +56,9 @@ export const InsightCard = memo(function InsightCard({
               provider_used: e.provider as string,
               generated_at: new Date().toISOString(),
               verification: null,
+              // Server may post-process sections on the stream in future; until
+              // then the viewer falls back to client-side parseSections.
+              sections: (e.sections as GeneratedInsight["sections"]) ?? null,
             };
             setInsight(result);
             setStreamStage("");
@@ -156,9 +159,9 @@ export const InsightCard = memo(function InsightCard({
             </Button>
           </div>
         ) : currentInsight ? (
-          <div className="flex items-center gap-2 p-3 rounded-lg bg-emerald-50 border border-emerald-200">
-            <CheckCircle2 className="h-4 w-4 text-emerald-600 shrink-0" />
-            <p className="text-sm text-emerald-800">
+          <div className="flex items-center gap-2 rounded-lg border border-emerald-500/20 bg-emerald-500/10 p-3">
+            <CheckCircle2 className="h-4 w-4 shrink-0 text-emerald-600 dark:text-emerald-400" />
+            <p className="text-sm text-emerald-700 dark:text-emerald-400">
               Report generated{" "}
               {new Date(currentInsight.generated_at).toLocaleDateString(undefined, {
                 month: "short",

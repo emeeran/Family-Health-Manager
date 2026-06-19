@@ -24,6 +24,7 @@ class MemberDetailResponse(BaseModel):
     drug_interactions: list[dict] = Field(default_factory=list)
     latest_insight: dict | None = None
     latest_preconsult_note: dict | None = None
+    latest_smart_report: dict | None = None
     recent_records: list[dict] = Field(default_factory=list)
     upcoming_reminders: list[dict] = Field(default_factory=list)
     vaccinations: list[dict] = Field(default_factory=list)

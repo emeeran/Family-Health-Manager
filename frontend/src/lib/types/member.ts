@@ -1,5 +1,7 @@
 import type { Gender, Relationship } from "./enums";
 import type { ProviderAssignmentResponse } from "./provider-assignment";
+import type { InsightSection } from "../parse-sections";
+import type { SmartReportData } from "./smart-report";
 
 export interface AllergyEntry {
   name: string;
@@ -183,6 +185,7 @@ export interface MemberDetailResponse {
       warnings?: string[] | null;
       verified_at?: string | null;
     } | null;
+    sections?: InsightSection[] | null;
   } | null;
   latest_preconsult_note: {
     id: string;
@@ -197,6 +200,7 @@ export interface MemberDetailResponse {
       warnings?: string[] | null;
       verified_at?: string | null;
     } | null;
+    sections?: InsightSection[] | null;
   } | null;
   latest_smart_report: {
     id: string;
@@ -211,6 +215,8 @@ export interface MemberDetailResponse {
       warnings?: string[] | null;
       verified_at?: string | null;
     } | null;
+    report?: SmartReportData | null;
+    raw_response?: string;
   } | null;
   recent_records: {
     id: string;
