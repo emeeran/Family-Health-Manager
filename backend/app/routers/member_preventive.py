@@ -4,14 +4,13 @@ import logging
 from datetime import datetime, timedelta
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends
 from pydantic import BaseModel, Field
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.database import get_db
-from app.core.deps import get_household_from_token
-from app.models.base import Household, ReminderType, ScheduleType
-from app.services.member_service import MemberService
+from app.core.deps import get_household_from_token, require_member_in_household
+from app.models.base import FamilyMember, Household, ReminderType, ScheduleType
 
 logger = logging.getLogger(__name__)
 
@@ -30,16 +29,11 @@ class PreventiveReminderRequest(BaseModel):
 async def get_preventive_recommendations(
     member_id: UUID,
     household: Household = Depends(get_household_from_token),
+    member: FamilyMember = Depends(require_member_in_household),
     db: AsyncSession = Depends(get_db),
 ):
     """Get age- and condition-based preventive care recommendations."""
     from app.services.preventive_care_service import PreventiveCareService
-
-    service = MemberService(db)
-    try:
-        member = await service.get_member(household.id, member_id)
-    except ValueError:
-        raise HTTPException(status_code=404, detail="Member not found")
 
     care_service = PreventiveCareService(db)
     recommendations = await care_service.generate_recommendations(member)
@@ -51,16 +45,11 @@ async def create_preventive_reminder(
     member_id: UUID,
     body: PreventiveReminderRequest,
     household: Household = Depends(get_household_from_token),
+    member: FamilyMember = Depends(require_member_in_household),
     db: AsyncSession = Depends(get_db),
 ):
     """Convert a preventive care recommendation into a reminder."""
     from app.services.reminder_service import ReminderService
-
-    service = MemberService(db)
-    try:
-        await service.get_member(household.id, member_id)
-    except ValueError:
-        raise HTTPException(status_code=404, detail="Member not found")
 
     title = body.title
     description = body.description

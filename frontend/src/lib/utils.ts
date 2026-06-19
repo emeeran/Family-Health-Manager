@@ -7,6 +7,15 @@ export function cn(...inputs: ClassValue[]) {
 
 export const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
+/** Escape a string for safe insertion into HTML (used by CSV/HTML export builders). */
+export function escapeHtml(s: string): string {
+  return s
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;");
+}
+
 /** Format an ISO date string as DD-MM-YYYY — deterministic across server/client. */
 export function formatDate(iso: string): string {
   const d = new Date(iso);

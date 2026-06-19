@@ -3,7 +3,6 @@
 import asyncio
 import json
 import logging
-from datetime import date
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException
@@ -13,6 +12,7 @@ from sqlalchemy.orm import joinedload
 
 from app.core.database import get_db
 from app.core.deps import get_household_from_token
+from app.core.utils import calculate_age
 from app.models.base import Household, HealthRecord, RecordType
 from app.models.provider import ProviderAssignment
 from app.schemas.family_member import FamilyMemberResponse
@@ -226,12 +226,7 @@ async def get_member_dashboard(
 
     conditions_count = get_conditions_count(member.medical_history_summary)
 
-    today = date.today()
-    age = (
-        today.year
-        - member.date_of_birth.year
-        - ((today.month, today.day) < (member.date_of_birth.month, member.date_of_birth.day))
-    )
+    age = calculate_age(member.date_of_birth)
 
     recent_records = list(recent_records_result.scalars().all())
 

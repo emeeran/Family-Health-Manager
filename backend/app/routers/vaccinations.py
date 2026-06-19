@@ -6,10 +6,9 @@ from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 from app.core.database import get_db
-from app.core.deps import get_household_from_token
-from app.services.member_service import MemberService
+from app.core.deps import get_household_from_token, require_member_in_household
 from app.schemas.vaccination import VaccinationCreate, VaccinationUpdate, VaccinationResponse
-from app.models.base import Household, Vaccination
+from app.models.base import FamilyMember, Household, Vaccination
 
 router = APIRouter(prefix="/members/{member_id}/vaccinations", tags=["Vaccinations"])
 logger = logging.getLogger(__name__)
@@ -19,15 +18,10 @@ logger = logging.getLogger(__name__)
 async def list_vaccinations(
     member_id: UUID,
     household: Household = Depends(get_household_from_token),
+    member: FamilyMember = Depends(require_member_in_household),
     db: AsyncSession = Depends(get_db),
 ):
     """List all vaccinations for a member."""
-    service = MemberService(db)
-    try:
-        await service.get_member(household.id, member_id)
-    except ValueError:
-        raise HTTPException(status_code=404, detail="Member not found")
-
     result = await db.execute(
         select(Vaccination)
         .where(Vaccination.family_member_id == member_id)
@@ -41,15 +35,10 @@ async def create_vaccination(
     member_id: UUID,
     request: VaccinationCreate,
     household: Household = Depends(get_household_from_token),
+    member: FamilyMember = Depends(require_member_in_household),
     db: AsyncSession = Depends(get_db),
 ):
     """Add a vaccination record."""
-    service = MemberService(db)
-    try:
-        await service.get_member(household.id, member_id)
-    except ValueError:
-        raise HTTPException(status_code=404, detail="Member not found")
-
     vaccination = Vaccination(
         family_member_id=member_id,
         name=request.name,
@@ -68,15 +57,10 @@ async def update_vaccination(
     vaccination_id: UUID,
     request: VaccinationUpdate,
     household: Household = Depends(get_household_from_token),
+    member: FamilyMember = Depends(require_member_in_household),
     db: AsyncSession = Depends(get_db),
 ):
     """Update a vaccination record."""
-    service = MemberService(db)
-    try:
-        await service.get_member(household.id, member_id)
-    except ValueError:
-        raise HTTPException(status_code=404, detail="Member not found")
-
     result = await db.execute(
         select(Vaccination).where(
             Vaccination.id == vaccination_id,
@@ -99,15 +83,10 @@ async def delete_vaccination(
     member_id: UUID,
     vaccination_id: UUID,
     household: Household = Depends(get_household_from_token),
+    member: FamilyMember = Depends(require_member_in_household),
     db: AsyncSession = Depends(get_db),
 ):
     """Delete a vaccination record."""
-    service = MemberService(db)
-    try:
-        await service.get_member(household.id, member_id)
-    except ValueError:
-        raise HTTPException(status_code=404, detail="Member not found")
-
     result = await db.execute(
         select(Vaccination).where(
             Vaccination.id == vaccination_id,

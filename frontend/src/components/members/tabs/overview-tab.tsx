@@ -34,7 +34,7 @@ import {
 import { createPreventiveReminder } from "@/lib/api/members";
 import { GENDER_LABELS, RELATIONSHIP_LABELS } from "@/lib/constants";
 import { deleteMember } from "@/lib/api/members";
-import { formatDate, formatRelativeTime } from "@/lib/utils";
+import { formatDate, formatRelativeTime, escapeHtml as esc } from "@/lib/utils";
 import { useInsightStream } from "@/lib/hooks/use-insight-stream";
 import { toast } from "sonner";
 import type { MemberDetailResponse, PreventiveRecommendation } from "@/lib/types/member";
@@ -224,8 +224,6 @@ export const OverviewTab = memo(function OverviewTab({ data }: OverviewTabProps)
   }
 
   function handleExportPDF() {
-    const esc = (s: string) =>
-      s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
     const mn = `${member.first_name} ${member.last_name}`;
     const now = new Date().toLocaleDateString("en-GB", {
       day: "2-digit",

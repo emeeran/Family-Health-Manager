@@ -15,7 +15,7 @@ import {
   parseSections,
 } from "@/components/members/insight-report-viewer";
 import { createPreventiveReminder } from "@/lib/api/members";
-import { formatDate } from "@/lib/utils";
+import { formatDate, escapeHtml as esc } from "@/lib/utils";
 import { GENDER_LABELS } from "@/lib/constants";
 import { useInsightStream } from "@/lib/hooks/use-insight-stream";
 import { toast } from "sonner";
@@ -177,8 +177,6 @@ export const AiAssistantTab = memo(function AiAssistantTab({ data }: AiAssistant
 
   async function handlePreConsultPDF() {
     if (!preConsultNote) return;
-    const esc = (s: string) =>
-      s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
     const mn = `${member.first_name} ${member.last_name}`;
     const now = new Date().toLocaleDateString("en-GB", {
       day: "2-digit",

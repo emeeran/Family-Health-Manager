@@ -8,13 +8,12 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.database import get_db
-from app.core.deps import get_household_from_token
+from app.core.deps import get_household_from_token, require_member_in_household
 from app.core.sse import make_sse_stream
 from app.models.ai import AIInsight
-from app.models.base import Household
+from app.models.base import FamilyMember, Household
 from app.prompts.insight_prompts import BRIEF_INSIGHT_PROMPT, COMPREHENSIVE_INSIGHT_PROMPT
 from app.schemas.insight_serializers import serialize_insight_payload
-from app.services.member_service import MemberService
 
 logger = logging.getLogger(__name__)
 
@@ -31,16 +30,11 @@ async def generate_member_insights(
     member_id: UUID,
     mode: str = "comprehensive",
     household: Household = Depends(get_household_from_token),
+    member: FamilyMember = Depends(require_member_in_household),
     db: AsyncSession = Depends(get_db),
 ):
     """Generate comprehensive AI health insights for a member."""
     from app.services.ai_service import AIService
-
-    service = MemberService(db)
-    try:
-        await service.get_member(household.id, member_id)
-    except ValueError:
-        raise HTTPException(status_code=404, detail="Member not found")
 
     ai_service = AIService(db, household_id=household.id)
     prompt = _prompt_for(mode)
@@ -72,16 +66,11 @@ async def generate_member_insights_stream(
     member_id: UUID,
     mode: str = "comprehensive",
     household: Household = Depends(get_household_from_token),
+    member: FamilyMember = Depends(require_member_in_household),
     db: AsyncSession = Depends(get_db),
 ):
     """Stream comprehensive AI health insight generation with real-time progress (SSE)."""
     from app.services.ai_service import AIService
-
-    service = MemberService(db)
-    try:
-        await service.get_member(household.id, member_id)
-    except ValueError:
-        raise HTTPException(status_code=404, detail="Member not found")
 
     ai_service = AIService(db, household_id=household.id)
     prompt = _prompt_for(mode)
@@ -101,15 +90,10 @@ async def generate_member_insights_stream(
 async def get_latest_insight(
     member_id: UUID,
     household: Household = Depends(get_household_from_token),
+    member: FamilyMember = Depends(require_member_in_household),
     db: AsyncSession = Depends(get_db),
 ):
     """Return the latest persisted AI health insight, or auto-generate one."""
-    service = MemberService(db)
-    try:
-        await service.get_member(household.id, member_id)
-    except ValueError:
-        raise HTTPException(status_code=404, detail="Member not found")
-
     result = await db.execute(
         select(AIInsight)
         .where(

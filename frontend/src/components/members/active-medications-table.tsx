@@ -4,6 +4,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Badge } from "@/components/ui/badge";
+import { escapeHtml as esc } from "@/lib/utils";
 
 import {
   Select,
@@ -415,8 +416,6 @@ export const ActiveMedicationsTable = memo(function ActiveMedicationsTable({
     : enriched;
 
   function exportPDF() {
-    const esc = (s: string) =>
-      s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
     const rows = filtered
       .map((med) => {
         const typeBadge = esc(med.type || "--");
