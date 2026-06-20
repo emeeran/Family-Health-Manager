@@ -2,7 +2,7 @@ Package: health-manager
 Version: 0.1.0
 Architecture: amd64
 Maintainer: Family Health Manager <health-manager@localhost>
-Depends: python3 (>= 3.11), python3-venv, xdg-utils, ghostscript
+Depends: python3 (>= 3.11), python3-venv, xdg-utils, ghostscript, tesseract-ocr
 Section: web
 Priority: optional
 Provides: health-manager
