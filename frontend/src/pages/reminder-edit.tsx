@@ -38,7 +38,8 @@ export default function EditReminderPage() {
       try {
         await updateReminder(rid, data);
         mutate(`reminder-${rid}`);
-        navigate("/reminders");
+        // The reminders list is a tab on the People page (no standalone /reminders route).
+        navigate("/people?tab=reminders");
         return null;
       } catch (e) {
         return { error: e instanceof Error ? e.message : "Failed to update reminder" };
@@ -58,7 +59,7 @@ export default function EditReminderPage() {
   return (
     <div className="space-y-6">
       <div className="flex items-center gap-2 text-sm text-muted-foreground">
-        <Link to="/reminders" className="hover:underline">
+        <Link to="/people?tab=reminders" className="hover:underline">
           Reminders
         </Link>
         <span>/</span>

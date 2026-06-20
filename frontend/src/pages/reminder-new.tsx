@@ -29,7 +29,9 @@ export default function NewReminderPage() {
     };
     try {
       await createReminder(data);
-      navigate("/reminders");
+      // The reminders list is a tab on the People page (no standalone /reminders
+      // route exists — navigating there would hit the NotFound catch-all).
+      navigate("/people?tab=reminders");
       return null;
     } catch (e) {
       return { error: e instanceof Error ? e.message : "Failed to create reminder" };
@@ -39,7 +41,7 @@ export default function NewReminderPage() {
   return (
     <div className="space-y-6">
       <div className="flex items-center gap-2">
-        <Link to="/reminders" className="text-sm text-muted-foreground hover:underline">
+        <Link to="/people?tab=reminders" className="text-sm text-muted-foreground hover:underline">
           Reminders
         </Link>
         <span className="text-sm text-muted-foreground">/</span>
