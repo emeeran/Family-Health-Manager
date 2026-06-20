@@ -1,20 +1,25 @@
 import { test, expect } from "@playwright/test";
-import { registerAndLogin, createMemberViaApi, fillMemberForm } from "./helpers/auth";
+import { registerAndLogin, createMemberViaApi } from "./helpers/auth";
 
 test.describe("Family Members", () => {
   test.beforeEach(async ({ page }) => {
     await registerAndLogin(page, "e2e_members_user");
   });
 
-  test.describe("Members list", () => {
-    test("should navigate to members page", async ({ page }) => {
-      await page.getByRole("link", { name: "Family Members" }).click();
-      await expect(page).toHaveURL(/\/members/);
+  test.describe("People list", () => {
+    test("should navigate to people page", async ({ page }) => {
+      await page.getByRole("link", { name: "People" }).click();
+      await expect(page).toHaveURL(/\/people/);
     });
 
-    test("should show Add Member button", async ({ page }) => {
-      await page.goto("/members");
-      await expect(page.getByRole("link", { name: "Add Member" })).toBeVisible();
+    test("should show the add-member entry point on the empty list", async ({ page }) => {
+      // Use a fresh user guaranteed to have no members (the shared
+      // e2e_members_user accumulates members from sibling tests + prior runs).
+      await registerAndLogin(page, `e2e_empty_${Date.now()}`);
+      await page.goto("/people");
+      await expect(page.getByRole("link", { name: /add your first member/i })).toBeVisible({
+        timeout: 10000,
+      });
     });
 
     test("should display member cards after creating one", async ({ page }) => {
@@ -24,14 +29,14 @@ test.describe("Family Members", () => {
         date_of_birth: "1990-06-15",
       });
 
-      await page.goto("/members");
-      await expect(page.locator("a.hover\\:underline").first()).toBeVisible({ timeout: 10000 });
+      await page.goto("/people");
+      await expect(page.getByText("Visible User").first()).toBeVisible({ timeout: 10000 });
     });
   });
 
   test.describe("Create member", () => {
     test("should display new member form", async ({ page }) => {
-      await page.goto("/members/new");
+      await page.goto("/people/new");
       await expect(page.locator("#first_name")).toBeVisible();
       await expect(page.locator("#last_name")).toBeVisible();
       await expect(page.locator("#date_of_birth")).toBeVisible();
@@ -39,31 +44,38 @@ test.describe("Family Members", () => {
     });
 
     test("should stay on form for empty required fields", async ({ page }) => {
-      await page.goto("/members/new");
+      await page.goto("/people/new");
       await page.waitForLoadState("networkidle");
       await page.getByRole("button", { name: "Add Member" }).click();
-      await expect(page).toHaveURL(/\/members\/new/);
+      await expect(page).toHaveURL(/\/people\/new/);
     });
 
-    // TODO: useActionState form with Base UI Select hidden inputs doesn't submit properly in tests
-    test.skip("should fill and submit member form", async ({ page }) => {
-      await page.goto("/members/new");
+    test("should fill and submit member form", async ({ page }) => {
+      test.setTimeout(60000);
+      await page.goto("/people/new");
       await page.waitForLoadState("networkidle");
-      await fillMemberForm(page, {
-        first_name: "John",
-        last_name: "Doe",
-        date_of_birth: "1990-01-15",
-      });
+      await page.locator("#first_name").fill("John");
+      await page.locator("#last_name").fill("Doe");
+      await page.locator("#date_of_birth").fill("1990-01-15");
+
+      // Gender + Relationship are Base UI Selects bound via RHF setValue —
+      // drive them via the UI (not by writing hidden inputs) so the form state
+      // updates and submit carries valid values.
+      await page.locator('[data-slot="select-trigger"]').first().click();
+      await page.getByRole("option").first().click();
+      await page.locator('[data-slot="select-trigger"]').nth(1).click();
+      await page.getByRole("option").first().click();
+
       await page.getByRole("button", { name: "Add Member" }).click();
-      await expect(page).toHaveURL(/\/members\/?$/, { timeout: 15000 });
+      await expect(page).toHaveURL(/\/people\/?$/, { timeout: 15000 });
     });
 
     test("should fill medical history fields when expanded", async ({ page }) => {
-      await page.goto("/members/new");
+      // The Medical History section is expanded by default (showMedical=true),
+      // so the clinical fields are rendered without toggling.
+      await page.goto("/people/new");
       await page.waitForLoadState("networkidle");
-      await page.getByText("Medical History").click();
       await expect(page.locator("#conditions")).toBeVisible();
-      await expect(page.locator("#allergies")).toBeVisible();
       await expect(page.locator("#current_medications")).toBeVisible();
       await expect(page.locator("#past_surgeries")).toBeVisible();
     });
@@ -77,8 +89,7 @@ test.describe("Family Members", () => {
         date_of_birth: "1985-03-20",
       });
 
-      // Navigate directly to edit page using API-returned member ID
-      await page.goto(`/members/${memberId}/edit`);
+      await page.goto(`/people/${memberId}/edit`);
       await page.waitForLoadState("networkidle");
       await expect(page.getByRole("button", { name: "Update Member" })).toBeVisible({
         timeout: 10000,

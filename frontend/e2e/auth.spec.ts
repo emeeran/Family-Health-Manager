@@ -25,7 +25,7 @@ test.describe("Authentication", () => {
 
     test("should navigate to register page", async ({ page }) => {
       await page.goto("/login");
-      await page.getByRole("link", { name: "Register" }).click();
+      await page.getByRole("link", { name: "Create one" }).click();
       await expect(page).toHaveURL("/register");
     });
 
@@ -47,12 +47,13 @@ test.describe("Authentication", () => {
     });
 
     test("should login successfully with valid credentials", async ({ page }) => {
+      // Fresh user with no members → home redirects to /onboarding.
       await page.goto("/login");
       await page.waitForLoadState("networkidle");
       await page.locator("#username").fill(TEST_USER);
       await page.locator("#password").fill(TEST_PASSWORD);
       await page.getByRole("button", { name: "Sign In" }).click();
-      await expect(page).toHaveURL(/\/dashboard/, { timeout: 20000 });
+      await expect(page).toHaveURL(/\/onboarding/, { timeout: 20000 });
     });
   });
 
@@ -82,11 +83,13 @@ test.describe("Authentication", () => {
     test("should update password indicators as user types", async ({ page }) => {
       await page.goto("/register");
       await page.waitForLoadState("networkidle");
-      await page.locator("#password").type("TestPass1!");
-      await expect(page.locator(".text-green-600").filter({ hasText: "8+" })).toBeVisible();
-      await expect(page.locator(".text-green-600").filter({ hasText: "Uppercase" })).toBeVisible();
-      await expect(page.locator(".text-green-600").filter({ hasText: "Digit" })).toBeVisible();
-      await expect(page.locator(".text-green-600").filter({ hasText: "Special" })).toBeVisible();
+      await page.locator("#password").pressSequentially("TestPass1!");
+      await expect(page.locator(".text-emerald-600").filter({ hasText: "8+" })).toBeVisible();
+      await expect(
+        page.locator(".text-emerald-600").filter({ hasText: "Uppercase" })
+      ).toBeVisible();
+      await expect(page.locator(".text-emerald-600").filter({ hasText: "Digit" })).toBeVisible();
+      await expect(page.locator(".text-emerald-600").filter({ hasText: "Special" })).toBeVisible();
     });
 
     test("should show error for mismatched passwords", async ({ page }) => {
@@ -107,7 +110,8 @@ test.describe("Authentication", () => {
       await page.locator("#password").fill("TestPass1!");
       await page.locator("#confirmPassword").fill("TestPass1!");
       await page.getByRole("button", { name: "Create Account" }).click();
-      await expect(page).toHaveURL(/\/(dashboard|login)/, { timeout: 15000 });
+      // New user, no members → redirected to onboarding.
+      await expect(page).toHaveURL(/\/onboarding/, { timeout: 15000 });
     });
   });
 });

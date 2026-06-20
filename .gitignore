@@ -25,6 +25,7 @@ trash2review/
 .mypy_cache/
 htmlcov/
 .coverage
+test-results/
 
 # OS
 .DS_Store

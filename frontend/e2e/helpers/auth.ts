@@ -51,8 +51,12 @@ export async function registerAndLogin(page: Page, username: string): Promise<vo
     },
   ]);
 
-  await page.goto("/dashboard");
-  await expect(page).toHaveURL(/\/dashboard/, { timeout: 10000 });
+  // Land on the People page (stable authenticated route with the sidebar
+  // present). We avoid "/" here because new users with no members are
+  // redirected to /onboarding (see src/pages/home.tsx), and "/dashboard" is a
+  // backwards-compat redirect to "/".
+  await page.goto("/people");
+  await expect(page).toHaveURL(/\/people/, { timeout: 10000 });
 }
 
 /** Create a family member via the API (for test setup) */
@@ -62,7 +66,7 @@ export async function createMemberViaApi(
 ): Promise<string> {
   const token = await getToken(page);
   for (let attempt = 0; attempt < 8; attempt++) {
-    const res = await page.request.post(`http://127.0.0.1:8000/api/v1/members?token=${token}`, {
+    const res = await page.request.post(`${API_BASE}/members?token=${token}`, {
       data: {
         ...member,
         gender: "prefer_not_to_say",
