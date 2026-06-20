@@ -168,7 +168,13 @@ cp "${SCRIPT_DIR}/debian/conffiles" "${STAGING}/DEBIAN/conffiles"
 # ── Build the .deb ───────────────────────────────────────────────────────────
 echo ""
 echo "Building ${DEB_FILE}..."
-dpkg-deb --build "${STAGING}" "${DEB_FILE}"
+# --root-owner-group forces every file in the archive to root:root. Without it,
+# dpkg-deb stamps the build user's uid/gid onto the contents, and `dpkg -i` then
+# extracts config files (/etc/health-manager/*, systemd units, /usr/share/*)
+# owned by a regular user instead of root. Harmless on the app dir (postinst
+# chowns it to the health-manager user) but wrong — and a real defect on strict
+# dpkg setups — everywhere else.
+dpkg-deb --build --root-owner-group "${STAGING}" "${DEB_FILE}"
 
 # ── Summary ──────────────────────────────────────────────────────────────────
 DEB_SIZE=$(du -sh "${DEB_FILE}" | cut -f1)
