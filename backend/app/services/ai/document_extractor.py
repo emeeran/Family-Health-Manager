@@ -7,6 +7,7 @@ import json
 import logging
 import re
 from dataclasses import dataclass
+from datetime import date
 from pathlib import Path
 
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -317,6 +318,113 @@ def extract_pdf_text(file_path: str) -> str | None:
     except Exception as exc:
         logger.warning("PDF text extraction failed: %s", exc)
         return None
+
+
+# Month name → number, for parsing named-month dates ("02-Jun-2026", "5 June 2026").
+_MONTHS = {
+    "jan": 1, "january": 1, "feb": 2, "february": 2, "mar": 3, "march": 3,
+    "apr": 4, "april": 4, "may": 5, "jun": 6, "june": 6, "jul": 7, "july": 7,
+    "aug": 8, "august": 8, "sep": 9, "sept": 9, "september": 9, "oct": 10,
+    "october": 10, "nov": 11, "november": 11, "dec": 12, "december": 12,
+}
+
+# Specific signals kept tight so a doctor's note that merely mentions a test
+# isn't mis-routed to the lab-report type.
+_LAB_KEYWORDS = (
+    "laboratory report", "lab report", "reference range", "specimen",
+    "test name", "investigation report", "pathology", "biochemistry",
+    "microbiology", "haematology", "hematology",
+)
+
+
+def heuristic_extract(text: str | None, mime_type: str = "application/pdf") -> "ExtractedFields":
+    """Deterministic fallback that fills basic fields from OCR/transcription text.
+
+    Runs when AI structured extraction returns nothing (common on CPU-only local
+    models). Guarantees *something* is auto-filled whenever there is text — the
+    raw text always comes through as ``clinical_data`` — and never invents a
+    wrong date: ambiguous numeric dates (day and month both ≤ 12) and dates on
+    DOB/birth lines are refused rather than guessed.
+
+    ``mime_type`` is accepted for signature symmetry with the AI extraction path
+    but does not change the heuristics.
+    """
+    from app.models.base import RecordType
+    from app.schemas.health_record import ExtractedFields
+
+    if not text or not str(text).strip():
+        return ExtractedFields()
+
+    fields = ExtractedFields()
+    raw = str(text)
+    # Always carry the raw text through so the form is auto-filled rather than
+    # left blank ("no readable data found"). Truncate to the schema max length.
+    fields.clinical_data = raw.strip()[:50000]
+
+    lowered = raw.lower()
+
+    # ── Record-type classification (lab is the more specific signal) ─────────
+    if any(kw in lowered for kw in _LAB_KEYWORDS):
+        fields.record_type = RecordType.LAB_REPORT
+    elif re.search(r"\bdr\.?\s+\w", lowered) or "consultation" in lowered:
+        fields.record_type = RecordType.DOCTOR_VISIT
+
+    # ── Provider name: first "Dr. <Capitalized Name…>" on its own line ───────
+    for line in raw.splitlines():
+        m = re.search(r"Dr\.?\s+([A-Z][\w.'-]*(?:[ \t]+[A-Z][\w.'-]*)*)", line)
+        if m:
+            fields.provider_name = f"Dr. {m.group(1).strip()}"
+            break
+
+    # ── Record date: skip DOB/birth lines; refuse ambiguous numeric dates ────
+    fields.record_date = _extract_record_date(raw)
+
+    return fields
+
+
+def _extract_record_date(text: str) -> date | None:
+    """Best-effort visit/record date from free text.
+
+    Returns None when no unambiguous date is found, when the only date is on a
+    DOB/birth line, or when a numeric date's day/month order is unknowable.
+    """
+    for line in text.splitlines():
+        low = line.lower()
+        if "dob" in low or "birth" in low:
+            continue
+        # Named-month dates are unambiguous: "02-Jun-2026", "5 June 2026".
+        m = re.search(r"(\d{1,2})[\s/.-]+([A-Za-z]{3,9})[\s/.-]+(\d{4})", line)
+        if m:
+            day, month_token, year = int(m.group(1)), m.group(2).lower(), int(m.group(3))
+            month = _MONTHS.get(month_token) or _MONTHS.get(month_token[:3])
+            if month:
+                try:
+                    return date(year, month, day)
+                except ValueError:
+                    pass  # impossible day/month (e.g. 31-Feb) — keep scanning
+        # Numeric dates: "15/06/2026". Disambiguate by magnitude; if both parts
+        # are ≤ 12 the order is unknowable, so refuse to guess.
+        m = re.search(r"\b(\d{1,2})[/.-](\d{1,2})[/.-](\d{4})\b", line)
+        if m:
+            day, month = _resolve_numeric_date(int(m.group(1)), int(m.group(2)))
+            if day is not None:
+                try:
+                    return date(int(m.group(3)), month, day)
+                except ValueError:
+                    pass
+    return None
+
+
+def _resolve_numeric_date(a: int, b: int) -> tuple[int | None, int]:
+    """Map two numeric date components to (day, month) when the order is obvious.
+
+    Returns (None, 0) when ambiguous (both ≤ 12) or invalid (both > 12).
+    """
+    if a > 12 and b <= 12:
+        return a, b          # DD/MM/YYYY
+    if b > 12 and a <= 12:
+        return b, a          # MM/DD/YYYY
+    return None, 0
 
 
 def chunk_ocr_text(ocr_text: str, pages_per_chunk: int = 3) -> list[str]:
