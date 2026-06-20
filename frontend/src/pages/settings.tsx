@@ -437,9 +437,9 @@ function AIProvidersTab() {
   const [configLoading, setConfigLoading] = useState(true);
   const [saving, setSaving] = useState(false);
 
-  // Fetched models state
+  // Fetched models state — tracks which scope is fetching ("__all__" or a provider id)
   const [fetchedModels, setFetchedModels] = useState<Record<string, string[]> | null>(null);
-  const [fetchingModels, setFetchingModels] = useState(false);
+  const [fetchingModels, setFetchingModels] = useState<string | null>(null);
 
   // Status state
   const [statusProviders, setStatusProviders] = useState<ProviderStatus[]>([]);
@@ -481,16 +481,18 @@ function AIProvidersTab() {
     }
   }
 
-  async function fetchModels() {
-    setFetchingModels(true);
+  async function fetchModels(provider?: string) {
+    const scope = provider ?? "__all__";
+    setFetchingModels(scope);
     try {
-      const result = await fetchProviderModels();
-      setFetchedModels(result.models);
+      const result = await fetchProviderModels(provider);
+      // Merge so a single-provider refresh doesn't discard the others.
+      setFetchedModels((prev) => ({ ...(prev ?? {}), ...result.models }));
       toast.success("Models refreshed");
     } catch {
       toast.error("Failed to fetch models");
     } finally {
-      setFetchingModels(false);
+      setFetchingModels((f) => (f === scope ? null : f));
     }
   }
 
@@ -562,9 +564,10 @@ function AIProvidersTab() {
   const statusMap = new Map(statusProviders.map((s) => [s.id ?? s.name, s]));
 
   return (
-    <div className="space-y-6 pt-2">
-      {/* API Keys — admin-managed, encrypted at rest */}
-      <ProviderKeysCard />
+    <div className="space-y-4 pt-2">
+      {/* API Keys — admin-managed, encrypted at rest. Live status is tied to
+          each key here and re-checked whenever a key changes. */}
+      <ProviderKeysCard statusMap={statusMap} onStatusRefresh={fetchStatus} />
 
       {/* Primary provider — Cloud vs Local */}
       <div className="flex items-center justify-between gap-3 rounded-lg border border-border p-3">
@@ -594,22 +597,42 @@ function AIProvidersTab() {
 
       {/* Section A: Provider Configuration */}
       <div className="space-y-3">
-        <div className="flex items-center justify-between">
-          <div>
+        <div className="flex items-center justify-between gap-2">
+          <div className="min-w-0">
             <h3 className="text-sm font-medium">Provider Configuration</h3>
             <p className="text-xs text-muted-foreground mt-0.5">
               Reorder to set fallback priority. Top provider is tried first.
+              {checkedAt && (
+                <span className="text-muted-foreground/60">
+                  {" · "}Status checked{" "}
+                  {Math.round((Date.now() - checkedAt.getTime()) / 1000) < 60
+                    ? "just now"
+                    : `${Math.round((Date.now() - checkedAt.getTime()) / 60000)}m ago`}
+                </span>
+              )}
             </p>
           </div>
-          <div className="flex items-center gap-2">
+          <div className="flex items-center gap-2 shrink-0">
             <Button
               size="sm"
               variant="outline"
               className="h-7 gap-1.5 text-xs"
-              onClick={fetchModels}
-              disabled={fetchingModels}
+              onClick={fetchStatus}
+              disabled={refreshing}
             >
-              <RefreshCw className={`h-3 w-3 ${fetchingModels ? "animate-spin" : ""}`} />
+              <RefreshCw className={`h-3 w-3 ${refreshing ? "animate-spin" : ""}`} />
+              Check Status
+            </Button>
+            <Button
+              size="sm"
+              variant="outline"
+              className="h-7 gap-1.5 text-xs"
+              onClick={() => fetchModels()}
+              disabled={fetchingModels === "__all__"}
+            >
+              <RefreshCw
+                className={`h-3 w-3 ${fetchingModels === "__all__" ? "animate-spin" : ""}`}
+              />
               Refresh Models
             </Button>
             {saving && (
@@ -635,6 +658,8 @@ function AIProvidersTab() {
                 isFirst={i === 0}
                 isLast={i === providers.length - 1}
                 status={statusMap.get(prov.id)}
+                refreshingModels={fetchingModels === prov.id}
+                onRefreshModels={() => fetchModels(prov.id)}
                 onToggle={(enabled) => handleToggle(i, enabled)}
                 onModelChange={(model) => handleModelChange(i, model)}
                 onMoveUp={() => handleMoveUp(i)}
@@ -644,71 +669,19 @@ function AIProvidersTab() {
           })}
         </div>
       </div>
-
-      {/* Section B: Live Status */}
-      <div className="space-y-3">
-        <div className="flex items-center justify-between">
-          <h3 className="text-sm font-medium">Live Status</h3>
-          <Button
-            size="sm"
-            variant="outline"
-            className="h-7 gap-1.5 text-xs"
-            onClick={fetchStatus}
-            disabled={refreshing}
-          >
-            <RefreshCw className={`h-3 w-3 ${refreshing ? "animate-spin" : ""}`} />
-            Check Status
-          </Button>
-        </div>
-
-        {statusProviders.length > 0 ? (
-          <div className="grid gap-2 sm:grid-cols-2">
-            {statusProviders.map((sp) => (
-              <div
-                key={sp.name}
-                className={`flex items-center gap-2 px-3 py-2 rounded-lg border text-xs ${
-                  sp.available
-                    ? "border-emerald-200 bg-emerald-50/50"
-                    : "border-red-200 bg-red-50/50 opacity-70"
-                }`}
-              >
-                {sp.available ? (
-                  <CheckCircle2 className="h-3.5 w-3.5 text-emerald-600 shrink-0" />
-                ) : (
-                  <XCircle className="h-3.5 w-3.5 text-red-500 shrink-0" />
-                )}
-                <span className="font-medium flex-1">{sp.name}</span>
-                {sp.available && sp.response_ms != null && (
-                  <span className="text-emerald-600">{sp.response_ms}ms</span>
-                )}
-                {!sp.available && sp.error && (
-                  <span className="text-muted-foreground truncate max-w-[120px]">{sp.error}</span>
-                )}
-              </div>
-            ))}
-          </div>
-        ) : (
-          <p className="text-xs text-muted-foreground py-4 text-center">
-            Click "Check Status" to test provider connectivity.
-          </p>
-        )}
-
-        {checkedAt && (
-          <p className="text-[11px] text-muted-foreground/60">
-            Last checked{" "}
-            {Math.round((Date.now() - checkedAt.getTime()) / 1000) < 60
-              ? "just now"
-              : `${Math.round((Date.now() - checkedAt.getTime()) / 60000)}m ago`}
-          </p>
-        )}
-      </div>
     </div>
   );
 }
 
 // ── API Keys Card (admin) ──
 
-function ProviderKeysCard() {
+function ProviderKeysCard({
+  statusMap,
+  onStatusRefresh,
+}: {
+  statusMap: Map<string, ProviderStatus>;
+  onStatusRefresh: () => void;
+}) {
   const [keys, setKeys] = useState<ProviderKeyStatus[] | null>(null);
   const [loading, setLoading] = useState(true);
   const [forbidden, setForbidden] = useState(false);
@@ -762,6 +735,7 @@ function ProviderKeysCard() {
       setEditing(null);
       setDraft("");
       loadKeys();
+      onStatusRefresh();
     } catch {
       toast.error("Failed to save API key");
     } finally {
@@ -775,6 +749,7 @@ function ProviderKeysCard() {
       await deleteProviderKey(provider);
       toast.success("API key cleared");
       loadKeys();
+      onStatusRefresh();
     } catch {
       toast.error("Failed to clear API key");
     } finally {
@@ -793,6 +768,7 @@ function ProviderKeysCard() {
       toast.success(r.skipped.length ? `${msg} (${r.skipped.length} empty)` : msg);
       setConfirmImport(false);
       loadKeys();
+      onStatusRefresh();
     } catch {
       toast.error("Import from .env failed");
     } finally {
@@ -870,6 +846,28 @@ function ProviderKeysCard() {
                     <span>Not set</span>
                   )}
                 </div>
+                {(() => {
+                  const st = statusMap.get(k.provider);
+                  if (!st) return null;
+                  return (
+                    <div
+                      className={`mt-0.5 flex items-center gap-1 text-[11px] ${
+                        st.available ? "text-emerald-600" : "text-red-500"
+                      }`}
+                    >
+                      {st.available ? (
+                        <CheckCircle2 className="h-3 w-3 shrink-0" />
+                      ) : (
+                        <XCircle className="h-3 w-3 shrink-0" />
+                      )}
+                      <span className="truncate">
+                        {st.available
+                          ? `Connected${st.response_ms != null ? ` · ${st.response_ms}ms` : ""}`
+                          : st.error || "Unavailable"}
+                      </span>
+                    </div>
+                  );
+                })()}
               </div>
 
               <div className="flex items-center gap-2">
@@ -977,6 +975,8 @@ function ProviderConfigRow({
   isFirst,
   isLast,
   status,
+  refreshingModels,
+  onRefreshModels,
   onToggle,
   onModelChange,
   onMoveUp,
@@ -988,6 +988,8 @@ function ProviderConfigRow({
   isFirst: boolean;
   isLast: boolean;
   status?: ProviderStatus;
+  refreshingModels: boolean;
+  onRefreshModels: () => void;
   onToggle: (enabled: boolean) => void;
   onModelChange: (model: string) => void;
   onMoveUp: () => void;
@@ -1017,13 +1019,29 @@ function ProviderConfigRow({
         </button>
       </div>
 
-      {/* Status dot */}
+      {/* Status dot — tooltip shows response time or the error */}
       {status ? (
-        status.available ? (
-          <Wifi className="h-3.5 w-3.5 text-emerald-500 shrink-0" />
-        ) : (
-          <WifiOff className="h-3.5 w-3.5 text-muted-foreground/40 shrink-0" />
-        )
+        <span
+          className="flex items-center gap-1 shrink-0"
+          title={
+            status.available
+              ? status.response_ms != null
+                ? `Connected · ${status.response_ms}ms`
+                : "Connected"
+              : status.error || "Unavailable"
+          }
+        >
+          {status.available ? (
+            <Wifi className="h-3.5 w-3.5 text-emerald-500" />
+          ) : (
+            <WifiOff className="h-3.5 w-3.5 text-red-400" />
+          )}
+          {status.available && status.response_ms != null && (
+            <span className="text-[10px] text-emerald-600/80 tabular-nums">
+              {status.response_ms}ms
+            </span>
+          )}
+        </span>
       ) : (
         <GripVertical className="h-3.5 w-3.5 text-muted-foreground/30 shrink-0" />
       )}
@@ -1060,6 +1078,18 @@ function ProviderConfigRow({
           </Select>
         )}
       </div>
+
+      {/* Per-provider model refresh */}
+      <Button
+        size="sm"
+        variant="ghost"
+        className="h-7 w-7 shrink-0 p-0"
+        onClick={onRefreshModels}
+        disabled={refreshingModels}
+        title="Refresh models for this provider"
+      >
+        <RefreshCw className={`h-3 w-3 ${refreshingModels ? "animate-spin" : ""}`} />
+      </Button>
 
       {/* Enable toggle */}
       <Switch size="sm" checked={provider.enabled} onCheckedChange={onToggle} />

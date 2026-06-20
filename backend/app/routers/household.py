@@ -148,10 +148,16 @@ async def update_ai_provider_config(
 
 @router.get("/ai-provider-config/fetch-models")
 async def fetch_provider_models(
+    provider: str | None = Query(
+        default=None, description="If set, only fetch models for this provider id."
+    ),
     household: Household = Depends(get_household_from_token),
 ):
-    """Fetch available models from each provider's API dynamically."""
-    models = await fetch_available_models()
+    """Fetch available models from each provider's API dynamically.
+
+    Pass ``?provider=<id>`` to refresh a single provider instead of all.
+    """
+    models = await fetch_available_models(provider)
     return {"models": models}
 
 

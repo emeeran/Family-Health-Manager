@@ -62,8 +62,10 @@ export function updateAIProviderConfig(config: AIProviderConfig) {
   });
 }
 
-export function fetchProviderModels() {
-  return apiRequest<FetchedModelsResponse>("/household/ai-provider-config/fetch-models");
+export function fetchProviderModels(provider?: string) {
+  return apiRequest<FetchedModelsResponse>("/household/ai-provider-config/fetch-models", {
+    params: provider ? { provider } : undefined,
+  });
 }
 
 export function getProviderKeys() {

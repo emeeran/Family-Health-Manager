@@ -87,23 +87,39 @@ async def _fetch_ollama(client: httpx.AsyncClient) -> list[str]:
         return []
 
 
-async def fetch_available_models() -> dict[str, list[str]]:
-    """Fetch available models from all configured providers in parallel.
+PROVIDER_FETCHERS: dict[str, Callable[[httpx.AsyncClient], Awaitable[list[str]]]] = {
+    "openai": _fetch_openai,
+    "groq": _fetch_groq,
+    "openrouter": _fetch_openrouter,
+    "gemini": _fetch_gemini,
+    "ollama": _fetch_ollama,
+}
 
-    Returns a dict mapping provider ID to sorted model name list.
-    Providers without API keys or that fail return an empty list.
+
+async def fetch_available_models(provider: str | None = None) -> dict[str, list[str]]:
+    """Fetch available models from one or all providers.
+
+    With ``provider`` set, only that provider is queried (returns a single-key
+    dict); unknown providers return an empty list for that key. Without it, all
+    providers are fetched in parallel. Providers without API keys or that fail
+    return an empty list.
     """
-    provider_fetchers: dict[str, Callable[[httpx.AsyncClient], Awaitable[list[str]]]] = {
-        "openai": _fetch_openai,
-        "groq": _fetch_groq,
-        "openrouter": _fetch_openrouter,
-        "gemini": _fetch_gemini,
-        "ollama": _fetch_ollama,
-    }
+    if provider is not None:
+        fetcher = PROVIDER_FETCHERS.get(provider)
+        if fetcher is None:
+            return {provider: []}
+        async with httpx.AsyncClient(timeout=10) as client:
+            try:
+                result = await fetcher(client)
+            except Exception as exc:
+                logger.warning("Failed to fetch models for %s: %s", provider, exc)
+                result = []
+        logger.debug("Fetched %d models for %s", len(result), provider)
+        return {provider: result}
 
     async with httpx.AsyncClient(timeout=10) as client:
         tasks = {
-            pid: asyncio.create_task(fetcher(client)) for pid, fetcher in provider_fetchers.items()
+            pid: asyncio.create_task(fetcher(client)) for pid, fetcher in PROVIDER_FETCHERS.items()
         }
         results = await asyncio.gather(*tasks.values(), return_exceptions=True)
 
