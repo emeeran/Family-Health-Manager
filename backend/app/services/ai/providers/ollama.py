@@ -29,7 +29,13 @@ def _ollama_timeout(prompt_len: int, streaming: bool = False) -> httpx.Timeout:
     if streaming:
         read = min(settings.OLLAMA_TIMEOUT + prompt_len // 40, 1800)
     else:
-        read = min(30 + prompt_len // 500, 240)
+        # Non-streaming returns the FULL response at once, so the read timeout
+        # must cover CPU prompt eval (~prompt_len/40 s — the same per-char rate
+        # as the streaming branch) PLUS generation (~100 s for a 2048-token
+        # extraction). The old prompt_len//500 scaling was ~12x too small, so
+        # CPU-only extractions timed out mid prompt-eval and surfaced as empty
+        # provider failures ("All text providers failed").
+        read = min(120 + prompt_len // 40, 900)
     return httpx.Timeout(connect=10, read=read, write=10, pool=10)
 
 

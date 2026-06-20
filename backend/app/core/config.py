@@ -62,8 +62,8 @@ class Settings(BaseSettings):
     GROQ_API_KEY: str = ""
     OPENROUTER_API_KEY: str = ""
     OLLAMA_LOCAL_URL: str = "http://localhost:11434"
-    OLLAMA_MODEL: str = "medgemma"
-    OLLAMA_TEXT_MODEL: str = "medgemma"
+    OLLAMA_MODEL: str = "qwen3"
+    OLLAMA_TEXT_MODEL: str = "qwen3"
     OLLAMA_TIMEOUT: int = 90  # seconds — per-call timeout for Ollama requests
 
     # Cloud provider models (configurable so they can be swapped without code

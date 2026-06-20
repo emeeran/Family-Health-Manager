@@ -140,7 +140,11 @@ async def extract_medical_data(
                 logger.warning(
                     "PDF text extraction returned no usable fields — text may be non-medical or too short"
                 )
-            return ExtractionResult(extracted=result, transcription=formatted)
+            return _heuristic_fallback(
+                ExtractionResult(extracted=result, transcription=formatted),
+                pdf_text,
+                mime_type,
+            )
 
         # Scanned/image PDF — OCR pages then use fast text extraction
         logger.info("PDF is scanned/image-based — attempting OCR + text extraction")
@@ -232,7 +236,11 @@ async def extract_medical_data(
 
         # Generate transcription for vision-only path
         transcription = await _transcribe_via_vision(page_images, mime_type="image/jpeg")
-        return ExtractionResult(extracted=all_extracted, transcription=transcription)
+        return _heuristic_fallback(
+            ExtractionResult(extracted=all_extracted, transcription=transcription),
+            ocr_text,
+            mime_type,
+        )
 
     if mime_type.startswith("image/"):
         # Try local tesseract first (fast, free). Offloaded to a worker thread —
@@ -252,9 +260,13 @@ async def extract_medical_data(
             else:
                 raw_text = await call_text_extraction(ocr_text, last_provider_ref)
                 formatted = ocr_text
-            return ExtractionResult(
-                extracted=parse_extraction(raw_text, ExtractedFields),
-                transcription=formatted,
+            return _heuristic_fallback(
+                ExtractionResult(
+                    extracted=parse_extraction(raw_text, ExtractedFields),
+                    transcription=formatted,
+                ),
+                ocr_text,
+                mime_type,
             )
 
         # Tesseract produced nothing usable — try cloud AI OCR
@@ -268,9 +280,13 @@ async def extract_medical_data(
             else:
                 raw_text = await call_text_extraction(ocr_text, last_provider_ref)
                 formatted = ocr_text
-            return ExtractionResult(
-                extracted=parse_extraction(raw_text, ExtractedFields),
-                transcription=formatted,
+            return _heuristic_fallback(
+                ExtractionResult(
+                    extracted=parse_extraction(raw_text, ExtractedFields),
+                    transcription=formatted,
+                ),
+                ocr_text,
+                mime_type,
             )
         # OCR failed / too low quality — fall through to vision providers
 
@@ -425,6 +441,30 @@ def _resolve_numeric_date(a: int, b: int) -> tuple[int | None, int]:
     if b > 12 and a <= 12:
         return b, a          # MM/DD/YYYY
     return None, 0
+
+
+def _heuristic_fallback(
+    result: ExtractionResult, text: str | None, mime_type: str
+) -> ExtractionResult:
+    """Deterministic last-resort fill when every AI provider returned nothing.
+
+    If we have OCR/transcription text but no structured fields, run the
+    heuristic extractor so the form is still auto-filled (record type, provider,
+    date, clinical notes) instead of surfacing "no readable data found in
+    document". A successful AI result is returned untouched.
+    """
+    if result.extracted.has_any_data() or not text or not str(text).strip():
+        return result
+    heur = heuristic_extract(text, mime_type)
+    if heur.has_any_data():
+        logger.info(
+            "Heuristic fallback populated fields after AI extraction returned nothing"
+        )
+        return ExtractionResult(
+            extracted=heur,
+            transcription=result.transcription or str(text).strip(),
+        )
+    return result
 
 
 def chunk_ocr_text(ocr_text: str, pages_per_chunk: int = 3) -> list[str]:
