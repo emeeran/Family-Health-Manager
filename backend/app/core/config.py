@@ -42,6 +42,10 @@ class Settings(BaseSettings):
     # Rate limiting
     RATE_LIMIT_REQUESTS: int = 100
     RATE_LIMIT_WINDOW: int = 60
+    # Stricter limit for auth endpoints (login/register). Override to a large
+    # value for local E2E runs so the suite isn't throttled (prod keeps 10/min).
+    AUTH_RATE_LIMIT_REQUESTS: int = 10
+    AUTH_RATE_LIMIT_WINDOW: int = 60
 
     # Redis
     REDIS_URL: str = ""  # Empty = in-memory fallback (dev mode)

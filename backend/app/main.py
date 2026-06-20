@@ -200,7 +200,10 @@ rate_limiter = RateLimiter(
     limit=settings.RATE_LIMIT_REQUESTS,
     window_seconds=settings.RATE_LIMIT_WINDOW,
 )
-auth_rate_limiter = RateLimiter(limit=10, window_seconds=60)  # Stricter for auth
+auth_rate_limiter = RateLimiter(
+    limit=settings.AUTH_RATE_LIMIT_REQUESTS,
+    window_seconds=settings.AUTH_RATE_LIMIT_WINDOW,
+)  # Stricter for auth (override AUTH_RATE_LIMIT_REQUESTS for local E2E)
 
 
 # Performance optimization (#22): set of paths and prefixes that never need rate limiting.
