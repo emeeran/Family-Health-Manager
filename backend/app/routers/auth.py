@@ -87,6 +87,11 @@ async def register(request: RegisterRequest, db: AsyncSession = Depends(get_db))
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc))
 
+    # Commit immediately so the new user/household are durable for the
+    # auto-login request the frontend fires right after registration. The
+    # session-scoped flush() in register_user is not enough — relying on
+    # get_db's deferred post-yield commit races the follow-up login.
+    await db.commit()
     return user
 
 
