@@ -3,8 +3,40 @@ set -e
 
 # Post-install script for health-manager
 
+# Ensure an external CLI dependency the app shells out to is installed. The deb
+# declares these via Depends: (which `apt install ./file.deb` resolves), but a
+# bare `dpkg -i` does NOT resolve dependencies — so install defensively here to
+# keep the app fully functional regardless of install method. Graceful: if apt
+# is unavailable or offline, warn but never fail the install (the app degrades
+# cleanly without these binaries).
+ensure_package() {
+    local pkg="$1" bin="${2:-$1}"
+    if command -v "$bin" >/dev/null 2>&1; then
+        return 0
+    fi
+    echo "health-manager: '$bin' not found — installing $pkg..."
+    if command -v apt-get >/dev/null 2>&1; then
+        export DEBIAN_FRONTEND=noninteractive
+        apt-get update -qq >/dev/null 2>&1 || true
+        if apt-get install -y --no-install-recommends "$pkg"; then
+            echo "health-manager: $pkg installed."
+        else
+            echo "health-manager: WARNING — could not install $pkg automatically (offline or apt error)." >&2
+            echo "                 Install it manually: sudo apt-get install $pkg" >&2
+        fi
+    else
+        echo "health-manager: WARNING — apt-get unavailable; cannot auto-install $pkg." >&2
+        echo "                 The app needs $pkg. Install it via your package manager." >&2
+    fi
+}
+
 case "$1" in
     configure)
+        # tesseract-ocr: required for OCR of scanned PDFs/images. Without it,
+        # scanned-document extraction fails with "no readable data found in
+        # document" (the app skips OCR and falls back to vision AI).
+        ensure_package tesseract-ocr tesseract
+
         # Create health-manager system user if it doesn't exist
         if ! id -u health-manager &>/dev/null; then
             useradd --system --no-create-home --shell /usr/sbin/nologin \
