@@ -55,6 +55,14 @@ export function extractFromDocument(memberId: string, file: File) {
   });
 }
 
+/**
+ * Directory uploads and CPU-only providers (Ollama medgemma ~20 tok/s) make a
+ * single batch run for many minutes. apiRequest's 30s default would abort the
+ * fetch mid-extraction ("Request timed out"), so allow the request to live as
+ * long as the backend's SSE streaming cap (1800s).
+ */
+const BATCH_EXTRACT_TIMEOUT = 1_800_000;
+
 export function batchExtract(memberId: string, files: File[]) {
   const formData = new FormData();
   for (const f of files) {
@@ -64,6 +72,7 @@ export function batchExtract(memberId: string, files: File[]) {
     method: "POST",
     body: formData,
     isFormData: true,
+    timeout: BATCH_EXTRACT_TIMEOUT,
   });
 }
 

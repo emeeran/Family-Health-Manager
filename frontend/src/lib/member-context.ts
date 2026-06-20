@@ -25,6 +25,10 @@ export function setLastUsedMember(id: string, name: string): void {
   localStorage.setItem(RECENT_MEMBERS_KEY, JSON.stringify(filtered.slice(0, MAX_RECENT)));
 }
 
+export function clearLastUsedMember(): void {
+  localStorage.removeItem(LAST_MEMBER_KEY);
+}
+
 export function getRecentMembers(): MemberRef[] {
   try {
     const raw = localStorage.getItem(RECENT_MEMBERS_KEY);

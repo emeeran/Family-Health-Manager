@@ -1,4 +1,5 @@
 import { useNavigate, useSearchParams } from "react-router-dom";
+import { useEffect, useRef } from "react";
 import { Card, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import {
@@ -10,6 +11,7 @@ import {
 } from "@/components/ui/select";
 import { Label } from "@/components/ui/label";
 import { listMembers } from "@/lib/api/members";
+import { clearLastUsedMember, getLastUsedMember, setLastUsedMember } from "@/lib/member-context";
 import { ViewToggle, useViewPreference } from "@/components/shared/view-toggle";
 import useSWR from "swr";
 import type { FamilyMemberResponse } from "@/lib/types/member";
@@ -98,12 +100,31 @@ export default function AiToolsHubPage() {
 
   const selectedMemberId = searchParams.get("memberId") || "";
 
+  // Restore the last-used member once members have loaded and no member is
+  // already pinned by the URL (e.g. via the back button or a deep link). Runs
+  // at most once so a deliberate deselect isn't silently re-applied.
+  const hydratedRef = useRef(false);
+  useEffect(() => {
+    if (hydratedRef.current || loading || members.length === 0) return;
+    hydratedRef.current = true;
+    if (selectedMemberId) return;
+    const last = getLastUsedMember();
+    if (last && members.some((m) => m.id === last.id)) {
+      setSearchParams({ memberId: last.id }, { replace: true });
+    } else if (last) {
+      clearLastUsedMember(); // stale id (member since deleted)
+    }
+  }, [loading, members, selectedMemberId, setSearchParams]);
+
   function handleMemberChange(value: string | null) {
     const memberId = value || "__none__";
     if (memberId === "__none__") {
       setSearchParams({}, { replace: true });
+      clearLastUsedMember();
     } else {
       setSearchParams({ memberId }, { replace: true });
+      const m = members.find((m) => m.id === memberId);
+      if (m) setLastUsedMember(memberId, `${m.first_name} ${m.last_name}`);
     }
   }
 
