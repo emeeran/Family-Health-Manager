@@ -4,7 +4,7 @@ import type {
   ConversationResponse,
   ConversationDetailResponse,
 } from "../types/conversation";
-import type { MessageCreate, SendMessageResponse, VerificationResult } from "../types/message";
+import type { MessageCreate, SendMessageResponse } from "../types/message";
 
 export function listConversations() {
   return apiRequest<ConversationResponse[]>("/conversations");
@@ -50,10 +50,4 @@ export function sendMessageStream(
     body: data,
     onEvent: onEvent as (event: Record<string, unknown>) => void,
   });
-}
-
-export function getMessageVerification(conversationId: string, messageId: string) {
-  return apiRequest<VerificationResult>(
-    `/conversations/${conversationId}/messages/${messageId}/verification`
-  );
 }

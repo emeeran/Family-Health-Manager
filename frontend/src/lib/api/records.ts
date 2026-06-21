@@ -6,8 +6,6 @@ import type {
   ExtractionResponse,
   BatchExtractionResponse,
   CheckFilenamesResponse,
-  TimelineResponse,
-  LabRecordsResponse,
   RecordInsightResponse,
   DedupResponse,
 } from "../types/health-record";
@@ -144,33 +142,6 @@ export function updateRecord(memberId: string, recordId: string, data: HealthRec
 
 export function deleteRecord(memberId: string, recordId: string) {
   return apiRequest<void>(`/members/${memberId}/records/${recordId}`, { method: "DELETE" });
-}
-
-export interface CleanupResponse {
-  removed: number;
-}
-
-export function cleanupEmptyRecords(memberId: string) {
-  return apiRequest<CleanupResponse>(`/members/${memberId}/records/cleanup`, {
-    method: "POST",
-  });
-}
-
-export function batchDeleteRecords(memberId: string, recordIds: string[]) {
-  return apiRequest<{ deleted: number }>(`/members/${memberId}/records/batch-delete`, {
-    method: "POST",
-    body: { record_ids: recordIds },
-  });
-}
-
-export function getTimeline(memberId: string, params?: Record<string, string | undefined>) {
-  return apiRequest<TimelineResponse>(`/members/${memberId}/records/timeline/list`, {
-    params,
-  });
-}
-
-export function getLabRecords(memberId: string) {
-  return apiRequest<LabRecordsResponse>(`/members/${memberId}/records/lab-records`);
 }
 
 export interface NLParseResponse {

@@ -7,10 +7,8 @@ import type {
   MemberDetailResponse,
   DrugInteractionResponse,
   ActiveMedication,
-  BmiHistoryEntry,
   Hba1cHistoryEntry,
   PreventiveRecommendation,
-  PreventiveRecommendationsResponse,
   BatchScoresResponse,
 } from "../types/member";
 import type { MedicationDiffResponse } from "../types/health-record";
@@ -130,24 +128,8 @@ export interface GeneratedInsight {
 
 export type InsightMode = "comprehensive" | "brief";
 
-export function generateMemberInsights(memberId: string, mode: InsightMode = "comprehensive") {
-  return apiRequest<GeneratedInsight>(`/members/${memberId}/generate-insights?mode=${mode}`, {
-    method: "POST",
-  });
-}
-
-export function getBmiHistory(memberId: string) {
-  return apiRequest<BmiHistoryEntry[]>(`/members/${memberId}/bmi-history`);
-}
-
 export function getHba1cHistory(memberId: string) {
   return apiRequest<Hba1cHistoryEntry[]>(`/members/${memberId}/hba1c-history`);
-}
-
-export function getPreventiveRecommendations(memberId: string) {
-  return apiRequest<PreventiveRecommendationsResponse>(
-    `/members/${memberId}/preventive-recommendations`
-  );
 }
 
 export function createPreventiveReminder(
@@ -208,26 +190,8 @@ export function applyMedicationSync(
   });
 }
 
-export function generatePreConsultationNote(memberId: string) {
-  return apiRequest<GeneratedInsight>(`/members/${memberId}/pre-consultation-note`, {
-    method: "POST",
-  });
-}
-
 export function getLatestPreConsultationNote(memberId: string) {
   return apiRequest<{ note: GeneratedInsight | null }>(
     `/members/${memberId}/pre-consultation-note/latest`
-  );
-}
-
-export function generateSmartReport(memberId: string) {
-  return apiRequest<GeneratedInsight>(`/members/${memberId}/smart-report`, {
-    method: "POST",
-  });
-}
-
-export function getLatestSmartReport(memberId: string) {
-  return apiRequest<{ report: GeneratedInsight | null }>(
-    `/members/${memberId}/smart-report/latest`
   );
 }

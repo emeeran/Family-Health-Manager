@@ -1,9 +1,5 @@
 import { apiRequest } from "../api-client";
-import type {
-  VaccinationCreate,
-  VaccinationUpdate,
-  VaccinationResponse,
-} from "../types/vaccination";
+import type { VaccinationCreate, VaccinationResponse } from "../types/vaccination";
 
 export function listVaccinations(memberId: string) {
   return apiRequest<VaccinationResponse[]>(`/members/${memberId}/vaccinations`);
@@ -12,17 +8,6 @@ export function listVaccinations(memberId: string) {
 export function createVaccination(memberId: string, data: VaccinationCreate) {
   return apiRequest<VaccinationResponse>(`/members/${memberId}/vaccinations`, {
     method: "POST",
-    body: data,
-  });
-}
-
-export function updateVaccination(
-  memberId: string,
-  vaccinationId: string,
-  data: VaccinationUpdate
-) {
-  return apiRequest<VaccinationResponse>(`/members/${memberId}/vaccinations/${vaccinationId}`, {
-    method: "PUT",
     body: data,
   });
 }

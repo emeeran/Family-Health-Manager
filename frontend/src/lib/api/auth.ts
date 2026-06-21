@@ -1,5 +1,5 @@
 import { apiRequest } from "../api-client";
-import type { LoginRequest, LoginResponse, UserResponse, TwoFASetupResponse } from "../types/auth";
+import type { LoginRequest, LoginResponse, UserResponse } from "../types/auth";
 
 export function login(data: LoginRequest) {
   return apiRequest<LoginResponse>("/auth/login", {
@@ -23,24 +23,6 @@ export function changePassword(currentPassword: string, newPassword: string) {
   return apiRequest<{ message: string }>("/auth/change-password", {
     method: "POST",
     body: { current_password: currentPassword, new_password: newPassword },
-  });
-}
-
-export function setup2FA() {
-  return apiRequest<TwoFASetupResponse>("/auth/2fa/setup", { method: "POST" });
-}
-
-export function verify2FASetup(code: string) {
-  return apiRequest<{ enabled: boolean }>("/auth/2fa/verify", {
-    method: "POST",
-    body: { code },
-  });
-}
-
-export function disable2FA(code: string) {
-  return apiRequest<{ enabled: boolean }>("/auth/2fa/disable", {
-    method: "POST",
-    body: { code },
   });
 }
 

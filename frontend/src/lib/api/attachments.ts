@@ -20,7 +20,3 @@ export async function getAttachmentBlob(attachmentId: string): Promise<string> {
   const blob = await response.blob();
   return URL.createObjectURL(blob);
 }
-
-export function deleteAttachment(attachmentId: string) {
-  return apiRequest<void>(`/attachments/${attachmentId}`, { method: "DELETE" });
-}

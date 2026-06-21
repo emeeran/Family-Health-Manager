@@ -170,7 +170,6 @@ graph TD
 | `deps.py` | Dependency injection for routers | `get_current_user()`, service providers, `PaginationParams` |
 | `rate_limiter.py` | Sliding window rate limiting | `RateLimiter` class, in-memory store, `check_limit()` |
 | `storage.py` | File storage abstraction | `save_file()`, `save_file_hashed()`, `stream_file()`, `get_file()`, `delete_file()`, `hash_existing_file()`, `sweep_orphaned_staging()`, MIME validation, streaming I/O |
-| `storage_backends/` | Pluggable storage backends | `StorageBackend` protocol, `LocalStorageBackend` (sharded content-addressable), `get_storage_backend()` factory |
 | `thumbnails.py` | Thumbnail generation | `generate_thumbnail()` (Pillow for images, PyMuPDF for PDFs → 300px WebP) |
 | `encryption.py` | Encryption at rest | `encrypt_bytes()`, `decrypt_bytes()`, `encrypt_file()`, `decrypt_file()` (Fernet via PBKDF2) |
 | `migrate_files.py` | One-time data migration | `migrate_all()` — migrate flat files to content-addressed, compute hashes, generate thumbnails, encrypt |
@@ -496,11 +495,6 @@ backend/app/
 │   ├── thumbnails.py       # Thumbnail generation (Pillow, PyMuPDF → WebP)
 │   ├── encryption.py       # Fernet encryption at rest
 │   ├── migrate_files.py    # One-time storage migration script
-│   ├── storage_backends/   # Pluggable storage backend
-│   │   ├── __init__.py
-│   │   ├── protocol.py     # StorageBackend Protocol
-│   │   ├── local.py        # LocalStorageBackend
-│   │   └── factory.py      # get_storage_backend() factory
 │   ├── jobs.py             # Background jobs (reminders, staging cleanup, integrity check)
 │   └── scheduler.py        # APScheduler wrapper
 ├── routers/
