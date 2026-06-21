@@ -4,7 +4,13 @@ export interface MessageCreate {
   content: string;
 }
 
-export type VerificationStatus = "verified" | "warnings" | "unverifiable" | "pending" | "failed";
+export type VerificationStatus =
+  | "verified"
+  | "warnings"
+  | "unverifiable"
+  | "pending"
+  | "failed"
+  | "auto_verified";
 export type WarningType =
   | "wrong_date"
   | "wrong_value"
