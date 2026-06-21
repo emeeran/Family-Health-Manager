@@ -495,6 +495,11 @@ def create_backup_archive() -> Path | None:
     timestamp = datetime.now(timezone.utc).strftime("%Y%m%d_%H%M%S")
     archive = BACKUP_DIR / f"backup_{timestamp}.tar.gz"
     db_url = settings.DATABASE_URL
+    # Write to a sibling .tmp and atomically rename on success so a crash,
+    # SIGTERM, or ENOSPC mid-archive never leaves a truncated backup_*.tar.gz
+    # that apply_retention would keep (by mtime) and an operator might restore
+    # from. Mirrors the temp+replace used by _write_restore_request.
+    tmp_archive = archive.with_name(archive.name + ".tmp")
     try:
         with tempfile.TemporaryDirectory() as tmpdir:
             tmp = Path(tmpdir)
@@ -504,17 +509,18 @@ def create_backup_archive() -> Path | None:
             else:
                 db_name = "health.sql"
                 _dump_postgres(db_url, tmp / db_name)
-            with tarfile.open(archive, "w:gz") as tar:
+            with tarfile.open(tmp_archive, "w:gz") as tar:
                 tar.add(tmp / db_name, arcname=db_name)
                 attachments_dir = Path(settings.STORAGE_PATH)
                 if attachments_dir.exists():
                     tar.add(attachments_dir, arcname="attachments")
+        tmp_archive.replace(archive)
         return archive
     except Exception:
         logger.exception("Backup archive creation failed")
         try:
-            if archive.exists():
-                archive.unlink()
+            if tmp_archive.exists():
+                tmp_archive.unlink()
         except OSError:
             pass
         return None

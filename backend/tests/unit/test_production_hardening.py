@@ -166,6 +166,38 @@ def test_create_backup_archive_contains_db_and_originals(tmp_path, monkeypatch):
     assert any(n.startswith("attachments/files/record.pdf") for n in names)
 
 
+def test_create_backup_archive_is_atomic_on_failure(tmp_path, monkeypatch):
+    """A crash / ENOSPC / SIGTERM mid-archive must not leave a truncated
+    backup_*.tar.gz behind — retention keeps archives by mtime, so a partial
+    file could otherwise be restored from. The write goes to a .tmp sibling and
+    only renames on success."""
+    from pathlib import Path
+
+    src_db = tmp_path / "health.db"
+    _seed_db(src_db)
+    storage = tmp_path / "storage"
+    (storage / "files").mkdir(parents=True)
+    backups = tmp_path / "backups"
+    monkeypatch.setattr(
+        jobs,
+        "settings",
+        SimpleNamespace(DATABASE_URL=f"sqlite:///{src_db}", STORAGE_PATH=str(storage)),
+    )
+    monkeypatch.setattr(jobs, "BACKUP_DIR", backups)
+
+    def _boom(*args, **kwargs):
+        # Simulate a partially-written archive then a failure mid-tar.
+        Path(args[0]).write_bytes(b"PARTIAL")
+        raise OSError("simulated mid-archive failure")
+
+    monkeypatch.setattr(jobs.tarfile, "open", _boom)
+
+    assert jobs.create_backup_archive() is None
+    # No final archive and no leftover .tmp sibling in the backup dir.
+    assert not list(backups.glob("backup_*.tar.gz"))
+    assert not list(backups.glob("*.tmp"))
+
+
 def test_list_backup_archives_filters_and_sorts(tmp_path, monkeypatch):
     monkeypatch.setattr(jobs, "BACKUP_DIR", tmp_path)
     (tmp_path / "backup_20260101_000000.tar.gz").write_bytes(b"a")
