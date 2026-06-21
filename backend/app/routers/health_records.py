@@ -801,7 +801,9 @@ async def create_record(
                     ]
                     if med_names:
                         med_svc = MedicationService(db)
-                        await med_svc.remove_outdated_prescriptions(member_id, med_names)
+                        await med_svc.remove_outdated_prescriptions(
+                            member_id, med_names, protect_record_id=record.id
+                        )
         except (json.JSONDecodeError, ValueError, TypeError, AttributeError) as exc:
             logger.warning("Outdated prescription cleanup skipped: %s", exc)
 
