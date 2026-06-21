@@ -150,15 +150,16 @@ async def test_delete_attachment(attachment_service, mock_db, household_id):
         content_hash="abc123",
     )
 
-    # First call: get_attachment returns the attachment
+    # First call: get_attachment returns the attachment.
+    # Second + third calls: reference counts across attachments AND member
+    # profile photos both return 0 (blob unreferenced → eligible for delete).
     get_result = MagicMock()
     get_result.scalar_one_or_none.return_value = mock_attachment
 
-    # Second call: reference count returns 0 (no remaining refs)
     count_result = MagicMock()
     count_result.scalar.return_value = 0
 
-    mock_db.execute = AsyncMock(side_effect=[get_result, count_result])
+    mock_db.execute = AsyncMock(side_effect=[get_result, count_result, count_result])
 
     with patch(
         "app.services.attachment_service.delete_file", new_callable=AsyncMock
@@ -167,3 +168,33 @@ async def test_delete_attachment(attachment_service, mock_db, household_id):
 
         mock_delete.assert_called_once()
         mock_db.delete.assert_called_once_with(mock_attachment)
+
+
+async def test_delete_attachment_keeps_blob_shared_with_member_photo(
+    attachment_service, mock_db, household_id
+):
+    """A blob shared between an attachment and a member profile photo must not
+    be deleted when the attachment is removed — the cross-entity refcount keeps
+    it. (Previously delete_attachment only counted attachments.)"""
+    attachment_id = uuid4()
+    mock_attachment = Attachment(
+        id=attachment_id,
+        file_path="/test/file.pdf",
+        content_hash="shared-hash",
+    )
+    get_result = MagicMock()
+    get_result.scalar_one_or_none.return_value = mock_attachment
+    attachments_count = MagicMock()
+    attachments_count.scalar.return_value = 0
+    members_count = MagicMock()
+    members_count.scalar.return_value = 1  # a member photo still references the hash
+
+    mock_db.execute = AsyncMock(side_effect=[get_result, attachments_count, members_count])
+
+    with patch(
+        "app.services.attachment_service.delete_file", new_callable=AsyncMock
+    ) as mock_delete:
+        await attachment_service.delete_attachment(attachment_id, household_id)
+        mock_delete.assert_not_called()  # blob kept — still referenced by a photo
+
+    mock_db.delete.assert_called_once_with(mock_attachment)  # DB row still removed

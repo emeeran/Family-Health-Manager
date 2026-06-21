@@ -108,11 +108,12 @@ async def delete_attachment(
     attachment_id: UUID,
     household: Household = Depends(get_household_from_token),
     db: AsyncSession = Depends(get_db),
+    background_tasks: BackgroundTasks = None,
 ):
     """Delete an attachment."""
     service = AttachmentService(db)
 
     try:
-        await service.delete_attachment(attachment_id, household.id)
+        await service.delete_attachment(attachment_id, household.id, background_tasks)
     except ValueError:
         raise HTTPException(status_code=404, detail="Attachment not found")

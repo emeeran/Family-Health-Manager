@@ -6,7 +6,7 @@ import logging
 from datetime import date, datetime, timezone, timedelta
 from pathlib import Path
 from uuid import UUID
-from fastapi import UploadFile
+from fastapi import BackgroundTasks, UploadFile
 from sqlalchemy import select, func
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import joinedload
@@ -176,6 +176,7 @@ class MemberService:
         member_id: UUID,
         file: UploadFile,
         household_id: UUID,
+        background_tasks: BackgroundTasks | None = None,
     ) -> FamilyMember:
         """Upload or replace a member's profile photo.
 
@@ -210,12 +211,17 @@ class MemberService:
 
         if old_hash and old_hash != content_hash:
             await self._delete_photo_blob_if_unreferenced(
-                old_hash, old_photo_path, old_thumb_path
+                old_hash, old_photo_path, old_thumb_path, background_tasks=background_tasks
             )
 
         return member
 
-    async def delete_member_photo(self, member_id: UUID, household_id: UUID) -> FamilyMember:
+    async def delete_member_photo(
+        self,
+        member_id: UUID,
+        household_id: UUID,
+        background_tasks: BackgroundTasks | None = None,
+    ) -> FamilyMember:
         """Remove a member's profile photo (reference-counted file delete)."""
         member = await self.get_member(household_id, member_id)
 
@@ -231,7 +237,7 @@ class MemberService:
 
         if old_hash:
             await self._delete_photo_blob_if_unreferenced(
-                old_hash, old_photo_path, old_thumb_path
+                old_hash, old_photo_path, old_thumb_path, background_tasks=background_tasks
             )
 
         return member
@@ -241,6 +247,7 @@ class MemberService:
         content_hash: str,
         photo_path: str | None,
         thumb_path: str | None,
+        background_tasks: BackgroundTasks | None = None,
     ) -> None:
         """Delete a photo's physical files only if nothing else references them.
 
@@ -269,18 +276,20 @@ class MemberService:
         if (members_count or 0) + (attachments_count or 0) > 0:
             return
 
+        # Physical deletion is deferred to a BackgroundTask when supplied so a
+        # transaction rollback can't orphan the file (row restored pointing at
+        # deleted bytes). delete_file is already tolerant of a missing file, so
+        # the old FileNotFoundError handling is no longer needed.
+        to_delete: list[Path] = []
         if photo_path:
-            try:
-                await delete_file(Path(photo_path))
-            except (FileNotFoundError, ValueError):
-                logger.warning("Photo file already gone: %s", photo_path)
+            to_delete.append(Path(photo_path))
         if thumb_path:
-            thumb = Path(thumb_path)
-            if thumb.exists():
-                try:
-                    await delete_file(thumb)
-                except (FileNotFoundError, ValueError):
-                    pass
+            to_delete.append(Path(thumb_path))
+        for path in to_delete:
+            if background_tasks is not None:
+                background_tasks.add_task(delete_file, path)
+            else:
+                await delete_file(path)
 
     @staticmethod
     def _build_vitals_payload(
