@@ -275,23 +275,17 @@ class MedicationService:
         return reminders
 
     async def remove_outdated_prescriptions(
-        self,
-        member_id: UUID,
-        medicine_names: list[str],
-        *,
-        protect_record_id: UUID | None = None,
+        self, member_id: UUID, medicine_names: list[str]
     ) -> int:
-        """Remove older prescriptions for the given medicine names across all records.
+        """Prune older duplicate prescriptions so the latest Rx wins.
 
-        Keeps only the most-recent prescription per medicine (by record_date).
-        Returns the number of prescriptions removed.
-
-        ``protect_record_id`` is never pruned or soft-deleted — used by the
-        create-record flow so the record a user just entered always persists,
-        even if a newer record shares the same medicine (otherwise a new record
-        with a past date is soft-deleted mid-create and the post-save
-        navigation 404s). Its medicines are still registered as "seen" so older
-        duplicates in *other* records get pruned.
+        For each named medicine, keeps only the most-recent prescription (by
+        record_date) and removes older duplicates from those records'
+        clinical_data. MODIFIES prescriptions only — never soft-deletes a
+        record (a visit is preserved even once its prescriptions are pruned), so
+        nothing a user entered is destroyed silently. Runs only when the user
+        confirms the medication-sync dialog, not on record create. Returns the
+        number of prescriptions removed.
         """
         if not medicine_names:
             return 0
@@ -331,17 +325,6 @@ class MedicationService:
             if not isinstance(prescriptions, list):
                 continue
 
-            if protect_record_id is not None and r.id == protect_record_id:
-                # Never prune or soft-delete the record being created/edited.
-                # Still register its medicines as seen so older duplicates in
-                # other records are pruned.
-                for rx in prescriptions:
-                    if isinstance(rx, dict):
-                        key = self._normalize_medicine_name(rx.get("medicine", "").strip())
-                        if key:
-                            kept.add(key)
-                continue
-
             changed = False
             new_prescriptions: list[dict] = []
             for rx in prescriptions:
@@ -360,10 +343,11 @@ class MedicationService:
                     new_prescriptions.append(rx)
 
             if changed:
+                # Modify prescriptions only — keep the record itself alive
+                # (latest Rx wins; the older visit is preserved, just without
+                # the duplicate prescription).
                 parsed["prescriptions"] = new_prescriptions
                 r.clinical_data = json.dumps(parsed)
-                if not new_prescriptions:
-                    r.is_deleted = True
 
         if removed:
             await self.db.flush()
