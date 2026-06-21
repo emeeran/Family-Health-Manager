@@ -77,6 +77,27 @@ def get_env_fallback(provider: str) -> str | None:
     return _fallback_from_env(provider)
 
 
+def normalize_ollama_url(value: str | None) -> str | None:
+    """Ensure an Ollama base URL has an ``http(s)://`` scheme.
+
+    The admin Settings UI stores whatever is typed. A scheme-less entry such as
+    ``localhost:11434`` is a natural way to type the URL but makes httpx reject
+    every Ollama request with "Request URL is missing an 'http://' or 'https://'
+    protocol" — silently disabling the only working provider on a local
+    (Ollama-only) install, so every extraction returns empty and the record form
+    never auto-fills. Ollama serves plain HTTP on localhost, so a missing scheme
+    defaults to ``http://``. Whitespace is trimmed.
+    """
+    if not value:
+        return value
+    url = value.strip()
+    if not url:
+        return url
+    if "://" not in url:
+        url = f"http://{url}"
+    return url
+
+
 async def resolve_provider_value(provider: str) -> str | None:
     """Return the effective value for ``provider``.
 
@@ -102,6 +123,12 @@ async def resolve_provider_value(provider: str) -> str | None:
 
     if not value:
         value = _fallback_from_env(provider)
+
+    # Ollama is the only URL-type provider; tolerate scheme-less entry so a
+    # stored value like "localhost:11434" does not silently break every Ollama
+    # request with a missing-protocol error.
+    if provider == "ollama":
+        value = normalize_ollama_url(value)
 
     _cache[secret_key] = (now, value)
     return value

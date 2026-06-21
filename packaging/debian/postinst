@@ -37,6 +37,11 @@ case "$1" in
         # document" (the app skips OCR and falls back to vision AI).
         ensure_package tesseract-ocr tesseract
 
+        # ghostscript: used to downsample/optimize scanned PDFs on ingest so
+        # attachments stay small. The app degrades gracefully (stores the PDF
+        # unoptimized) if absent, but install it so the optimization path works.
+        ensure_package ghostscript gs
+
         # Create health-manager system user if it doesn't exist
         if ! id -u health-manager &>/dev/null; then
             useradd --system --no-create-home --shell /usr/sbin/nologin \

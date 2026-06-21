@@ -235,11 +235,20 @@ async def rate_limit_middleware(request: Request, call_next):
     ):
         return await call_next(request)
 
-    # Reject oversized payloads (50MB for general, 500MB for backup)
+    # Reject oversized payloads. Limits are tiered by path and configurable via
+    # env (see MAX_REQUEST_SIZE_MB / MAX_UPLOAD_SIZE_MB / MAX_BACKUP_SIZE_MB in
+    # config): general API JSON stays small, file uploads (extract, attachments)
+    # get a larger cap so scanned-PDF batches aren't rejected, backup restore the
+    # largest.
     content_length = request.headers.get("content-length")
     if content_length:
         try:
-            limit = 500 * 1024 * 1024 if path.startswith("/api/v1/backup") else 50 * 1024 * 1024
+            if path.startswith("/api/v1/backup"):
+                limit = settings.MAX_BACKUP_SIZE_MB * 1024 * 1024
+            elif path.startswith("/api/v1/attachments") or "/records/extract" in path:
+                limit = settings.MAX_UPLOAD_SIZE_MB * 1024 * 1024
+            else:
+                limit = settings.MAX_REQUEST_SIZE_MB * 1024 * 1024
             if int(content_length) > limit:
                 return JSONResponse(
                     status_code=413,

@@ -19,6 +19,7 @@ from app.core.provider_keys import (
     SECRET_PROVIDERS,
     get_env_fallback,
     invalidate_provider_cache,
+    normalize_ollama_url,
 )
 from app.models.app_secret import AppSecret
 from app.models.base import User
@@ -104,11 +105,14 @@ async def set_provider_key(
     _user: User = Depends(require_admin),
 ) -> ProviderKeyStatus:
     """Store an encrypted credential. The DB becomes authoritative for that provider."""
-    await _upsert(db, PROVIDER_SECRET_KEYS[body.provider], body.value)
+    value = body.value
+    if body.provider == "ollama":
+        value = normalize_ollama_url(value)
+    await _upsert(db, PROVIDER_SECRET_KEYS[body.provider], value)
     await db.flush()
     invalidate_provider_cache(body.provider)
     logger.info("provider key set: %s", body.provider)
-    return _status_for(body.provider, body.value)
+    return _status_for(body.provider, value)
 
 
 @router.delete("/provider-keys/{provider}")

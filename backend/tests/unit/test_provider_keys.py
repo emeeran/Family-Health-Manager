@@ -10,7 +10,11 @@ from unittest.mock import AsyncMock
 import pytest
 
 from app.core import provider_keys
-from app.core.provider_keys import invalidate_provider_cache, resolve_provider_value
+from app.core.provider_keys import (
+    invalidate_provider_cache,
+    normalize_ollama_url,
+    resolve_provider_value,
+)
 
 pytestmark = pytest.mark.asyncio
 
@@ -77,3 +81,34 @@ async def test_invalidation_forces_reread(monkeypatch):
     invalidate_provider_cache("openai")
     assert await resolve_provider_value("openai") == "v2"
     assert calls["n"] == 2
+
+
+async def test_normalize_ollama_url_prepends_http_when_scheme_missing():
+    # The exact regression: "localhost:11434" typed in Settings breaks httpx.
+    assert normalize_ollama_url("localhost:11434") == "http://localhost:11434"
+    assert normalize_ollama_url("192.168.1.10:11434") == "http://192.168.1.10:11434"
+
+
+async def test_normalize_ollama_url_preserves_existing_scheme():
+    assert normalize_ollama_url("http://localhost:11434") == "http://localhost:11434"
+    assert normalize_ollama_url("https://ollama.local:443") == "https://ollama.local:443"
+
+
+async def test_normalize_ollama_url_trims_whitespace_and_passes_through_empty():
+    assert normalize_ollama_url("  localhost:11434  ") == "http://localhost:11434"
+    assert normalize_ollama_url("") == ""
+    assert normalize_ollama_url(None) is None
+
+
+async def test_resolve_normalizes_scheme_less_ollama_db_value(monkeypatch):
+    """A scheme-less Ollama URL stored in the DB is fixed up at resolve time."""
+    monkeypatch.setattr(provider_keys, "_load_from_db", AsyncMock(return_value="localhost:11434"))
+    monkeypatch.setattr(provider_keys, "_fallback_from_env", lambda _p: None)
+    assert await resolve_provider_value("ollama") == "http://localhost:11434"
+
+
+async def test_resolve_does_not_touch_api_key_providers(monkeypatch):
+    """Only Ollama (a URL) is normalised — API keys must never get http:// prepended."""
+    monkeypatch.setattr(provider_keys, "_load_from_db", AsyncMock(return_value="sk-somekey"))
+    monkeypatch.setattr(provider_keys, "_fallback_from_env", lambda _p: None)
+    assert await resolve_provider_value("openai") == "sk-somekey"
