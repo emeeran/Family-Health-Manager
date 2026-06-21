@@ -108,9 +108,16 @@ class FamilyMemberResponse(BaseModel):
     notes: str | None = Field(None, description="General notes about the member")
     is_active: bool = Field(..., description="Active status")
     created_at: datetime = Field(..., description="Creation timestamp")
+    photo_updated_at: datetime | None = Field(
+        None, description="When the profile photo was last set (client cache-bust version)"
+    )
 
     # Parsed once from the raw allergies_json column
     allergies: list[AllergyEntry] | None = Field(None, description="Structured allergies")
+
+    # Internal: populated from the ORM column so has_photo can be derived.
+    # Never serialized (exclude=True).
+    photo_path: str | None = Field(None, exclude=True)
 
     @model_validator(mode="before")
     @classmethod
@@ -154,3 +161,9 @@ class FamilyMemberResponse(BaseModel):
         if bmi < 30:
             return "Overweight"
         return "Obese"
+
+    @computed_field
+    @property
+    def has_photo(self) -> bool:
+        """Whether the member has a profile photo."""
+        return self.photo_path is not None

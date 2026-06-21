@@ -15,7 +15,8 @@ import { Card } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Tooltip, TooltipTrigger, TooltipContent } from "@/components/ui/tooltip";
 import { RELATIONSHIP_LABELS, GENDER_LABELS, BMI_CATEGORY_COLORS } from "@/lib/constants";
-import { HealthScoreRing, scoreTextColor } from "@/components/ui/health-score-ring";
+import { scoreTextColor } from "@/components/ui/health-score-ring";
+import { MemberAvatar } from "./member-avatar";
 import { getMemberDetail } from "@/lib/api/members";
 import { computeAge } from "@/lib/utils";
 import type { FamilyMemberResponse } from "@/lib/types/member";
@@ -163,7 +164,6 @@ export const MemberCard = memo(function MemberCard({
 }: MemberCardProps) {
   const color = getRelColor(member.relationship);
   const fullName = `${member.first_name} ${member.last_name}`;
-  const initials = getInitials(member.first_name, member.last_name);
   const age = computeAge(member.date_of_birth);
   const genderLabel = GENDER_LABELS[member.gender] || member.gender;
   const allergyCount = member.allergies?.length || 0;
@@ -192,7 +192,7 @@ export const MemberCard = memo(function MemberCard({
         <div className="flex items-start gap-3">
           {/* Health Score Ring */}
           {scoreData !== undefined ? (
-            <HealthScoreRing score={scoreData.score} initials={initials} size={48} />
+            <MemberAvatar member={member} score={scoreData.score} size={48} />
           ) : (
             <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-xl bg-muted/50">
               <Skeleton className="h-12 w-12 rounded-xl" />
@@ -337,7 +337,7 @@ export const MemberRow = memo(function MemberRow({ member, scoreData, onDelete }
       {/* Health score / avatar */}
       <Link to={`/people/${member.id}`} className="shrink-0">
         {scoreData !== undefined ? (
-          <HealthScoreRing score={scoreData.score} initials={initials} size={40} />
+          <MemberAvatar member={member} score={scoreData.score} size={40} />
         ) : (
           <div
             className={`flex h-10 w-10 items-center justify-center rounded-lg bg-gradient-to-br ${color.gradient} shadow-sm`}

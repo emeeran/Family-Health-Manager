@@ -80,6 +80,8 @@ export interface FamilyMemberResponse {
   bmi_category: string | null;
   is_active: boolean;
   created_at: string;
+  has_photo: boolean;
+  photo_updated_at: string | null;
 }
 
 export interface ActiveMedication {

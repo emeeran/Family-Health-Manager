@@ -39,6 +39,25 @@ export function deleteMember(memberId: string) {
   return apiRequest<void>(`/members/${memberId}`, { method: "DELETE" });
 }
 
+/** Upload (or replace) a member's profile photo. The photo is served back as a
+ *  300px WebP thumbnail via GET /members/{id}/photo (cookie-auth <img>), so the
+ *  response's photo_updated_at drives the client cache-bust query param. */
+export function uploadMemberPhoto(memberId: string, file: File) {
+  const formData = new FormData();
+  formData.append("file", file);
+  return apiRequest<FamilyMemberResponse>(`/members/${memberId}/photo`, {
+    method: "POST",
+    body: formData,
+    isFormData: true,
+  });
+}
+
+export function deleteMemberPhoto(memberId: string) {
+  return apiRequest<FamilyMemberResponse>(`/members/${memberId}/photo`, {
+    method: "DELETE",
+  });
+}
+
 export function getMemberDashboard(memberId: string) {
   return apiRequest<MemberDashboardResponse>(`/members/${memberId}/dashboard`);
 }

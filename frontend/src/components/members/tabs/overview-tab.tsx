@@ -19,6 +19,7 @@ import { Button } from "@/components/ui/button";
 import { ConfirmDialog } from "@/components/shared/confirm-dialog";
 import { HealthScoreRing, scoreTextColor } from "@/components/ui/health-score-ring";
 import { ActiveMedicationsTable } from "@/components/members/active-medications-table";
+import { MemberPhotoControl } from "@/components/members/member-photo-control";
 import { InsightCard } from "@/components/members/insight-card";
 import { PreConsultationCard } from "@/components/members/pre-consultation-card";
 import { SmartReportCard } from "@/components/members/smart-report-card";
@@ -407,10 +408,7 @@ ${histParts.length > 0 ? `<h2>Medical History</h2><div style="line-height:1.8;ma
           {/* Identity | Score */}
           <div className="flex items-center gap-5 mb-4">
             <div className="flex items-center gap-3.5 flex-1 min-w-0">
-              <div className="flex h-14 w-14 items-center justify-center rounded-2xl bg-primary/10 text-primary font-bold text-xl shrink-0">
-                {member.first_name[0]}
-                {member.last_name[0]}
-              </div>
+              <MemberPhotoControl member={member} size={56} />
               <div className="min-w-0">
                 <div className="flex items-center gap-2">
                   <h1 className="text-xl font-bold tracking-tight truncate">{memberName}</h1>

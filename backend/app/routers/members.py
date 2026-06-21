@@ -2,8 +2,12 @@
 
 import json
 import logging
+from pathlib import Path
+from uuid import UUID
 
-from fastapi import APIRouter, Depends, HTTPException, Query
+import aiofiles
+from fastapi import APIRouter, Depends, File, HTTPException, Query, UploadFile
+from fastapi.responses import StreamingResponse
 from sqlalchemy import select, func
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -238,3 +242,85 @@ async def delete_member(
     await cache.invalidate_async(f"members:{household.id}")
     await cache.invalidate_async(f"household_records:{household.id}")
     await cache.invalidate_async(f"dashboard_summary:{household.id}")
+
+
+@router.post("/{member_id}/photo", response_model=FamilyMemberResponse)
+async def upload_member_photo(
+    member_id: UUID,
+    file: UploadFile = File(..., description="Profile photo (jpeg, png, or webp)"),
+    household: Household = Depends(get_household_from_token),
+    db: AsyncSession = Depends(get_db),
+):
+    """Upload or replace a member's profile photo."""
+    service = MemberService(db)
+    try:
+        member = await service.set_member_photo(member_id, file, household.id)
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    await cache.invalidate_async(f"members:{household.id}")
+    await cache.invalidate_async(f"dashboard_summary:{household.id}")
+    return member
+
+
+@router.delete("/{member_id}/photo", response_model=FamilyMemberResponse)
+async def delete_member_photo(
+    member_id: UUID,
+    household: Household = Depends(get_household_from_token),
+    db: AsyncSession = Depends(get_db),
+):
+    """Remove a member's profile photo."""
+    service = MemberService(db)
+    try:
+        member = await service.delete_member_photo(member_id, household.id)
+    except ValueError:
+        raise HTTPException(status_code=404, detail="Member not found")
+    await cache.invalidate_async(f"members:{household.id}")
+    await cache.invalidate_async(f"dashboard_summary:{household.id}")
+    return member
+
+
+@router.get("/{member_id}/photo")
+async def get_member_photo(
+    member_id: UUID,
+    household: Household = Depends(get_household_from_token),
+    db: AsyncSession = Depends(get_db),
+):
+    """Stream a member's profile photo thumbnail (300px WebP)."""
+    service = MemberService(db)
+    try:
+        member = await service.get_member(household.id, member_id)
+    except ValueError:
+        raise HTTPException(status_code=404, detail="Member not found")
+
+    if not member.photo_path:
+        raise HTTPException(status_code=404, detail="No profile photo")
+
+    # Thumbnail is generated at upload time; regenerate on demand if missing
+    # (e.g. a failed/aborted earlier generation).
+    if not member.photo_thumbnail_path and member.photo_content_hash:
+        from app.core.thumbnails import generate_thumbnail
+
+        thumb = await generate_thumbnail(
+            Path(member.photo_path), member.photo_content_hash, "image/jpeg", encrypted=True
+        )
+        if thumb:
+            member.photo_thumbnail_path = str(thumb)
+            await db.flush()
+
+    if not member.photo_thumbnail_path:
+        raise HTTPException(status_code=404, detail="Photo not available")
+
+    thumb_path = Path(member.photo_thumbnail_path)
+    if not thumb_path.exists():
+        raise HTTPException(status_code=404, detail="Photo file not found")
+
+    async def _stream_photo():
+        async with aiofiles.open(thumb_path, "rb") as f:
+            while chunk := await f.read(1024 * 1024):
+                yield chunk
+
+    return StreamingResponse(
+        _stream_photo(),
+        media_type="image/webp",
+        headers={"Cache-Control": "public, max-age=3600"},
+    )

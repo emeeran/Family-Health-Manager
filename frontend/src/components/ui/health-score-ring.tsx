@@ -15,6 +15,8 @@ export function scoreTextColor(score: number): string {
 interface HealthScoreRingProps {
   score: number;
   initials?: string;
+  /** When set, renders a circular photo inside the ring (priority over initials/score). */
+  imageUrl?: string;
   size?: number;
   strokeWidth?: number;
 }
@@ -22,6 +24,7 @@ interface HealthScoreRingProps {
 export const HealthScoreRing = memo(function HealthScoreRing({
   score,
   initials,
+  imageUrl,
   size = 48,
   strokeWidth = 3,
 }: HealthScoreRingProps) {
@@ -30,6 +33,9 @@ export const HealthScoreRing = memo(function HealthScoreRing({
   const offset = circ - (score / 100) * circ;
   const color = scoreColor(score);
   const cx = size / 2;
+  // Photo fills the inner circle (inside the ring stroke).
+  const photoInset = strokeWidth + 1;
+  const photoSize = size - photoInset * 2;
 
   return (
     <div className="relative shrink-0 select-none" style={{ width: size, height: size }}>
@@ -57,15 +63,25 @@ export const HealthScoreRing = memo(function HealthScoreRing({
           className="transition-all duration-700 ease-out"
         />
       </svg>
-      <div className="absolute inset-0 flex flex-col items-center justify-center">
-        {initials ? (
-          <span className="text-[10px] font-bold text-foreground/70">{initials}</span>
-        ) : (
-          <span className="font-bold leading-none" style={{ color, fontSize: size * 0.28 }}>
-            {score}
-          </span>
-        )}
-      </div>
+      {imageUrl ? (
+        <img
+          src={imageUrl}
+          alt=""
+          loading="lazy"
+          className="absolute rounded-full object-cover"
+          style={{ inset: photoInset, width: photoSize, height: photoSize }}
+        />
+      ) : (
+        <div className="absolute inset-0 flex flex-col items-center justify-center">
+          {initials ? (
+            <span className="text-[10px] font-bold text-foreground/70">{initials}</span>
+          ) : (
+            <span className="font-bold leading-none" style={{ color, fontSize: size * 0.28 }}>
+              {score}
+            </span>
+          )}
+        </div>
+      )}
     </div>
   );
 });

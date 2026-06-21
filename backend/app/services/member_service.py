@@ -4,8 +4,10 @@ import asyncio
 import json
 import logging
 from datetime import date, datetime, timezone, timedelta
+from pathlib import Path
 from uuid import UUID
-from sqlalchemy import select
+from fastapi import UploadFile
+from sqlalchemy import select, func
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import joinedload
 from app.core.database import update_model
@@ -164,6 +166,121 @@ class MemberService:
                 )
 
         return member
+
+    # Allowed MIME types for a profile photo. Stricter than storage's set
+    # (which also permits PDFs) — a face photo must be an image.
+    PHOTO_MIME_TYPES = frozenset({"image/jpeg", "image/png", "image/webp"})
+
+    async def set_member_photo(
+        self,
+        member_id: UUID,
+        file: UploadFile,
+        household_id: UUID,
+    ) -> FamilyMember:
+        """Upload or replace a member's profile photo.
+
+        Reuses content-addressable encrypted storage (``save_file_hashed``) and
+        generates a 300px WebP thumbnail synchronously — a single small image,
+        so no need to defer it to a background task. Replacing a photo
+        reference-counts the previous blob so a file dedup-shared with another
+        member or a health-record attachment is only removed when nothing else
+        references it.
+        """
+        from app.core.storage import save_file_hashed
+        from app.core.thumbnails import generate_thumbnail
+
+        member = await self.get_member(household_id, member_id)
+
+        mime = file.content_type or "application/octet-stream"
+        if mime not in self.PHOTO_MIME_TYPES:
+            raise ValueError(f"Photo must be jpeg, png, or webp (got {mime})")
+
+        old_hash = member.photo_content_hash
+        old_photo_path = member.photo_path
+        old_thumb_path = member.photo_thumbnail_path
+
+        file_path, content_hash, _ext = await save_file_hashed(file)
+        thumbnail_path = await generate_thumbnail(file_path, content_hash, mime, encrypted=True)
+
+        member.photo_path = str(file_path)
+        member.photo_content_hash = content_hash
+        member.photo_thumbnail_path = str(thumbnail_path) if thumbnail_path else None
+        member.photo_updated_at = datetime.now(timezone.utc)
+        await self.db.flush()
+
+        if old_hash and old_hash != content_hash:
+            await self._delete_photo_blob_if_unreferenced(
+                old_hash, old_photo_path, old_thumb_path
+            )
+
+        return member
+
+    async def delete_member_photo(self, member_id: UUID, household_id: UUID) -> FamilyMember:
+        """Remove a member's profile photo (reference-counted file delete)."""
+        member = await self.get_member(household_id, member_id)
+
+        old_hash = member.photo_content_hash
+        old_photo_path = member.photo_path
+        old_thumb_path = member.photo_thumbnail_path
+
+        member.photo_path = None
+        member.photo_content_hash = None
+        member.photo_thumbnail_path = None
+        member.photo_updated_at = datetime.now(timezone.utc)
+        await self.db.flush()
+
+        if old_hash:
+            await self._delete_photo_blob_if_unreferenced(
+                old_hash, old_photo_path, old_thumb_path
+            )
+
+        return member
+
+    async def _delete_photo_blob_if_unreferenced(
+        self,
+        content_hash: str,
+        photo_path: str | None,
+        thumb_path: str | None,
+    ) -> None:
+        """Delete a photo's physical files only if nothing else references them.
+
+        A photo blob is content-addressed and may be dedup-shared with another
+        member's photo or with a health-record attachment, so count both before
+        removing the stored file and its thumbnail.
+        """
+        from app.core.storage import delete_file
+        from app.models.base import Attachment
+
+        members_count = (
+            await self.db.execute(
+                select(func.count())
+                .select_from(FamilyMember)
+                .where(FamilyMember.photo_content_hash == content_hash)
+            )
+        ).scalar()
+        attachments_count = (
+            await self.db.execute(
+                select(func.count())
+                .select_from(Attachment)
+                .where(Attachment.content_hash == content_hash)
+            )
+        ).scalar()
+
+        if (members_count or 0) + (attachments_count or 0) > 0:
+            return
+
+        if photo_path:
+            try:
+                await delete_file(Path(photo_path))
+            except (FileNotFoundError, ValueError):
+                logger.warning("Photo file already gone: %s", photo_path)
+        if thumb_path:
+            thumb = Path(thumb_path)
+            if thumb.exists():
+                try:
+                    await delete_file(thumb)
+                except (FileNotFoundError, ValueError):
+                    pass
 
     @staticmethod
     def _build_vitals_payload(
