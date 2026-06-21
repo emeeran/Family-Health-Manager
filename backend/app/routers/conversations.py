@@ -4,7 +4,7 @@ import asyncio
 import json
 import logging
 from uuid import UUID
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Request
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
@@ -211,6 +211,7 @@ async def send_message_stream(
     request: MessageCreate,
     household: Household = Depends(get_household_from_token),
     db: AsyncSession = Depends(get_db),
+    http_request: Request = None,
 ):
     """Send a message and stream the AI response token-by-token via SSE."""
     result = await db.execute(
@@ -232,7 +233,7 @@ async def send_message_stream(
         household_id=household.id,
     )
 
-    response = make_sse_stream(stream, db)
+    response = make_sse_stream(stream, db, http_request)
 
     # Save the original stream BEFORE wrapping to avoid self-reference
     original_stream = response.body_iterator

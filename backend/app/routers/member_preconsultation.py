@@ -5,7 +5,7 @@ import logging
 from datetime import date, datetime, timezone
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
@@ -224,6 +224,7 @@ async def generate_pre_consultation_note_stream(
     household: Household = Depends(get_household_from_token),
     member: FamilyMember = Depends(require_member_in_household),
     db: AsyncSession = Depends(get_db),
+    request: Request = None,
 ):
     """Stream pre-consultation note generation with real-time progress (SSE)."""
     from app.services.ai_service import AIService
@@ -242,4 +243,5 @@ async def generate_pre_consultation_note_stream(
             comprehensive=True,
         ),
         db,
+        request,
     )

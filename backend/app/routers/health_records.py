@@ -10,6 +10,7 @@ from fastapi import (
     Depends,
     HTTPException,
     Query,
+    Request,
     UploadFile,
     File,
     Response,
@@ -108,6 +109,7 @@ async def extract_from_document_stream(
     household: Household = Depends(get_household_from_token),
     _member: FamilyMember = Depends(require_member_in_household),
     db: AsyncSession = Depends(get_db),
+    request: Request = None,
 ):
     """Upload a document and stream extraction progress over SSE.
 
@@ -160,6 +162,12 @@ async def extract_from_document_stream(
             while True:
                 done, _pending = await asyncio.wait({task}, timeout=15.0)
                 if task in done:
+                    break
+                # Stop work if the client went away so an abandoned tab doesn't
+                # hold the CPU-only Ollama worker hostage for minutes; the
+                # finally below cancels the extraction task.
+                if request is not None and await request.is_disconnected():
+                    logger.info("Client disconnected during extraction; cancelling")
                     break
                 yield ": keepalive\n\n"
 
@@ -349,6 +357,7 @@ async def extract_batch_stream(
     files: list[UploadFile] = File(...),
     household: Household = Depends(get_household_from_token),
     _member: FamilyMember = Depends(require_member_in_household),
+    request: Request = None,
 ):
     """Upload multiple medical documents and stream extraction over SSE.
 
@@ -444,6 +453,11 @@ async def extract_batch_stream(
                         }
                     )
                 except asyncio.TimeoutError:
+                    # Stop the batch if the client went away; the finally below
+                    # cancels all in-flight producers (and their Ollama calls).
+                    if request is not None and await request.is_disconnected():
+                        logger.info("Client disconnected during batch extraction; cancelling")
+                        break
                     yield ": keepalive\n\n"
 
             yield sse({"stage": "done", "total": total})
@@ -1447,6 +1461,7 @@ async def regenerate_record_insight_stream(
     household: Household = Depends(get_household_from_token),
     _member: FamilyMember = Depends(require_member_in_household),
     db: AsyncSession = Depends(get_db),
+    request: Request = None,
 ):
     """Stream AI insight generation with real-time progress (SSE)."""
     from app.services.ai_service import AIService
@@ -1471,6 +1486,7 @@ async def regenerate_record_insight_stream(
             comprehensive=True,
         ),
         db,
+        request,
     )
 
 
