@@ -4,7 +4,6 @@ import type {
   HealthRecordUpdate,
   HealthRecordResponse,
   ExtractionResponse,
-  BatchExtractionResponse,
   CheckFilenamesResponse,
   RecordInsightResponse,
   DedupResponse,
@@ -54,28 +53,7 @@ export function extractFromDocument(memberId: string, file: File) {
 }
 
 /**
- * Directory uploads and CPU-only providers (Ollama medgemma ~20 tok/s) make a
- * single batch run for many minutes. apiRequest's 30s default would abort the
- * fetch mid-extraction ("Request timed out"), so allow the request to live as
- * long as the backend's SSE streaming cap (1800s).
- */
-const BATCH_EXTRACT_TIMEOUT = 1_800_000;
-
-export function batchExtract(memberId: string, files: File[]) {
-  const formData = new FormData();
-  for (const f of files) {
-    formData.append("files", f);
-  }
-  return apiRequest<BatchExtractionResponse>(`/members/${memberId}/records/extract-batch`, {
-    method: "POST",
-    body: formData,
-    isFormData: true,
-    timeout: BATCH_EXTRACT_TIMEOUT,
-  });
-}
-
-/**
- * Streaming variant of {@link batchExtract}. The non-streaming endpoint blocks
+ * Streaming variant of batch extraction. The non-streaming endpoint blocks
  * for the entire multi-file CPU extraction (many minutes on Ollama) with no
  * bytes on the wire, so the idle connection gets severed → "Network error".
  * This streams one `file_complete` event per file plus 15s heartbeats that keep
