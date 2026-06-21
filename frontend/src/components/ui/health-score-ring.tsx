@@ -13,7 +13,9 @@ export function scoreTextColor(score: number): string {
 }
 
 interface HealthScoreRingProps {
-  score: number;
+  /** Score 0–100 for the coloured arc. Omit to render just the neutral track
+   *  ring (e.g. while the score is still loading) — the photo/initials still show. */
+  score?: number;
   initials?: string;
   /** When set, renders a circular photo inside the ring (priority over initials/score). */
   imageUrl?: string;
@@ -30,9 +32,10 @@ export const HealthScoreRing = memo(function HealthScoreRing({
 }: HealthScoreRingProps) {
   const r = (size - strokeWidth * 2) / 2;
   const circ = 2 * Math.PI * r;
-  const offset = circ - (score / 100) * circ;
-  const color = scoreColor(score);
   const cx = size / 2;
+  const hasScore = score !== undefined;
+  const offset = hasScore ? circ - (score / 100) * circ : circ;
+  const color = hasScore ? scoreColor(score) : "transparent";
   // Photo fills the inner circle (inside the ring stroke).
   const photoInset = strokeWidth + 1;
   const photoSize = size - photoInset * 2;
@@ -49,19 +52,21 @@ export const HealthScoreRing = memo(function HealthScoreRing({
           strokeWidth={strokeWidth}
           className="text-muted/20"
         />
-        <circle
-          cx={cx}
-          cy={cx}
-          r={r}
-          fill="none"
-          stroke={color}
-          strokeWidth={strokeWidth}
-          strokeDasharray={circ}
-          strokeDashoffset={offset}
-          strokeLinecap="round"
-          transform={`rotate(-90 ${cx} ${cx})`}
-          className="transition-all duration-700 ease-out"
-        />
+        {hasScore && (
+          <circle
+            cx={cx}
+            cy={cx}
+            r={r}
+            fill="none"
+            stroke={color}
+            strokeWidth={strokeWidth}
+            strokeDasharray={circ}
+            strokeDashoffset={offset}
+            strokeLinecap="round"
+            transform={`rotate(-90 ${cx} ${cx})`}
+            className="transition-all duration-700 ease-out"
+          />
+        )}
       </svg>
       {imageUrl ? (
         <img
@@ -75,11 +80,11 @@ export const HealthScoreRing = memo(function HealthScoreRing({
         <div className="absolute inset-0 flex flex-col items-center justify-center">
           {initials ? (
             <span className="text-[10px] font-bold text-foreground/70">{initials}</span>
-          ) : (
+          ) : hasScore ? (
             <span className="font-bold leading-none" style={{ color, fontSize: size * 0.28 }}>
               {score}
             </span>
-          )}
+          ) : null}
         </div>
       )}
     </div>

@@ -12,7 +12,6 @@ import {
   AlertTriangle,
 } from "lucide-react";
 import { Card } from "@/components/ui/card";
-import { Skeleton } from "@/components/ui/skeleton";
 import { Tooltip, TooltipTrigger, TooltipContent } from "@/components/ui/tooltip";
 import { RELATIONSHIP_LABELS, GENDER_LABELS, BMI_CATEGORY_COLORS } from "@/lib/constants";
 import { scoreTextColor } from "@/components/ui/health-score-ring";
@@ -102,10 +101,6 @@ function getRelColor(relationship: string) {
   return REL_COLORS[relationship] || REL_COLORS.others;
 }
 
-function getInitials(first: string, last: string): string {
-  return (first[0] + (last ? last[0] : "")).toUpperCase();
-}
-
 function allergySeverityColor(allergies: FamilyMemberResponse["allergies"]): string | null {
   if (!allergies || allergies.length === 0) return null;
   if (allergies.some((a) => a.severity === "severe")) return "text-red-500";
@@ -190,14 +185,8 @@ export const MemberCard = memo(function MemberCard({
       <div className="px-4 pt-3 pb-3">
         {/* Row 1: Health score ring + name + relationship */}
         <div className="flex items-start gap-3">
-          {/* Health Score Ring */}
-          {scoreData !== undefined ? (
-            <MemberAvatar member={member} score={scoreData.score} size={48} />
-          ) : (
-            <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-xl bg-muted/50">
-              <Skeleton className="h-12 w-12 rounded-xl" />
-            </div>
-          )}
+          {/* Health Score Ring + avatar (photo shows immediately; arc fills when score loads) */}
+          <MemberAvatar member={member} variant="ring" score={scoreData?.score} size={48} />
 
           <div className="flex-1 min-w-0">
             <div className="flex items-center justify-between gap-2">
@@ -321,7 +310,6 @@ interface MemberRowProps {
 export const MemberRow = memo(function MemberRow({ member, scoreData, onDelete }: MemberRowProps) {
   const color = getRelColor(member.relationship);
   const fullName = `${member.first_name} ${member.last_name}`;
-  const initials = getInitials(member.first_name, member.last_name);
   const age = computeAge(member.date_of_birth);
   const genderLabel = GENDER_LABELS[member.gender] || member.gender;
   const allergyCount = member.allergies?.length || 0;
@@ -336,15 +324,7 @@ export const MemberRow = memo(function MemberRow({ member, scoreData, onDelete }
 
       {/* Health score / avatar */}
       <Link to={`/people/${member.id}`} className="shrink-0">
-        {scoreData !== undefined ? (
-          <MemberAvatar member={member} score={scoreData.score} size={40} />
-        ) : (
-          <div
-            className={`flex h-10 w-10 items-center justify-center rounded-lg bg-gradient-to-br ${color.gradient} shadow-sm`}
-          >
-            <span className="text-xs font-bold text-white">{initials}</span>
-          </div>
-        )}
+        <MemberAvatar member={member} variant="ring" score={scoreData?.score} size={40} />
       </Link>
 
       {/* Name + details */}

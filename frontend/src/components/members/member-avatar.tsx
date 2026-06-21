@@ -16,8 +16,10 @@ export function memberPhotoUrl(member: FamilyMemberResponse): string {
 
 interface MemberAvatarProps {
   member: FamilyMemberResponse;
-  /** When provided, the avatar renders inside a health-score ring (cards).
-   *  Omit for a plain avatar (detail header, where the ring is separate). */
+  /** "ring" renders the avatar inside a health-score ring (member cards);
+   *  "plain" renders a rounded avatar (detail header). Defaults to "plain". */
+  variant?: "ring" | "plain";
+  /** Score for the ring arc (ring variant only; omitted → neutral ring while loading). */
   score?: number;
   size?: number;
   className?: string;
@@ -27,6 +29,7 @@ interface MemberAvatarProps {
  *  In ring mode the photo fills the centre of the health-score ring. */
 export const MemberAvatar = memo(function MemberAvatar({
   member,
+  variant = "plain",
   score,
   size = 48,
   className,
@@ -34,7 +37,7 @@ export const MemberAvatar = memo(function MemberAvatar({
   const initials = getInitials(member.first_name, member.last_name);
   const imageUrl = member.has_photo ? memberPhotoUrl(member) : undefined;
 
-  if (score !== undefined) {
+  if (variant === "ring") {
     return <HealthScoreRing score={score} initials={initials} imageUrl={imageUrl} size={size} />;
   }
 
