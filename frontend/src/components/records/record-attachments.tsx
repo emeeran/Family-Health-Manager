@@ -8,7 +8,11 @@ import {
   Upload,
   Printer,
 } from "lucide-react";
-import { uploadAttachment, getAttachmentBlob } from "@/lib/api/attachments";
+import {
+  uploadAttachment,
+  getAttachmentBlob,
+  getAttachmentThumbnailUrl,
+} from "@/lib/api/attachments";
 import { toast } from "sonner";
 import type { AttachmentBrief } from "@/lib/types/health-record";
 
@@ -172,21 +176,13 @@ function AttachmentRow({ attachment }: { attachment: AttachmentBrief }) {
     };
   }, []);
 
-  // Load image thumbnail lazily
+  // Show the server-generated thumbnail (small WebP/PNG) directly as an <img>
+  // src — fetching the full-resolution original just to render a 56px preview
+  // downloaded megabytes and allocated a blob URL per row.
   useEffect(() => {
     if (!isImage) return;
-    let cancelled = false;
-    getAttachmentBlob(attachment.id)
-      .then((url) => {
-        if (!cancelled) setThumbnailUrl(trackBlobUrl(url));
-      })
-      .catch(() => {
-        // Thumbnail load failed silently
-      });
-    return () => {
-      cancelled = true;
-    };
-  }, [isImage, attachment.id, trackBlobUrl]);
+    setThumbnailUrl(getAttachmentThumbnailUrl(attachment.id));
+  }, [isImage, attachment.id]);
 
   async function openAttachment() {
     try {

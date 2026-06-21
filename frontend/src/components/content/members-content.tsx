@@ -1,4 +1,4 @@
-import { useState, useMemo, useEffect, useCallback } from "react";
+import { useState, useMemo, useCallback } from "react";
 import { useNavigate, Link } from "react-router-dom";
 import { Plus, Search, ArrowUpDown } from "lucide-react";
 import {
@@ -12,13 +12,13 @@ import { TooltipProvider } from "@/components/ui/tooltip";
 import { ContextualEmptyState } from "@/components/shared/contextual-empty-state";
 import { ConfirmDialog } from "@/components/shared/confirm-dialog";
 import { ViewToggle, useViewPreference } from "@/components/shared/view-toggle";
-import { deleteMember, getBatchScores } from "@/lib/api/members";
+import { deleteMember } from "@/lib/api/members";
 import { useSWRConfig } from "swr";
 import { toast } from "sonner";
 import { computeAge } from "@/lib/utils";
 import { FamilySummaryBar } from "@/components/members/family-summary";
 import { MemberCard, MemberRow } from "@/components/members/member-card";
-import type { FamilyMemberResponse } from "@/lib/types/member";
+import type { FamilyMemberResponse, BatchScoresResponse } from "@/lib/types/member";
 
 const FILTER_GROUPS = [
   { key: "all", label: "All" },
@@ -57,6 +57,9 @@ interface ScoreData {
 
 interface MembersContentProps {
   members: FamilyMemberResponse[];
+  /** Batch scores, fetched in parallel with members by the parent page.
+   *  undefined = still loading; null = failed/empty. */
+  scores?: BatchScoresResponse | null;
 }
 
 function PageHeader({ count, total }: { count: number; total?: number }) {
@@ -73,7 +76,7 @@ function PageHeader({ count, total }: { count: number; total?: number }) {
   );
 }
 
-export function MembersContent({ members }: MembersContentProps) {
+export function MembersContent({ members, scores }: MembersContentProps) {
   const navigate = useNavigate();
   const { mutate: swrMutate } = useSWRConfig();
 
@@ -87,36 +90,23 @@ export function MembersContent({ members }: MembersContentProps) {
     return localStorage.getItem(SORT_KEY) || "name-asc";
   });
 
-  const [healthScores, setHealthScores] = useState<Record<string, ScoreData>>({});
-  const [scoresLoading, setScoresLoading] = useState(true);
+  // Scores are fetched in parallel with members by the parent (People page) so
+  // the cards don't render into a scoresLoading state waiting on a second
+  // sequential round-trip. undefined = still loading; null = failed/empty.
+  const scoresLoading = scores === undefined;
+  const healthScores = useMemo<Record<string, ScoreData>>(() => {
+    const map: Record<string, ScoreData> = {};
+    for (const m of scores?.members ?? []) {
+      map[m.member_id] = {
+        score: 0,
+        medications: m.active_medications_count,
+        conditions: 0,
+      };
+    }
+    return map;
+  }, [scores]);
 
   const activeMembers = useMemo(() => (members ?? []).filter((m) => m.is_active), [members]);
-
-  useEffect(() => {
-    if (!activeMembers.length) {
-      setScoresLoading(false);
-      return;
-    }
-    setScoresLoading(true);
-    getBatchScores()
-      .then((result) => {
-        const map: Record<string, ScoreData> = {};
-        for (const m of result.members) {
-          map[m.member_id] = {
-            score: 0,
-            medications: m.active_medications_count,
-            conditions: 0,
-          };
-        }
-        setHealthScores(map);
-      })
-      .catch(() => {
-        setHealthScores({});
-      })
-      .finally(() => {
-        setScoresLoading(false);
-      });
-  }, [activeMembers]);
 
   const handleRequestDelete = useCallback((id: string) => {
     setDeleteId(id);

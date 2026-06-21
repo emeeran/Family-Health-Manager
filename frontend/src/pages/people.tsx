@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { useSearchParams } from "react-router-dom";
 import useSWR from "swr";
-import { listMembers } from "@/lib/api/members";
+import { listMembers, getBatchScores } from "@/lib/api/members";
 import { listReminders } from "@/lib/api/reminders";
 import { ErrorState } from "@/components/shared/error-state";
 import { PageLoader } from "@/components/shared/page-loader";
@@ -29,6 +29,11 @@ export default function PeoplePage() {
     error: membersError,
     mutate: mutateMembers,
   } = useSWR("members", () => listMembers());
+
+  // Fetch batch scores in PARALLEL with members (not after) so the People page
+  // doesn't render cards then sit in a scoresLoading state waiting on a second
+  // sequential round-trip. Both SWR keys fire on mount.
+  const { data: scoresData } = useSWR("batch-scores", () => getBatchScores().catch(() => null));
 
   const {
     data: remindersData,
@@ -88,7 +93,7 @@ export default function PeoplePage() {
           ) : !membersData ? (
             <PageLoader title="Family Members" />
           ) : (
-            <MembersContent members={membersData} />
+            <MembersContent members={membersData} scores={scoresData} />
           )}
         </>
       )}
