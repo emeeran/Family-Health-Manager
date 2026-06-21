@@ -12,7 +12,7 @@ const ACCEPTED_TYPES = ["image/jpeg", "image/png", "image/webp"];
 
 /** Profile-photo control for the member detail header: shows the avatar with a
  *  small camera badge (upload/replace) and, when a photo exists, a remove
- *  badge. Both are always visible so the control is discoverable on touch. */
+ *  badge. Both badges are hidden until the avatar is hovered or focused. */
 export function MemberPhotoControl({
   member,
   size = 56,
@@ -64,8 +64,12 @@ export function MemberPhotoControl({
     }
   }
 
+  // Badges are hidden until the control is hovered (desktop) or focused (keyboard).
+  const badgeReveal =
+    "opacity-0 transition-opacity duration-150 group-hover/photo:opacity-100 focus-visible:opacity-100";
+
   return (
-    <div className="relative shrink-0" style={{ width: size, height: size }}>
+    <div className="group/photo relative shrink-0" style={{ width: size, height: size }}>
       <MemberAvatar member={member} size={size} />
 
       <button
@@ -74,7 +78,7 @@ export function MemberPhotoControl({
         disabled={busy}
         aria-label={member.has_photo ? "Change photo" : "Add photo"}
         title={member.has_photo ? "Change photo" : "Add photo"}
-        className="absolute -bottom-1 -right-1 inline-flex h-6 w-6 items-center justify-center rounded-full bg-primary text-primary-foreground shadow ring-2 ring-background hover:bg-primary/90 disabled:opacity-50"
+        className={`absolute -bottom-1 -right-1 inline-flex h-6 w-6 items-center justify-center rounded-full bg-primary text-primary-foreground shadow ring-2 ring-background hover:bg-primary/90 disabled:opacity-100 ${badgeReveal}`}
       >
         {busy ? <Loader2 className="h-3 w-3 animate-spin" /> : <Camera className="h-3 w-3" />}
       </button>
@@ -85,7 +89,7 @@ export function MemberPhotoControl({
           onClick={handleRemove}
           aria-label="Remove photo"
           title="Remove photo"
-          className="absolute -bottom-1 -left-1 inline-flex h-6 w-6 items-center justify-center rounded-full bg-destructive text-white shadow ring-2 ring-background hover:bg-destructive/90"
+          className={`absolute -bottom-1 -left-1 inline-flex h-6 w-6 items-center justify-center rounded-full bg-destructive text-white shadow ring-2 ring-background hover:bg-destructive/90 ${badgeReveal}`}
         >
           <Trash2 className="h-3 w-3" />
         </button>
