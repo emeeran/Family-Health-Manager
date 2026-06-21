@@ -44,7 +44,7 @@ interface RecordFormProps {
   action: (prevState: unknown, formData: FormData) => Promise<unknown>;
   providers: ProviderResponse[];
   onProviderCreated?: (provider: ProviderResponse) => void;
-  onSaveComplete?: () => void;
+  onSaveComplete?: (recordId?: string) => void;
   record?: HealthRecordResponse;
   memberId?: string;
   defaultType?: RecordType;
@@ -128,6 +128,7 @@ export function RecordFormWizard({
     extraction,
     nl,
     medicineSuggestions,
+    state: actionState,
   } = useRecordFormState({
     action,
     providers: providersProp,
@@ -814,7 +815,10 @@ export function RecordFormWizard({
           open={showMedSyncDialog}
           onOpenChange={(open) => {
             setShowMedSyncDialog(open);
-            if (!open) onSaveComplete?.();
+            if (!open) {
+              const createdId = (actionState as { record?: { id?: string } } | null)?.record?.id;
+              onSaveComplete?.(createdId);
+            }
           }}
           diff={medSyncDiff}
           onApply={async (added, updated, removed) => {
