@@ -1,5 +1,6 @@
 """Main FastAPI application entry point."""
 
+import asyncio
 from datetime import datetime, timezone
 from contextlib import asynccontextmanager
 import logging
@@ -150,7 +151,15 @@ async def lifespan(app: FastAPI):
     logger.info("Application startup complete!")
     yield
     # Shutdown
-    await stop_scheduler()
+    # Let in-flight scheduled jobs finish (bounded) before tearing down the DB
+    # engine — without this, engine.dispose() can pull the connection pool out
+    # from under a running backup/anomaly job. A 30s ceiling keeps a stuck job
+    # from hanging shutdown; the atomic backup ensures a force-kill leaves no
+    # corrupt archive regardless.
+    try:
+        await asyncio.wait_for(stop_scheduler(), timeout=30)
+    except asyncio.TimeoutError:
+        logger.warning("Scheduler shutdown timed out after 30s — proceeding")
     from app.core.redis import close_redis
 
     await close_redis()
