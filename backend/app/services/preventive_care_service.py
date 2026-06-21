@@ -98,7 +98,11 @@ class PreventiveCareService:
     def __init__(self, db: AsyncSession):
         self.db = db
 
-    async def generate_recommendations(self, member: FamilyMember) -> list[dict]:
+    async def generate_recommendations(
+        self,
+        member: FamilyMember,
+        overdue_followups: list[dict] | None = None,
+    ) -> list[dict]:
         """Generate personalized preventive care recommendations."""
         today = date.today()
         age = (
@@ -143,7 +147,11 @@ class PreventiveCareService:
                     )
 
         # 3. Recent overdue follow-ups (within MAX_OVERDUE_DAYS only)
-        overdue = await self._get_overdue_followups(member.id, today)
+        overdue = (
+            overdue_followups
+            if overdue_followups is not None
+            else await self._get_overdue_followups(member.id, today)
+        )
         for item in overdue:
             recommendations.append(
                 {
@@ -192,3 +200,43 @@ class PreventiveCareService:
                     }
                 )
         return overdue
+
+    async def get_overdue_followups_batch(
+        self, member_ids: list[UUID], today: date
+    ) -> dict[str, list[dict]]:
+        """Batched variant of _get_overdue_followups for every member at once.
+
+        Returns ``{str(member_id): [overdue dicts]}`` so a dashboard loading N
+        members pays one query instead of N — without this the per-member
+        generate_recommendations gather re-introduces linear fan-out over an
+        otherwise-batched summary. Per-member date/type dedup is preserved.
+        """
+        grouped: dict[str, list[dict]] = {str(mid): [] for mid in member_ids}
+        if not member_ids:
+            return grouped
+        result = await self.db.execute(
+            select(HealthRecord).where(
+                HealthRecord.family_member_id.in_(member_ids),
+                HealthRecord.is_deleted.is_(False),
+                HealthRecord.next_review_date.isnot(None),
+                HealthRecord.next_review_date < today,
+                HealthRecord.next_review_date >= today - timedelta(days=MAX_OVERDUE_DAYS),
+            )
+        )
+        seen: dict[str, set[str]] = {str(mid): set() for mid in member_ids}
+        for r in result.scalars().all():
+            if not r.next_review_date:
+                continue
+            mid = str(r.family_member_id)
+            key = f"{r.next_review_date}-{r.record_type.value}"
+            if key in seen[mid]:
+                continue
+            seen[mid].add(key)
+            grouped.setdefault(mid, []).append(
+                {
+                    "title": r.record_type.value.replace("_", " ").title(),
+                    "date": str(r.next_review_date),
+                    "days_overdue": (today - r.next_review_date).days,
+                }
+            )
+        return grouped
