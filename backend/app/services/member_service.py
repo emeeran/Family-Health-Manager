@@ -7,12 +7,13 @@ from datetime import date, datetime, timezone, timedelta
 from pathlib import Path
 from uuid import UUID
 from fastapi import BackgroundTasks, UploadFile
-from sqlalchemy import select, func
+from sqlalchemy import select, func, or_
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import joinedload
 from app.core.database import update_model
 from app.models.base import (
     AIInsight,
+    Conversation,
     FamilyMember,
     HealthRecord,
     ProviderAssignment,
@@ -663,12 +664,26 @@ class MemberService:
         return []
 
     async def _detail_latest_insight(self, member_id: UUID) -> dict | None:
+        # Scope to THIS member: an insight linked to one of the member's records
+        # or one of the member's conversations. Without this the query returned
+        # the global latest insight across every household (a cross-tenant leak
+        # on the member-detail page).
+        member_record_ids = select(HealthRecord.id).where(
+            HealthRecord.family_member_id == member_id
+        )
+        member_conv_ids = select(Conversation.id).where(
+            Conversation.family_member_id == member_id
+        )
         result = await self.db.execute(
             select(AIInsight)
             .where(
                 AIInsight.prompt.notlike("__drug_interactions__%"),
                 AIInsight.prompt.notlike("__preconsult__%"),
                 AIInsight.prompt.notlike("__smartreport__%"),
+                or_(
+                    AIInsight.health_record_id.in_(member_record_ids),
+                    AIInsight.conversation_id.in_(member_conv_ids),
+                ),
             )
             .order_by(AIInsight.generated_at.desc())
             .limit(1)
