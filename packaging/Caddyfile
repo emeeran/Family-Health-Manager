@@ -15,13 +15,19 @@
 	# Static frontend files (built by Vite)
 	handle {
 		root * /opt/health-manager/frontend
-		
+
+		# Vite emits content-hashed bundles under /assets/* — they're immutable,
+		# so cache them aggressively (a year) to skip revalidation round-trips.
+		@indexhtml path /index.html / /
+		header @indexhtml Cache-Control "no-cache"
+
 		# Fallback to index.html only for paths that don't look like static assets
 		@not_static {
 			not path *.js *.css *.png *.jpg *.jpeg *.gif *.svg *.ico *.woff *.woff2 *.json *.map
 		}
 		rewrite @not_static /index.html
-		
+
+		header /assets/* Cache-Control "public, max-age=31536000, immutable"
 		file_server
 	}
 
