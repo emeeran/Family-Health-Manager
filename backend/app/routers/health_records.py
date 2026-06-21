@@ -781,31 +781,10 @@ async def create_record(
                 except ValueError:
                     logger.warning("Staging file %s not found, skipping", fid)
 
-    # Remove outdated prescriptions if this record has medications synced
-    if request.record_type == RecordType.DOCTOR_VISIT and request.clinical_data:
-        try:
-            from app.services.medication_service import MedicationService
-
-            parsed_cd = (
-                json.loads(request.clinical_data)
-                if isinstance(request.clinical_data, str)
-                else request.clinical_data
-            )
-            if isinstance(parsed_cd, dict) and parsed_cd.get("_medication_sync") is not False:
-                prescriptions = parsed_cd.get("prescriptions", [])
-                if isinstance(prescriptions, list):
-                    med_names = [
-                        rx.get("medicine", "").strip()
-                        for rx in prescriptions
-                        if rx.get("medicine", "").strip()
-                    ]
-                    if med_names:
-                        med_svc = MedicationService(db)
-                        await med_svc.remove_outdated_prescriptions(
-                            member_id, med_names, protect_record_id=record.id
-                        )
-        except (json.JSONDecodeError, ValueError, TypeError, AttributeError) as exc:
-            logger.warning("Outdated prescription cleanup skipped: %s", exc)
+    # NOTE: we deliberately do NOT prune older duplicate prescriptions here.
+    # The rule is "latest Rx wins, then offer to modify" — dedup runs only when
+    # the user confirms the medication-sync dialog (apply_medication_changes),
+    # not silently on create. See MedicationService.remove_outdated_prescriptions.
 
     # Performance optimization: sync medications and lab results in parallel
     # using asyncio.gather() instead of running them sequentially. Each sync

@@ -1,11 +1,9 @@
-"""Regression: a just-created doctor_visit must not be soft-deleted by the
-outdated-prescription cleanup that runs during create.
+"""Medication dedup behavior: "latest Rx wins, then offer to modify".
 
-remove_outdated_prescriptions keeps only the newest prescription per medicine
-and soft-deletes records whose prescriptions are all stripped as older
-duplicates. When a new record has a past date and a medicine that already
-exists in a newer record, the new record was being soft-deleted mid-create — so
-the handler still returned it (201) but the post-save GET /records/{id} 404'd.
+Creating a record must NOT silently prune or delete other records' prescriptions
+— the dedup runs only when the user confirms the medication-sync dialog. And
+when it does run, it modifies prescriptions (keeps the newest) without ever
+soft-deleting a visit record.
 """
 
 import json
@@ -46,24 +44,63 @@ async def _create_member(client) -> str:
     return resp.json()["id"]
 
 
-async def test_created_record_survives_duplicate_medication_in_newer_record(auth_client):
+def _prescriptions(resp_json: dict) -> list[dict]:
+    parsed = json.loads(resp_json["clinical_data"])
+    return parsed.get("prescriptions", []) if isinstance(parsed, dict) else []
+
+
+async def test_create_does_not_silently_dedup_other_records(auth_client):
+    """Creating a record with a duplicate medicine must not touch other records
+    — no silent pruning/deletion on create. The med-sync dialog offers that."""
     member_id = await _create_member(auth_client)
 
-    # Existing NEWER record with medicine X.
     newer = await auth_client.post(
         f"/api/v1/members/{member_id}/records", json=_visit_with_rx("Metformin", "2026-06-21")
     )
-    assert newer.status_code == 201, newer.text
-
-    # Create an OLDER record with the same medicine — this is the regression:
-    # remove_outdated_prescriptions used to soft-delete it mid-create.
-    created = await auth_client.post(
+    older = await auth_client.post(
         f"/api/v1/members/{member_id}/records", json=_visit_with_rx("Metformin", "2024-01-15")
     )
-    assert created.status_code == 201, created.text
-    created_id = created.json()["id"]
+    assert older.status_code == 201, older.text
 
-    # The just-created record must still be retrievable (not soft-deleted).
-    fetched = await auth_client.get(f"/api/v1/members/{member_id}/records/{created_id}")
-    assert fetched.status_code == 200, fetched.text
-    assert fetched.json()["is_deleted"] is False
+    # Both records survive, and both still carry their prescription (no silent
+    # dedup happened on create).
+    for rid in (newer.json()["id"], older.json()["id"]):
+        got = await auth_client.get(f"/api/v1/members/{member_id}/records/{rid}")
+        assert got.status_code == 200, got.text
+        assert got.json()["is_deleted"] is False
+        assert any(rx["medicine"] == "Metformin" for rx in _prescriptions(got.json()))
+
+
+async def test_med_sync_modifies_prescriptions_without_deleting_records(auth_client):
+    """When the med-sync dialog is applied (latest Rx wins), the older duplicate
+    prescription is pruned from clinical_data but the visit record is preserved
+    (not soft-deleted)."""
+    member_id = await _create_member(auth_client)
+
+    newer = (
+        await auth_client.post(
+            f"/api/v1/members/{member_id}/records", json=_visit_with_rx("Metformin", "2026-06-21")
+        )
+    ).json()
+    older = (
+        await auth_client.post(
+            f"/api/v1/members/{member_id}/records", json=_visit_with_rx("Metformin", "2026-01-15")
+        )
+    ).json()
+
+    # Apply the med-sync offer for Metformin (the dialog's confirm action).
+    resp = await auth_client.post(
+        f"/api/v1/members/{member_id}/medications/apply-sync",
+        json={"apply_added": [], "apply_updated": [], "apply_removed": ["Metformin"]},
+    )
+    assert resp.status_code == 200, resp.text
+
+    older_after = await auth_client.get(f"/api/v1/members/{member_id}/records/{older['id']}")
+    newer_after = await auth_client.get(f"/api/v1/members/{member_id}/records/{newer['id']}")
+    assert older_after.status_code == 200 and newer_after.status_code == 200
+
+    # Latest Rx wins: the NEWER record keeps Metformin; the OLDER record's
+    # duplicate is pruned — but the older record itself is NOT deleted.
+    assert any(rx["medicine"] == "Metformin" for rx in _prescriptions(newer_after.json()))
+    assert not any(rx["medicine"] == "Metformin" for rx in _prescriptions(older_after.json()))
+    assert older_after.json()["is_deleted"] is False
