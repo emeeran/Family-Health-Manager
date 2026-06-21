@@ -171,7 +171,8 @@ async def add_medication(
         await med_svc.remove_outdated_prescriptions(member_id, [med_name])
 
     await db.commit()
-    await cache.invalidate_async(f"dashboard:{member_id}")
+    await cache.invalidate_async(f"dashboard_summary:{household.id}")
+    await cache.invalidate_async(f"household_records:{household.id}")
     return {
         "id": str(record.id),
         "prescription": rx,
@@ -212,7 +213,8 @@ async def update_medication(
     except (json.JSONDecodeError, TypeError, AttributeError):
         raise HTTPException(status_code=400, detail="Cannot edit unstructured record")
 
-    await cache.invalidate_async(f"dashboard:{member_id}")
+    await cache.invalidate_async(f"dashboard_summary:{household.id}")
+    await cache.invalidate_async(f"household_records:{household.id}")
     return {"updated": True}
 
 
@@ -254,7 +256,8 @@ async def delete_medication(
     except (json.JSONDecodeError, TypeError, AttributeError):
         raise HTTPException(status_code=400, detail="Cannot edit unstructured record")
 
-    await cache.invalidate_async(f"dashboard:{member_id}")
+    await cache.invalidate_async(f"dashboard_summary:{household.id}")
+    await cache.invalidate_async(f"household_records:{household.id}")
     return {"deleted": True}
 
 
@@ -336,7 +339,8 @@ async def bulk_delete_medications(
             logger.exception("bulk-delete: failed to process record %s", record_id_str)
             continue
 
-    await cache.invalidate_async(f"dashboard:{member_id}")
+    await cache.invalidate_async(f"dashboard_summary:{household.id}")
+    await cache.invalidate_async(f"household_records:{household.id}")
     return {"deleted": deleted}
 
 
@@ -374,5 +378,6 @@ async def apply_medication_sync(
     )
     await db.commit()
 
-    await cache.invalidate_async(f"dashboard:{member_id}")
+    await cache.invalidate_async(f"dashboard_summary:{household.id}")
+    await cache.invalidate_async(f"household_records:{household.id}")
     return result
