@@ -389,6 +389,19 @@ async def get_message_verification(
     if not conv.scalar_one_or_none():
         raise HTTPException(status_code=404, detail="Conversation not found")
 
+    # Authorization: confirm the message belongs to this conversation before
+    # returning its verification. A caller's own valid conversation_id plus a
+    # victim's message_id would otherwise leak another conversation's
+    # verification (verifier provider, warnings, claim counts).
+    msg = await db.execute(
+        select(Message).where(
+            Message.id == message_id,
+            Message.conversation_id == conversation_id,
+        )
+    )
+    if not msg.scalar_one_or_none():
+        raise HTTPException(status_code=404, detail="Message not found")
+
     result = await db.execute(
         select(ResponseVerification).where(ResponseVerification.message_id == message_id)
     )

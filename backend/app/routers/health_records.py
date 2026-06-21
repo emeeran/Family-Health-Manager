@@ -1311,6 +1311,16 @@ async def get_record_insight(
     db: AsyncSession = Depends(get_db),
 ):
     """Get the latest AI-generated insight for a health record."""
+    # Authorization: confirm the record belongs to this member before
+    # returning its insight. The path ``member_id`` only proves membership in
+    # the household — without this check a guessed ``record_id`` returns
+    # another household's AI insight (prompt + response + verification).
+    record_service = HealthRecordService(db)
+    try:
+        await record_service.get_record(member_id, record_id)
+    except ValueError:
+        raise HTTPException(status_code=404, detail="Record not found")
+
     from sqlalchemy import select
     from app.models.base import AIInsight
 
@@ -1363,6 +1373,14 @@ async def get_insight_verification(
     db: AsyncSession = Depends(get_db),
 ):
     """Poll for insight verification result."""
+    # Authorization: same ownership guard as get_record_insight — the path
+    # member_id does not prove record_id belongs to this member.
+    record_service = HealthRecordService(db)
+    try:
+        await record_service.get_record(member_id, record_id)
+    except ValueError:
+        raise HTTPException(status_code=404, detail="Record not found")
+
     from sqlalchemy import select
     from app.models.base import AIInsight
 
