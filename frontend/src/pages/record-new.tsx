@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { useParams, useSearchParams } from "react-router-dom";
+import { useParams, useSearchParams, useNavigate } from "react-router-dom";
 import { listProviders } from "@/lib/api/providers";
 import { createRecord } from "@/lib/api/records";
 import { RecordForm } from "@/components/records/record-form";
@@ -22,6 +22,7 @@ interface ActionResult {
 
 export default function NewRecordPage() {
   const { memberId } = useParams<{ memberId: string }>();
+  const navigate = useNavigate();
   const [searchParams] = useSearchParams();
   const defaultType = (searchParams.get("type") as RecordType) || undefined;
   const defaultProviderId = searchParams.get("provider_id") || undefined;
@@ -112,8 +113,8 @@ export default function NewRecordPage() {
               defaultProviderId={defaultProviderId}
               defaultChiefComplaint={defaultChiefComplaint}
               initialNLText={initialNLText}
-              onSaveComplete={() => {
-                /* stay on page — form resets itself */
+              onSaveComplete={(recordId) => {
+                if (recordId) navigate(`/people/${memberId}/records/${recordId}`);
               }}
             />
           ) : (
@@ -124,8 +125,8 @@ export default function NewRecordPage() {
               defaultType={defaultType}
               defaultProviderId={defaultProviderId}
               defaultChiefComplaint={defaultChiefComplaint}
-              onSaveComplete={() => {
-                /* stay on page — form resets itself */
+              onSaveComplete={(recordId) => {
+                if (recordId) navigate(`/people/${memberId}/records/${recordId}`);
               }}
             />
           )}

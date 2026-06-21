@@ -36,7 +36,7 @@ export interface UseRecordFormStateArgs {
   action: (prevState: unknown, formData: FormData) => Promise<unknown>;
   providers: ProviderResponse[];
   onProviderCreated?: (provider: ProviderResponse) => void;
-  onSaveComplete?: () => void;
+  onSaveComplete?: (recordId?: string) => void;
   record?: HealthRecordResponse;
   memberId?: string;
   defaultType?: RecordType;
@@ -422,17 +422,17 @@ export function useRecordFormState({
                   setShowMedSyncDialog(true);
                 } else {
                   resetForm();
-                  onSaveComplete?.();
+                  onSaveComplete?.(recordId);
                 }
               })
               .catch(() => {
                 resetForm();
-                onSaveComplete?.();
+                onSaveComplete?.(recordId);
               });
           });
         } else {
           resetForm();
-          onSaveComplete?.();
+          onSaveComplete?.(recordId);
         }
       }
     }
