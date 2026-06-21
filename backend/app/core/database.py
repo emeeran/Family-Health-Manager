@@ -52,8 +52,11 @@ if settings.DATABASE_URL.startswith("sqlite"):
         cursor = dbapi_connection.cursor()
         cursor.execute("PRAGMA journal_mode=WAL")
         # Wait (ms) on a locked DB instead of failing immediately — guards
-        # against transient "database is locked" under concurrent writes.
-        cursor.execute("PRAGMA busy_timeout=5000")
+        # against transient "database is locked" under concurrent writes. 30s
+        # (not 5s): under `uvicorn --workers 2`, batch extraction + record saves
+        # + background summary/insight tasks write concurrently; 5s was too short
+        # and surfaced as recurring OperationalError "database is locked".
+        cursor.execute("PRAGMA busy_timeout=30000")
         # NOTE: PRAGMA foreign_keys=ON is intentionally NOT set. Existing
         # databases were created/populated with FK enforcement off, and the
         # schema stores UUIDs inconsistently (users.id as 32-char hex via the

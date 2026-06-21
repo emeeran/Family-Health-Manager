@@ -4,8 +4,16 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Progress } from "@/components/ui/progress";
 import { Badge } from "@/components/ui/badge";
-import { batchExtract, checkFilenames, createRecord } from "@/lib/api/records";
+import { batchExtractStream, checkFilenames, createRecord } from "@/lib/api/records";
 import { ALLOWED_MIME_TYPES, MAX_FILE_SIZE } from "@/lib/constants";
+import { chunkFilesForBatch } from "@/lib/batch-chunks";
+import {
+  createBatchAccumulator,
+  applyBatchStreamEvent,
+  finalizeBatch,
+  makeErrorItem,
+  type BatchStreamEvent,
+} from "@/lib/batch-stream";
 import { BatchRecordCard, type CardStatus } from "./batch-record-card";
 import type { BatchExtractionItem } from "@/lib/types/health-record";
 import type { RecordType } from "@/lib/types/enums";
@@ -252,55 +260,78 @@ export function BatchUploadQueue({ memberId, onComplete, initialFiles }: BatchUp
     setPhase("extracting");
     setExtractProgress(5);
 
-    // Chunk files into groups under 90MB to stay within server body limit
-    const CHUNK_SIZE = 90 * 1024 * 1024;
-    const chunks: File[][] = [];
-    let currentChunk: File[] = [];
-    let currentSize = 0;
-
-    for (const f of filesToExtract) {
-      if (currentSize + f.size > CHUNK_SIZE && currentChunk.length > 0) {
-        chunks.push(currentChunk);
-        currentChunk = [];
-        currentSize = 0;
-      }
-      currentChunk.push(f);
-      currentSize += f.size;
-    }
-    if (currentChunk.length > 0) chunks.push(currentChunk);
+    // Split into chunks that each satisfy the backend's two constraints
+    // (≤20 files AND ≤90MB). See chunkFilesForBatch for details. Each chunk is
+    // its own streaming request with a per-chunk index space (offset shifts it
+    // into the global array). Streaming + 15s heartbeats keep the connection
+    // alive during the multi-minute CPU extraction — the non-streaming path was
+    // severed ("Network error") on long silent runs.
+    const chunks = chunkFilesForBatch(filesToExtract);
+    const totalFiles = filesToExtract.length;
 
     const abortCtrl = new AbortController();
+    let currentCancel: (() => void) | null = null;
+    // If a future cancel path aborts the controller, tear down the in-flight stream.
+    abortCtrl.signal.addEventListener("abort", () => currentCancel?.());
 
     const extractPromise = (async () => {
-      let allExtractions: BatchExtractionItem[] = [];
+      const acc = createBatchAccumulator(totalFiles);
+      let chunkOffset = 0;
 
       for (let c = 0; c < chunks.length; c++) {
         if (abortCtrl.signal.aborted) break;
 
-        // Update progress: reserve 5–95% range across chunks
-        const pct = 5 + Math.round(((c + 1) / chunks.length) * 90);
-        if (mountedRef.current) setExtractProgress(pct);
+        const chunk = chunks[c];
+        const offset = chunkOffset;
+        if (mountedRef.current) {
+          setExtractProgress(5 + Math.round((acc.completed / totalFiles) * 90));
+        }
+
+        // Mark every unfilled slot in this chunk as errored (used on a stream
+        // error event or a rejected promise — e.g. catastrophic backend failure).
+        const fillChunkErrors = (msg: string) => {
+          chunk.forEach((f, i) => {
+            const idx = offset + i;
+            if (idx < totalFiles && acc.results[idx] === null) {
+              acc.results[idx] = makeErrorItem(f.name, msg);
+              acc.completed += 1;
+            }
+          });
+        };
+
+        const stream = batchExtractStream(memberId, chunk, (event) => {
+          const ev = event as BatchStreamEvent;
+          if (ev.stage === "error" && typeof ev.message === "string") {
+            fillChunkErrors(ev.message);
+          } else {
+            applyBatchStreamEvent(acc, offset, ev);
+          }
+          if (mountedRef.current) {
+            setExtractProgress(5 + Math.round((acc.completed / totalFiles) * 90));
+          }
+        });
+        currentCancel = stream.cancel;
 
         try {
-          const result = await batchExtract(memberId, chunks[c]);
-          allExtractions = allExtractions.concat(result.extractions);
+          await stream.promise;
         } catch (e) {
-          const chunkErrors: BatchExtractionItem[] = chunks[c].map((f) => ({
-            filename: f.name,
-            staging_file_id: null,
-            extracted: null,
-            transcription: null,
-            is_duplicate: false,
-            duplicate_of_id: null,
-            duplicate_of_diagnosis: null,
-            error: e instanceof Error ? e.message : "Extraction failed",
-            verification: null,
-          }));
-          allExtractions = allExtractions.concat(chunkErrors);
+          fillChunkErrors(e instanceof Error ? e.message : "Extraction failed");
+          if (mountedRef.current) {
+            setExtractProgress(5 + Math.round((acc.completed / totalFiles) * 90));
+          }
+        } finally {
+          currentCancel = null;
         }
+
+        chunkOffset += chunk.length;
       }
 
-      return allExtractions;
+      // Fill any remaining gaps (aborted mid-chunk / missed events) so the
+      // review + auto-save paths never observe a null.
+      return finalizeBatch(
+        acc,
+        filesToExtract.map((f) => f.name)
+      );
     })();
 
     // Register as background task

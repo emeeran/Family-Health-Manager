@@ -77,6 +77,34 @@ export function batchExtract(memberId: string, files: File[]) {
 }
 
 /**
+ * Streaming variant of {@link batchExtract}. The non-streaming endpoint blocks
+ * for the entire multi-file CPU extraction (many minutes on Ollama) with no
+ * bytes on the wire, so the idle connection gets severed → "Network error".
+ * This streams one `file_complete` event per file plus 15s heartbeats that keep
+ * the connection alive — mirroring `extractDocumentStream`. `streamRequest`
+ * already carries the 30-min timeout, 401 refresh, and a `cancel()` that the
+ * caller wires into its abort path.
+ *
+ * SSE events: `{stage:"start",total}` → `{stage:"file_complete",index,total,item}`
+ * (one per file, completion order) → `{stage:"done",total}` | `{stage:"error",message}`.
+ */
+export function batchExtractStream(
+  memberId: string,
+  files: File[],
+  onEvent: (event: Record<string, unknown>) => void
+) {
+  const formData = new FormData();
+  for (const f of files) {
+    formData.append("files", f);
+  }
+  return streamRequest(`/members/${memberId}/records/extract-batch/stream`, {
+    body: formData,
+    isFormData: true,
+    onEvent,
+  });
+}
+
+/**
  * Stream extraction progress + result over SSE (Phase 2). Emits events:
  * {stage:"secured"} → {stage:"extracting"} → {stage:"complete", extracted, ...}
  * | {stage:"error", message}. The blocking extractFromDocument is retained as

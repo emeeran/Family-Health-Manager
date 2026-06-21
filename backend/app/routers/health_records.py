@@ -19,7 +19,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, update
 from sqlalchemy.orm import joinedload
 import json
-from app.core.database import get_db
+from app.core.database import get_db, SessionLocal
 from app.core.deps import get_household_from_token, require_member_in_household, decode_cursor
 from app.core.sse import make_sse_stream
 from app.core.storage import validate_file, save_staged_secured, plaintext_path
@@ -333,6 +333,126 @@ async def extract_batch(
     await asyncio.gather(*[_verify_item(item) for item in results])
 
     return BatchExtractionResponse(extractions=results)
+
+
+@router.post("/extract-batch/stream")
+async def extract_batch_stream(
+    member_id: UUID,
+    files: list[UploadFile] = File(...),
+    household: Household = Depends(get_household_from_token),
+    _member: FamilyMember = Depends(require_member_in_household),
+):
+    """Upload multiple medical documents and stream extraction over SSE.
+
+    Streaming variant of ``/extract-batch``. The non-streaming endpoint blocks
+    for the full multi-file CPU extraction (many minutes on CPU-only Ollama)
+    with no bytes on the wire, so the idle connection gets severed and the
+    browser reports a generic ``TypeError`` ("Network error"). This endpoint
+    emits one SSE event per file as it finishes plus a 15s heartbeat comment
+    (``: keepalive``) that keeps the connection alive during the long wait —
+    mirroring ``/extract/stream``.
+
+    Events (one JSON object per ``data:`` line):
+
+    * ``{stage:"start", total:N}``
+    * ``{stage:"file_complete", index, total, item:{BatchExtractionItemSchema}}``
+      — one per file, in completion order (use ``index`` to restore upload order)
+    * ``{stage:"done", total:N}``
+    * ``{stage:"error", message}`` — catastrophic only; per-file errors ride in
+      ``item.error``
+
+    Each file's extraction + verification runs in its **own short-lived DB
+    session** (``SessionLocal``) so the request session is never shared across
+    the concurrent fan-out — an ``AsyncSession`` is not concurrency-safe, which
+    is why ``extract_batch``'s shared-session verification was a latent bug.
+    """
+    if len(files) > 20:
+        raise HTTPException(status_code=400, detail="Maximum 20 files per batch")
+
+    from app.services.verification_service import VerificationService
+
+    total = len(files)
+
+    async def event_stream():
+        def sse(payload: dict) -> str:
+            return f"data: {json.dumps(payload, default=str)}\n\n"
+
+        yield sse({"stage": "start", "total": total})
+
+        queue: asyncio.Queue[tuple[int, BatchExtractionItemSchema]] = asyncio.Queue()
+        sem = asyncio.Semaphore(BATCH_EXTRACTION_CONCURRENCY)
+
+        async def producer(index: int, file: UploadFile) -> None:
+            # Contract: always enqueue exactly one item, even on failure, so the
+            # consumer's counted-done loop can never deadlock waiting on `total`.
+            item: BatchExtractionItemSchema
+            async with sem:
+                try:
+                    async with SessionLocal() as pdb:
+                        # Per-producer session + AIService: extraction and
+                        # verification never touch a session concurrently with a
+                        # sibling coroutine (the latent extract_batch hazard).
+                        ai = AIService(pdb, household_id=household.id)
+                        item = await _extract_single_file(file, ai)
+                        if item.extracted and not item.error:
+                            try:
+                                verification_svc = VerificationService(pdb, ai)
+                                item.verification = await verification_svc.verify_extraction(
+                                    item.extracted.model_dump(),
+                                    original_provider="",
+                                )
+                            except Exception as exc:
+                                logger.debug(
+                                    "Batch verification skipped for %s: %s",
+                                    item.filename,
+                                    exc,
+                                )
+                except Exception as exc:  # safety net — never exit without enqueuing
+                    logger.error(
+                        "Batch stream producer failed for %s: %s", file.filename, exc
+                    )
+                    item = BatchExtractionItemSchema(
+                        filename=file.filename or "unknown",
+                        error=f"Extraction failed: {exc}",
+                    )
+                await queue.put((index, item))
+
+        producers = [asyncio.create_task(producer(i, f)) for i, f in enumerate(files)]
+        try:
+            received = 0
+            # Heartbeat while files complete: ": keepalive" lines are ignored by
+            # the client parser but flush the connection, defeating idle timeouts
+            # on slow CPU-only models that can take minutes between files.
+            while received < total:
+                try:
+                    index, item = await asyncio.wait_for(queue.get(), timeout=15.0)
+                    received += 1
+                    yield sse(
+                        {
+                            "stage": "file_complete",
+                            "index": index,
+                            "total": total,
+                            "item": item.model_dump(mode="json"),
+                        }
+                    )
+                except asyncio.TimeoutError:
+                    yield ": keepalive\n\n"
+
+            yield sse({"stage": "done", "total": total})
+        except Exception as exc:
+            logger.error("Batch extraction stream failed: %s", exc)
+            yield sse({"stage": "error", "message": str(exc)})
+        finally:
+            for task in producers:
+                if not task.done():
+                    task.cancel()
+            for task in producers:
+                try:
+                    await task
+                except (asyncio.CancelledError, Exception):
+                    pass
+
+    return StreamingResponse(event_stream(), media_type="text/event-stream")
 
 
 @router.post("/check-filenames", response_model=CheckFilenamesResponse)
