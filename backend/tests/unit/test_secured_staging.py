@@ -102,6 +102,22 @@ async def test_finalize_dedups_identical_content(isolated_storage):
     assert len(list(shard.glob(f"{h1}*"))) == 1  # exactly one physical file
 
 
+async def test_save_staged_secured_records_member_id(isolated_storage):
+    """The owning member_id is recorded in the sidecar so the staging-download
+    endpoint can verify ownership (IDOR defense — a leaked staging id must not
+    stream another member's document)."""
+    upload = _pdf_upload()
+    _path, unique_filename, _hash = await save_staged_secured(upload, member_id="mem-123")
+    meta = _read_staging_meta(unique_filename)
+    assert meta is not None
+    assert meta["member_id"] == "mem-123"
+
+    # Without a member_id the field is None (legacy/anonymous staging allowed
+    # through the ownership check during rollout).
+    _p2, name2, _h2 = await save_staged_secured(_pdf_upload())
+    assert _read_staging_meta(name2)["member_id"] is None
+
+
 async def test_save_staged_secured_rejects_magic_mismatch(isolated_storage):
     # PNG magic bytes declared as PDF must be rejected during staging.
     bad = _pdf_upload(body=b"\x89PNG\r\n\x1a\n" + b"not actually a pdf")

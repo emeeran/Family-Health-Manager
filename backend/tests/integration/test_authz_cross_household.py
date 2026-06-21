@@ -8,9 +8,11 @@ same-household access still works.
 """
 
 from datetime import datetime, timezone
+from io import BytesIO
 from uuid import UUID
 
 import pytest
+from fastapi import UploadFile
 from sqlalchemy import select
 
 from app.models.base import (
@@ -158,6 +160,45 @@ async def test_message_verification_not_leaked_across_conversations(auth_client,
     # Negative: B's conversation + A's message_id → 404.
     leak = await auth_client.get(
         f"/api/v1/conversations/{conv_b.id}/messages/{msg_a.id}/verification",
+        params={"token": token_b},
+    )
+    assert leak.status_code == 404
+
+
+PDF_BODY = b"%PDF-1.4\nconfidential medical document\n" + b"y" * 200
+
+
+async def test_staging_file_not_leaked_across_members(auth_client):
+    """A staging id owned by member A must 404 for member B (IDOR defense).
+
+    The staging id is an opaque uuid4 handle; without ownership enforcement a
+    leaked id would stream another member's staged document. save_staged_secured
+    now records the owning member_id in the sidecar and get_staging_file checks it.
+    """
+    from app.core.storage import save_staged_secured
+
+    token_a = auth_client.params["token"]
+    token_b = await _token(auth_client, "stagingB_user")
+    member_a = await _create_member(auth_client, token_a)
+    member_b = await _create_member(auth_client, token_b)
+
+    upload = UploadFile(
+        file=BytesIO(PDF_BODY),
+        filename="scan.pdf",
+        headers={"content-type": "application/pdf"},
+    )
+    _path, staging_id, _hash = await save_staged_secured(upload, member_id=member_a)
+
+    # Owner fetches → 200.
+    own = await auth_client.get(
+        f"/api/v1/members/{member_a}/records/staging/{staging_id}",
+        params={"token": token_a},
+    )
+    assert own.status_code == 200
+
+    # Other member (own member_id + A's staging id) → 404, not the document.
+    leak = await auth_client.get(
+        f"/api/v1/members/{member_b}/records/staging/{staging_id}",
         params={"token": token_b},
     )
     assert leak.status_code == 404

@@ -288,15 +288,21 @@ async def save_file_hashed(file: UploadFile) -> tuple[Path, str, str]:
     return final_path, content_hash, ext
 
 
-async def save_staged_secured(file: UploadFile) -> tuple[Path, str, str]:
+async def save_staged_secured(
+    file: UploadFile, member_id: uuid.UUID | str | None = None
+) -> tuple[Path, str, str]:
     """Stream an upload to encrypted-at-rest staging and return its content hash.
 
     Validates MIME/size/magic-bytes, virus-scans the plaintext, computes the
     SHA-256 of the plaintext (dedup + extraction-cache key), then Fernet-encrypts
     to ``staging/<id>``. A sidecar ``staging/<id>.meta`` JSON records
-    ``{content_hash, ext, mime, original_name}`` so :func:`attach_staged_file`
-    can relocate the already-encrypted file to content-addressable storage
-    without re-hashing/re-encrypting.
+    ``{content_hash, ext, mime, original_name, member_id}`` so
+    :func:`attach_staged_file` can relocate the already-encrypted file to
+    content-addressable storage without re-hashing/re-encrypting, and
+    :func:`app.routers.health_records.get_staging_file` can verify the staging
+    id belongs to the requesting member (the staging id is an opaque uuid4
+    handle, but tying it to the member closes the IDOR where a leaked id would
+    stream another household's staged document).
 
     Returns ``(staged_path, unique_filename, content_hash)``. This closes the
     plaintext-staging window: previously a staged file sat as plaintext on disk
@@ -357,6 +363,7 @@ async def save_staged_secured(file: UploadFile) -> tuple[Path, str, str]:
         "ext": ext,
         "mime": declared_mime,
         "original_name": file.filename,
+        "member_id": str(member_id) if member_id else None,
     }
     try:
         async with aiofiles.open(f"{staged_path}.meta", "w") as mf:
