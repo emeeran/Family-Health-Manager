@@ -5,7 +5,7 @@ from uuid import UUID
 
 from sqlalchemy import select, func
 from sqlalchemy.ext.asyncio import AsyncSession
-from fastapi import UploadFile
+from fastapi import BackgroundTasks, UploadFile
 
 from app.models.base import Attachment, HealthRecord
 from app.core.storage import (
@@ -137,31 +137,69 @@ class AttachmentService:
 
         return stream_file(file_path), attachment.mime_type, attachment.file_name
 
-    async def delete_attachment(self, attachment_id: UUID, household_id: UUID) -> None:
-        """Delete an attachment with reference-counted file deletion."""
+    async def delete_attachment(
+        self,
+        attachment_id: UUID,
+        household_id: UUID,
+        background_tasks: BackgroundTasks | None = None,
+    ) -> None:
+        """Delete an attachment with reference-counted, post-commit file deletion.
+
+        The blob is content-addressed and may be dedup-shared with another
+        attachment OR a member's profile photo, so references are counted across
+        both before the file is removed. Physical deletion is deferred to
+        ``background_tasks`` when supplied: a BackgroundTask runs only after the
+        response is sent, which (under the yield-based get_db dependency) is
+        after the commit — so a rollback can't orphan the file (row restored →
+        bytes gone). Callers without a response cycle (e.g. unit tests) pass
+        ``background_tasks=None`` for synchronous deletion.
+        """
         attachment = await self.get_attachment(attachment_id, household_id)
         content_hash = attachment.content_hash
+        file_path = Path(attachment.file_path)
+        thumb_path = Path(attachment.thumbnail_path) if attachment.thumbnail_path else None
 
         await self.db.delete(attachment)
         await self.db.flush()
 
-        # Reference-counted: only delete physical file if no other references
+        to_delete: list[Path] = []
         if content_hash:
-            remaining = await self.db.execute(
+            # Reference-counted across attachments AND member profile photos —
+            # a member photo can share the same hash, so the old attachment-only
+            # count could orphan a member's photo blob.
+            if await self._blob_is_referenced(content_hash):
+                return
+            to_delete.append(file_path)
+            if thumb_path:
+                to_delete.append(thumb_path)
+        else:
+            to_delete.append(file_path)  # legacy file without hash — always delete
+
+        for path in to_delete:
+            if background_tasks is not None:
+                background_tasks.add_task(delete_file, path)
+            else:
+                await delete_file(path)
+
+    async def _blob_is_referenced(self, content_hash: str) -> bool:
+        """True if any attachment or member profile photo still references *content_hash*."""
+        from app.models.base import FamilyMember
+
+        attachments_count = (
+            await self.db.execute(
                 select(func.count())
                 .select_from(Attachment)
                 .where(Attachment.content_hash == content_hash)
             )
-            if remaining.scalar() == 0:
-                await delete_file(Path(attachment.file_path))
-                # Also delete thumbnail if present
-                if attachment.thumbnail_path:
-                    thumb_path = Path(attachment.thumbnail_path)
-                    if thumb_path.exists():
-                        await delete_file(thumb_path)
-        else:
-            # Legacy files without hash — always delete
-            await delete_file(Path(attachment.file_path))
+        ).scalar()
+        members_count = (
+            await self.db.execute(
+                select(func.count())
+                .select_from(FamilyMember)
+                .where(FamilyMember.photo_content_hash == content_hash)
+            )
+        ).scalar()
+        return (attachments_count or 0) + (members_count or 0) > 0
 
     async def attach_staged_file(
         self,

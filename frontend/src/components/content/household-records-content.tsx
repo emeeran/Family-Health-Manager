@@ -1,4 +1,4 @@
-import { useState, useMemo, useCallback, memo } from "react";
+import { useState, useMemo, useCallback, useDeferredValue, memo } from "react";
 import { Search } from "lucide-react";
 import { Card, CardContent } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
@@ -47,12 +47,18 @@ export const HouseholdRecordsContent = memo(function HouseholdRecordsContent({
     [openQuickView]
   );
 
+  // Defer the expensive corpus-wide filter (it string-matches diagnosis, the
+  // raw clinical_data JSON, and member name for every record) so fast typing
+  // stays responsive on large record sets — the input updates immediately and
+  // the filter recomputes on the next idle frame.
+  const deferredSearch = useDeferredValue(searchText);
+
   const filtered = useMemo(() => {
     return records.filter((r) => {
       if (typeFilter !== "all" && r.record_type !== typeFilter) return false;
       if (memberFilter !== "all" && r.family_member_id !== memberFilter) return false;
-      if (searchText.trim()) {
-        const q = searchText.toLowerCase();
+      if (deferredSearch.trim()) {
+        const q = deferredSearch.toLowerCase();
         const matchesDiagnosis = (r.diagnosis || "").toLowerCase().includes(q);
         const matchesClinical = (r.clinical_data || "").toLowerCase().includes(q);
         const matchesMember = (memberNames[r.family_member_id] || "").toLowerCase().includes(q);
@@ -60,7 +66,7 @@ export const HouseholdRecordsContent = memo(function HouseholdRecordsContent({
       }
       return true;
     });
-  }, [records, searchText, typeFilter, memberFilter, memberNames]);
+  }, [records, deferredSearch, typeFilter, memberFilter, memberNames]);
 
   return (
     <div className="space-y-4">

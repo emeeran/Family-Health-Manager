@@ -20,3 +20,11 @@ export async function getAttachmentBlob(attachmentId: string): Promise<string> {
   const blob = await response.blob();
   return URL.createObjectURL(blob);
 }
+
+/** Cookie-auth <img> URL for an attachment's server-generated thumbnail.
+ *  Prefer this over getAttachmentBlob for previews: it fetches the small
+ *  WebP/PNG thumbnail (not the full-resolution original) and lets the browser
+ *  cache it, instead of downloading megabytes and allocating a blob URL. */
+export function getAttachmentThumbnailUrl(attachmentId: string): string {
+  return `${API_BASE_URL}/attachments/${attachmentId}/thumbnail`;
+}

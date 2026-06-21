@@ -564,7 +564,7 @@ class AIService:
         from app.core.cache import cache
 
         if content_hash:
-            key = f"extraction:{content_hash}:{EXTRACTION_CACHE_VERSION}"
+            key = f"extraction:{content_hash}:{settings.OLLAMA_MODEL}:{EXTRACTION_CACHE_VERSION}"
             try:
                 cached = await cache.get_async(key)
             except Exception:
@@ -584,7 +584,7 @@ class AIService:
 
         # Cache only when extraction produced usable data and the hash is known.
         if content_hash and result.extracted.has_any_data():
-            key = f"extraction:{content_hash}:{EXTRACTION_CACHE_VERSION}"
+            key = f"extraction:{content_hash}:{settings.OLLAMA_MODEL}:{EXTRACTION_CACHE_VERSION}"
             try:
                 await cache.set_async(
                     key,

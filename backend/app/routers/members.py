@@ -6,7 +6,7 @@ from pathlib import Path
 from uuid import UUID
 
 import aiofiles
-from fastapi import APIRouter, Depends, File, HTTPException, Query, UploadFile
+from fastapi import APIRouter, BackgroundTasks, Depends, File, HTTPException, Query, UploadFile
 from fastapi.responses import StreamingResponse
 from sqlalchemy import select, func
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -250,11 +250,12 @@ async def upload_member_photo(
     file: UploadFile = File(..., description="Profile photo (jpeg, png, or webp)"),
     household: Household = Depends(get_household_from_token),
     db: AsyncSession = Depends(get_db),
+    background_tasks: BackgroundTasks = None,
 ):
     """Upload or replace a member's profile photo."""
     service = MemberService(db)
     try:
-        member = await service.set_member_photo(member_id, file, household.id)
+        member = await service.set_member_photo(member_id, file, household.id, background_tasks)
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
     await cache.invalidate_async(f"members:{household.id}")
@@ -267,11 +268,12 @@ async def delete_member_photo(
     member_id: UUID,
     household: Household = Depends(get_household_from_token),
     db: AsyncSession = Depends(get_db),
+    background_tasks: BackgroundTasks = None,
 ):
     """Remove a member's profile photo."""
     service = MemberService(db)
     try:
-        member = await service.delete_member_photo(member_id, household.id)
+        member = await service.delete_member_photo(member_id, household.id, background_tasks)
     except ValueError:
         raise HTTPException(status_code=404, detail="Member not found")
     await cache.invalidate_async(f"members:{household.id}")

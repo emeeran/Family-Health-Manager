@@ -3,7 +3,7 @@
 import logging
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Request
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -68,6 +68,7 @@ async def generate_member_insights_stream(
     household: Household = Depends(get_household_from_token),
     member: FamilyMember = Depends(require_member_in_household),
     db: AsyncSession = Depends(get_db),
+    request: Request = None,
 ):
     """Stream comprehensive AI health insight generation with real-time progress (SSE)."""
     from app.services.ai_service import AIService
@@ -83,6 +84,7 @@ async def generate_member_insights_stream(
             mode=mode,
         ),
         db,
+        request,
     )
 
 

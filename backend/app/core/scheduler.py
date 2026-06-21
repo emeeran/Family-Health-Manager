@@ -128,6 +128,12 @@ async def start_scheduler():
                 id=name,
                 replace_existing=True,
                 misfire_grace_time=300,
+                # Prevent overlapping runs: if a job (backup_database on a large
+                # store, verify_file_integrity) overruns its interval, do NOT
+                # launch a second concurrent instance that would contend for the
+                # DB/files. Coalesce merges piled-up misfires into one run.
+                max_instances=1,
+                coalesce=True,
             )
             logger.info("Scheduled job '%s' every %ds (APScheduler)", name, interval)
 
@@ -145,9 +151,17 @@ async def start_scheduler():
 
 
 async def stop_scheduler():
-    """Cancel all running background jobs."""
+    """Stop scheduled jobs, letting any in-flight run finish.
+
+    ``wait=True`` lets a running job (e.g. an hourly backup mid-tar) complete
+    before the caller disposes of the DB engine — without it, engine.dispose()
+    can yank the connection pool out from under a job and (pre-atomic-backup)
+    leave a half-written archive. The asyncio fallback path already serializes
+    each job within its own task, so it cannot overlap itself. Callers should
+    bound this with ``asyncio.wait_for`` so a stuck job can't hang shutdown.
+    """
     if _scheduler is not None:
-        _scheduler.shutdown(wait=False)
+        _scheduler.shutdown(wait=True)
         logger.info("APScheduler stopped")
     else:
         for task in _running_tasks:

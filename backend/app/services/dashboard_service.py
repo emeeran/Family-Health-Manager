@@ -275,11 +275,17 @@ class DashboardService:
             if len(member_records[mid]) < records_per_member_limit:
                 member_records[mid].append(r)
 
-        # 5. Preventive care (parallel per member)
+        # 5. Preventive care (one batched query for overdue follow-ups, then
+        #    pure-CPU age/condition rules per member — no per-member DB fan-out).
         preventive_svc = PreventiveCareService(self.db)
+        overdue_by_member = await preventive_svc.get_overdue_followups_batch(
+            [m.id for m in members], date.today()
+        )
 
         async def _member_preventive(m: FamilyMember) -> list[dict]:
-            recs = await preventive_svc.generate_recommendations(m)
+            recs = await preventive_svc.generate_recommendations(
+                m, overdue_followups=overdue_by_member.get(str(m.id), [])
+            )
             for rec in recs:
                 rec["member_id"] = str(m.id)
                 rec["member_name"] = f"{m.first_name} {m.last_name}"

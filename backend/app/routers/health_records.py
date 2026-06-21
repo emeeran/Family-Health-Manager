@@ -10,6 +10,7 @@ from fastapi import (
     Depends,
     HTTPException,
     Query,
+    Request,
     UploadFile,
     File,
     Response,
@@ -69,7 +70,7 @@ async def extract_from_document(
     from app.services.ai_service import AIService
 
     validate_file(file)
-    staged_path, unique_filename, content_hash = await save_staged_secured(file)
+    staged_path, unique_filename, content_hash = await save_staged_secured(file, member_id)
     logger.debug("Staged upload %s (content hash %s)", unique_filename, content_hash)
 
     ai_service = AIService(db, household_id=household.id)
@@ -108,6 +109,7 @@ async def extract_from_document_stream(
     household: Household = Depends(get_household_from_token),
     _member: FamilyMember = Depends(require_member_in_household),
     db: AsyncSession = Depends(get_db),
+    request: Request = None,
 ):
     """Upload a document and stream extraction progress over SSE.
 
@@ -126,7 +128,7 @@ async def extract_from_document_stream(
     background refinement (Phase 3 tier-2) is introduced later.
     """
     validate_file(file)
-    staged_path, unique_filename, content_hash = await save_staged_secured(file)
+    staged_path, unique_filename, content_hash = await save_staged_secured(file, member_id)
     ai_service = AIService(db, household_id=household.id)
     mime = file.content_type or "application/octet-stream"
     original_name = file.filename
@@ -160,6 +162,12 @@ async def extract_from_document_stream(
             while True:
                 done, _pending = await asyncio.wait({task}, timeout=15.0)
                 if task in done:
+                    break
+                # Stop work if the client went away so an abandoned tab doesn't
+                # hold the CPU-only Ollama worker hostage for minutes; the
+                # finally below cancels the extraction task.
+                if request is not None and await request.is_disconnected():
+                    logger.info("Client disconnected during extraction; cancelling")
                     break
                 yield ": keepalive\n\n"
 
@@ -220,6 +228,14 @@ async def get_staging_file(
 
     meta = _read_staging_meta(staging_file_id)
     encrypted = meta is not None
+    # Ownership: a staging id is an opaque uuid4 handle, not an unguessable
+    # capability — if one leaks (logs, shared URL, referrer) it must not stream
+    # another member's staged document. New uploads record the owning member_id
+    # in the sidecar; enforce it here. Legacy staged files (pre-fix, no
+    # member_id in meta, and short-lived) are allowed through during the rollout.
+    staged_member_id = (meta or {}).get("member_id")
+    if staged_member_id and staged_member_id != str(member_id):
+        raise HTTPException(status_code=404, detail="Staging file not found")
     mime = (
         (meta or {}).get("mime")
         or mimetypes.guess_type(staging_file_id)[0]
@@ -234,7 +250,7 @@ async def get_staging_file(
 
 
 async def _extract_single_file(
-    file: UploadFile, ai_service: AIService
+    file: UploadFile, ai_service: AIService, member_id: UUID
 ) -> BatchExtractionItemSchema:
     """Extract a single file, returning a BatchExtractionItemSchema.
 
@@ -251,7 +267,7 @@ async def _extract_single_file(
         )
 
     try:
-        staged_path, unique_filename, content_hash = await save_staged_secured(file)
+        staged_path, unique_filename, content_hash = await save_staged_secured(file, member_id)
     except Exception as exc:
         return BatchExtractionItemSchema(
             filename=file.filename or "unknown",
@@ -311,7 +327,7 @@ async def extract_batch(
 
     async def _bounded(f: UploadFile) -> BatchExtractionItemSchema:
         async with sem:
-            return await _extract_single_file(f, ai_service)
+            return await _extract_single_file(f, ai_service, member_id)
 
     results = list(await asyncio.gather(*[_bounded(f) for f in files]))
 
@@ -341,6 +357,7 @@ async def extract_batch_stream(
     files: list[UploadFile] = File(...),
     household: Household = Depends(get_household_from_token),
     _member: FamilyMember = Depends(require_member_in_household),
+    request: Request = None,
 ):
     """Upload multiple medical documents and stream extraction over SSE.
 
@@ -393,7 +410,7 @@ async def extract_batch_stream(
                         # verification never touch a session concurrently with a
                         # sibling coroutine (the latent extract_batch hazard).
                         ai = AIService(pdb, household_id=household.id)
-                        item = await _extract_single_file(file, ai)
+                        item = await _extract_single_file(file, ai, member_id)
                         if item.extracted and not item.error:
                             try:
                                 verification_svc = VerificationService(pdb, ai)
@@ -436,6 +453,11 @@ async def extract_batch_stream(
                         }
                     )
                 except asyncio.TimeoutError:
+                    # Stop the batch if the client went away; the finally below
+                    # cancels all in-flight producers (and their Ollama calls).
+                    if request is not None and await request.is_disconnected():
+                        logger.info("Client disconnected during batch extraction; cancelling")
+                        break
                     yield ": keepalive\n\n"
 
             yield sse({"stage": "done", "total": total})
@@ -1311,6 +1333,16 @@ async def get_record_insight(
     db: AsyncSession = Depends(get_db),
 ):
     """Get the latest AI-generated insight for a health record."""
+    # Authorization: confirm the record belongs to this member before
+    # returning its insight. The path ``member_id`` only proves membership in
+    # the household — without this check a guessed ``record_id`` returns
+    # another household's AI insight (prompt + response + verification).
+    record_service = HealthRecordService(db)
+    try:
+        await record_service.get_record(member_id, record_id)
+    except ValueError:
+        raise HTTPException(status_code=404, detail="Record not found")
+
     from sqlalchemy import select
     from app.models.base import AIInsight
 
@@ -1363,6 +1395,14 @@ async def get_insight_verification(
     db: AsyncSession = Depends(get_db),
 ):
     """Poll for insight verification result."""
+    # Authorization: same ownership guard as get_record_insight — the path
+    # member_id does not prove record_id belongs to this member.
+    record_service = HealthRecordService(db)
+    try:
+        await record_service.get_record(member_id, record_id)
+    except ValueError:
+        raise HTTPException(status_code=404, detail="Record not found")
+
     from sqlalchemy import select
     from app.models.base import AIInsight
 
@@ -1421,6 +1461,7 @@ async def regenerate_record_insight_stream(
     household: Household = Depends(get_household_from_token),
     _member: FamilyMember = Depends(require_member_in_household),
     db: AsyncSession = Depends(get_db),
+    request: Request = None,
 ):
     """Stream AI insight generation with real-time progress (SSE)."""
     from app.services.ai_service import AIService
@@ -1445,6 +1486,7 @@ async def regenerate_record_insight_stream(
             comprehensive=True,
         ),
         db,
+        request,
     )
 
 

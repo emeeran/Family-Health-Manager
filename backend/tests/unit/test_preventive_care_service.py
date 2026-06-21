@@ -2,7 +2,7 @@
 
 import pytest
 from unittest.mock import AsyncMock, MagicMock
-from datetime import date
+from datetime import date, timedelta
 from uuid import uuid4
 
 from app.services.preventive_care_service import PreventiveCareService
@@ -46,6 +46,56 @@ def _make_member(age: int, history: str = "") -> FamilyMember:
         medical_history_summary=history,
     )
     return member
+
+
+@pytest.mark.asyncio
+async def test_get_overdue_followups_batch_groups_by_member(service, mock_db):
+    """The batched query groups overdue follow-ups per member in one DB call."""
+    m1, m2 = uuid4(), uuid4()
+    rec1 = MagicMock()
+    rec1.family_member_id = m1
+    rec1.next_review_date = date.today() - timedelta(days=10)
+    rec1.record_type.value = "doctor_visit"
+    rec2 = MagicMock()
+    rec2.family_member_id = m2
+    rec2.next_review_date = date.today() - timedelta(days=40)
+    rec2.record_type.value = "lab_report"
+
+    scalars_mock = MagicMock()
+    scalars_mock.all.return_value = [rec1, rec2]
+    result_mock = MagicMock()
+    result_mock.scalars.return_value = scalars_mock
+
+    async def mock_execute(*args, **kwargs):
+        return result_mock
+
+    mock_db.execute = mock_execute
+
+    grouped = await service.get_overdue_followups_batch([m1, m2], date.today())
+    assert len(grouped[str(m1)]) == 1
+    assert grouped[str(m1)][0]["days_overdue"] == 10
+    assert len(grouped[str(m2)]) == 1
+    assert grouped[str(m2)][0]["title"] == "Lab Report"
+
+
+@pytest.mark.asyncio
+async def test_generate_recommendations_uses_injected_overdue(service, mock_db):
+    """When overdue_followups is supplied the service makes no DB query."""
+    member = _make_member(40)
+    injected = [{"title": "Thing", "date": "2026-01-01", "days_overdue": 5}]
+
+    calls = {"n": 0}
+
+    async def mock_execute(*args, **kwargs):
+        calls["n"] += 1
+        return MagicMock()
+
+    mock_db.execute = mock_execute
+
+    recs = await service.generate_recommendations(member, overdue_followups=injected)
+    # generate_recommendations prefixes overdue titles with "Follow-up: ".
+    assert "Follow-up: Thing" in [r["title"] for r in recs]
+    assert calls["n"] == 0  # injected path → no DB round-trip
 
 
 @pytest.mark.asyncio
