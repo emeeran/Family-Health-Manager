@@ -106,6 +106,45 @@ async def test_batch_stream_emits_start_per_file_then_done(
     assert {e["index"] for e in file_events} == {0, 1}
 
 
+async def test_batch_stream_auto_verifies_high_confidence_extractions(
+    auth_client, monkeypatch, stub_verification
+):
+    """High-coverage extractions skip the second AI verify pass and get an
+    auto_verified badge. The stubbed verify_extraction returns 'verified', so
+    seeing 'auto_verified' proves it was never called (the gate short-circuited).
+    """
+
+    async def fake_extract(self, file_path, mime_type, content_hash=None):
+        # record_type(1)+date(1)+diagnosis(1)+chief_complaint(1)+provider(1)+
+        # prescriptions(2) = 7 → extraction_confidence == "high".
+        return ExtractionResult(
+            extracted=ExtractedFields(
+                record_type=RecordType.DOCTOR_VISIT,
+                record_date=date(2024, 1, 15),
+                diagnosis="Type 2 Diabetes",
+                chief_complaint="fatigue",
+                provider_name="Dr. Mehta",
+                prescriptions=[{"medicine": "Metformin 500mg"}],
+            ),
+            transcription="raw",
+        )
+
+    monkeypatch.setattr(AIService, "extract_medical_data", fake_extract)
+    member_id = await _create_member(auth_client)
+
+    async with auth_client.stream(
+        "POST",
+        f"/api/v1/members/{member_id}/records/extract-batch/stream",
+        files=_files_payload("a.pdf"),
+    ) as resp:
+        assert resp.status_code == 200
+        lines = [line async for line in resp.aiter_lines()]
+
+    file_events = [e for e in _data_events(lines) if e.get("stage") == "file_complete"]
+    assert len(file_events) == 1
+    assert file_events[0]["item"]["verification"]["status"] == "auto_verified"
+
+
 async def test_batch_stream_heartbeats_during_long_extract(
     auth_client, monkeypatch, stub_verification
 ):

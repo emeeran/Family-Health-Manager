@@ -2,7 +2,7 @@
 
 import asyncio
 import logging
-from datetime import date, datetime, time
+from datetime import date, datetime, time, timezone
 from uuid import UUID
 from fastapi import (
     APIRouter,
@@ -249,6 +249,25 @@ async def get_staging_file(
     )
 
 
+def _auto_verified_result() -> dict:
+    """Synthetic verification result for high-confidence extractions.
+
+    When ``extraction_confidence`` rates an extraction "high" (strong field
+    coverage), the second AI verification pass adds latency without much value,
+    so we short-circuit it. The synthetic ``auto_verified`` status still surfaces
+    a badge (distinct from a real cross-check) so the UI shows something on every
+    item instead of silently omitting verification.
+    """
+    return {
+        "status": "auto_verified",
+        "claims_checked": 0,
+        "warnings": [],
+        "summary": "High extraction confidence — auto-verified (no second AI pass required).",
+        "verifier_provider": "heuristic",
+        "verified_at": datetime.now(timezone.utc).isoformat(),
+    }
+
+
 async def _extract_single_file(
     file: UploadFile, ai_service: AIService, member_id: UUID
 ) -> BatchExtractionItemSchema:
@@ -338,6 +357,11 @@ async def extract_batch(
 
     async def _verify_item(item: BatchExtractionItemSchema) -> None:
         if item.extracted and not item.error:
+            # High-confidence extractions skip the second AI pass (see the stream
+            # path); lower-confidence ones still get a real cross-check.
+            if extraction_confidence(item.extracted) == "high":
+                item.verification = _auto_verified_result()
+                return
             try:
                 item.verification = await verification_svc.verify_extraction(
                     item.extracted.model_dump(),
@@ -412,18 +436,26 @@ async def extract_batch_stream(
                         ai = AIService(pdb, household_id=household.id)
                         item = await _extract_single_file(file, ai, member_id)
                         if item.extracted and not item.error:
-                            try:
-                                verification_svc = VerificationService(pdb, ai)
-                                item.verification = await verification_svc.verify_extraction(
-                                    item.extracted.model_dump(),
-                                    original_provider="",
-                                )
-                            except Exception as exc:
-                                logger.debug(
-                                    "Batch verification skipped for %s: %s",
-                                    item.filename,
-                                    exc,
-                                )
+                            # High-coverage extractions skip the second AI
+                            # verification pass (roughly halving per-file latency
+                            # on CPU-only Ollama) and get a synthetic
+                            # auto_verified badge instead. Lower-confidence
+                            # extractions still get a real cross-check.
+                            if extraction_confidence(item.extracted) == "high":
+                                item.verification = _auto_verified_result()
+                            else:
+                                try:
+                                    verification_svc = VerificationService(pdb, ai)
+                                    item.verification = await verification_svc.verify_extraction(
+                                        item.extracted.model_dump(),
+                                        original_provider="",
+                                    )
+                                except Exception as exc:
+                                    logger.debug(
+                                        "Batch verification skipped for %s: %s",
+                                        item.filename,
+                                        exc,
+                                    )
                 except Exception as exc:  # safety net — never exit without enqueuing
                     logger.error(
                         "Batch stream producer failed for %s: %s", file.filename, exc

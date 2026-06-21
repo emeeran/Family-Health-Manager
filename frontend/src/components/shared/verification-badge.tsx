@@ -1,4 +1,12 @@
-import { CheckCircle2, AlertTriangle, HelpCircle, Loader2, XCircle, Shield } from "lucide-react";
+import {
+  CheckCircle2,
+  AlertTriangle,
+  HelpCircle,
+  Loader2,
+  XCircle,
+  Shield,
+  ShieldCheck,
+} from "lucide-react";
 import type { VerificationResult } from "@/lib/types/message";
 import { cn } from "@/lib/utils";
 import {
@@ -48,6 +56,13 @@ export function VerificationBadge({
       label: "Checking...",
       titleColor: "text-muted-foreground",
     },
+    auto_verified: {
+      icon: ShieldCheck,
+      color: "text-sky-600 dark:text-sky-400",
+      bg: "bg-sky-500/10",
+      label: "Auto-Verified",
+      titleColor: "text-sky-700",
+    },
   }[status] ?? {
     icon: XCircle,
     color: "text-muted-foreground",
@@ -87,6 +102,7 @@ export function VerificationBadge({
               {status === "verified" && "Fact-Checked & Verified"}
               {status === "warnings" && "Verification Warnings Found"}
               {status === "unverifiable" && "Could Not Verify"}
+              {status === "auto_verified" && "High Confidence — Auto-Verified"}
             </PopoverTitle>
           </div>
           <PopoverDescription className="text-xs mt-1">
