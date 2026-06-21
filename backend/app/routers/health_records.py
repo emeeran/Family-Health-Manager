@@ -38,7 +38,6 @@ from app.schemas.health_record import (
     ExtractedFields,
     TimelineResponse,
     BatchExtractionItemSchema,
-    BatchExtractionResponse,
     CheckFilenamesRequest,
     CheckFilenamesResponse,
     BatchDeleteRequest,
@@ -315,64 +314,6 @@ async def _extract_single_file(
             extracted=ExtractedFields(),
             error=f"Extraction failed: {exc}",
         )
-
-
-@router.post("/extract-batch", response_model=BatchExtractionResponse)
-async def extract_batch(
-    member_id: UUID,
-    files: list[UploadFile] = File(...),
-    household: Household = Depends(get_household_from_token),
-    _member: FamilyMember = Depends(require_member_in_household),
-    db: AsyncSession = Depends(get_db),
-):
-    """Upload multiple medical documents and extract data via AI.
-
-    Processes files in parallel batches of 3 to avoid overwhelming AI providers.
-    """
-    if len(files) > 20:
-        raise HTTPException(status_code=400, detail="Maximum 20 files per batch")
-
-    # Note: AIService is shared across asyncio.gather coroutines.
-    # This is safe because extraction only calls read-only AI provider methods
-    # (no mutable state mutation). The _ollama_client lazy-init is the only
-    # shared mutable field, but Ollama runs as a separate service now.
-    ai_service = AIService(db, household_id=household.id)
-
-    # All files concurrent under a semaphore — no batch barrier. A fast file no
-    # longer waits on a slow one sharing its chunk; wall-clock is set by the
-    # slowest single file. The cap bounds fan-out so we don't overwhelm the AI
-    # providers (each extraction already races several providers in parallel).
-    sem = asyncio.Semaphore(BATCH_EXTRACTION_CONCURRENCY)
-
-    async def _bounded(f: UploadFile) -> BatchExtractionItemSchema:
-        async with sem:
-            return await _extract_single_file(f, ai_service, member_id)
-
-    results = list(await asyncio.gather(*[_bounded(f) for f in files]))
-
-    # Run verification in parallel for all successful extractions
-    from app.services.verification_service import VerificationService
-
-    verification_svc = VerificationService(db, ai_service)
-
-    async def _verify_item(item: BatchExtractionItemSchema) -> None:
-        if item.extracted and not item.error:
-            # High-confidence extractions skip the second AI pass (see the stream
-            # path); lower-confidence ones still get a real cross-check.
-            if extraction_confidence(item.extracted) == "high":
-                item.verification = _auto_verified_result()
-                return
-            try:
-                item.verification = await verification_svc.verify_extraction(
-                    item.extracted.model_dump(),
-                    original_provider="",
-                )
-            except Exception as exc:
-                logger.debug("Batch verification skipped for %s: %s", item.filename, exc)
-
-    await asyncio.gather(*[_verify_item(item) for item in results])
-
-    return BatchExtractionResponse(extractions=results)
 
 
 @router.post("/extract-batch/stream")

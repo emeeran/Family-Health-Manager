@@ -403,17 +403,21 @@ export const ActiveMedicationsTable = memo(function ActiveMedicationsTable({
     [medications]
   );
 
-  const filtered = searchQuery.trim()
-    ? enriched.filter((m) => {
-        const q = searchQuery.toLowerCase();
-        return (
-          m.medicine.toLowerCase().includes(q) ||
-          m.type?.toLowerCase().includes(q) ||
-          m.dosage?.toLowerCase().includes(q) ||
-          m.note?.toLowerCase().includes(q)
-        );
-      })
-    : enriched;
+  const filtered = useMemo(
+    () =>
+      searchQuery.trim()
+        ? enriched.filter((m) => {
+            const q = searchQuery.toLowerCase();
+            return (
+              m.medicine.toLowerCase().includes(q) ||
+              m.type?.toLowerCase().includes(q) ||
+              m.dosage?.toLowerCase().includes(q) ||
+              m.note?.toLowerCase().includes(q)
+            );
+          })
+        : enriched,
+    [enriched, searchQuery]
+  );
 
   function exportPDF() {
     const rows = filtered

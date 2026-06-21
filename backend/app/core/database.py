@@ -109,138 +109,31 @@ SessionLocal = async_sessionmaker(
 async def create_tables():
     """Create/update database tables.
 
-    For SQLite (dev): uses create_all() for fast startup.
-    For PostgreSQL (prod): should run `alembic upgrade head` separately.
+    SQLite (dev): run ``alembic upgrade head`` so dev databases share one schema
+    source with production (the squashed baseline create_all + migrations).
+    PostgreSQL (prod): migrations are run separately (``alembic upgrade head``)
+    — never auto-applied on startup, where a long/locking migration could stall boot.
     """
     import logging as _logging
-    from sqlalchemy import create_engine
-    from app.models.base import Base  # Import here to ensure models are registered
 
     _logger = _logging.getLogger(__name__)
     _logger.info("Ensuring database tables exist...")
 
     if settings.DATABASE_URL.startswith("sqlite"):
-        # Fast path for SQLite dev: create_all handles missing tables
-        sync_db_url = settings.DATABASE_URL.replace("sqlite+aiosqlite:///", "sqlite:///")
-        sync_engine = create_engine(sync_db_url, echo=False)
-        Base.metadata.create_all(sync_engine)
+        # Dev convenience: bring the SQLite database to the current schema via
+        # Alembic — the squashed baseline (create_all) plus incremental
+        # migrations. This replaces the old runtime ALTER-TABLE patch block:
+        # those same column additions now live in migration m9n0o1p2q3r4, so dev
+        # and prod share one schema source (closes TODO #21). All migrations are
+        # idempotent (existence-guarded), so this is safe on a fresh, old, or
+        # already-current database.
+        from pathlib import Path
 
-        # -----------------------------------------------------------------
-        # SQLite-only runtime schema patching (development convenience)
-        #
-        # These ALTER TABLE statements patch columns that may be missing from
-        # prior schema versions in the SQLite dev database. They exist solely
-        # so developers can run the app against an older SQLite file without
-        # manually running migrations.
-        #
-        # This block is NEVER executed against PostgreSQL — production uses
-        # Alembic migrations (`alembic upgrade head`) managed separately.
-        #
-        # TODO (#21): Convert each block below into a proper Alembic migration
-        # so that PostgreSQL production deployments are covered. Currently these
-        # patches are SQLite-only dev convenience methods. When adding new
-        # columns, prefer creating an Alembic migration first and only add a
-        # fallback patch here if needed for the SQLite dev workflow.
-        # -----------------------------------------------------------------
-        import sqlalchemy.inspection as sa_inspect
+        from alembic import command
+        from alembic.config import Config
 
-        with sync_engine.connect() as conn:
-            inspector = sa_inspect.inspect(sync_engine)
-            if "users" in inspector.get_table_names():
-                existing_cols = {c["name"] for c in inspector.get_columns("users")}
-                if "role" not in existing_cols:
-                    conn.execute(
-                        __import__("sqlalchemy").text(
-                            "ALTER TABLE users ADD COLUMN role VARCHAR(20) NOT NULL DEFAULT 'user'"
-                        )
-                    )
-                    # Promote first user to admin
-                    conn.execute(
-                        __import__("sqlalchemy").text(
-                            "UPDATE users SET role = 'admin' WHERE id = "
-                            "(SELECT id FROM users ORDER BY created_at ASC LIMIT 1)"
-                        )
-                    )
-                    conn.commit()
-                    _logger.info("Added 'role' column to users table")
-
-            # Attachment storage columns
-            if "attachments" in inspector.get_table_names():
-                att_cols = {c["name"] for c in inspector.get_columns("attachments")}
-                if "content_hash" not in att_cols:
-                    conn.execute(
-                        __import__("sqlalchemy").text(
-                            "ALTER TABLE attachments ADD COLUMN content_hash VARCHAR(64)"
-                        )
-                    )
-                    conn.execute(
-                        __import__("sqlalchemy").text(
-                            "CREATE INDEX IF NOT EXISTS ix_attachments_content_hash "
-                            "ON attachments (content_hash)"
-                        )
-                    )
-                if "storage_backend" not in att_cols:
-                    conn.execute(
-                        __import__("sqlalchemy").text(
-                            "ALTER TABLE attachments ADD COLUMN storage_backend VARCHAR(20) "
-                            "NOT NULL DEFAULT 'local'"
-                        )
-                    )
-                if "thumbnail_path" not in att_cols:
-                    conn.execute(
-                        __import__("sqlalchemy").text(
-                            "ALTER TABLE attachments ADD COLUMN thumbnail_path VARCHAR(500)"
-                        )
-                    )
-                if "encrypted" not in att_cols:
-                    conn.execute(
-                        __import__("sqlalchemy").text(
-                            "ALTER TABLE attachments ADD COLUMN encrypted BOOLEAN "
-                            "NOT NULL DEFAULT 0"
-                        )
-                    )
-                if "content_hash" not in att_cols or "storage_backend" not in att_cols:
-                    conn.commit()
-                    _logger.info("Added storage columns to attachments table")
-
-            # Provider type column
-            if "providers" in inspector.get_table_names():
-                prov_cols = {c["name"] for c in inspector.get_columns("providers")}
-                if "provider_type" not in prov_cols:
-                    conn.execute(
-                        __import__("sqlalchemy").text(
-                            "ALTER TABLE providers ADD COLUMN provider_type VARCHAR(20) "
-                            "NOT NULL DEFAULT 'doctor'"
-                        )
-                    )
-                    conn.commit()
-                    _logger.info("Added 'provider_type' column to providers table")
-
-            # Household settings column
-            if "households" in inspector.get_table_names():
-                hh_cols = {c["name"] for c in inspector.get_columns("households")}
-                if "settings_json" not in hh_cols:
-                    conn.execute(
-                        __import__("sqlalchemy").text(
-                            "ALTER TABLE households ADD COLUMN settings_json TEXT"
-                        )
-                    )
-                    conn.commit()
-                    _logger.info("Added 'settings_json' column to households table")
-
-            # Health record summary column
-            if "health_records" in inspector.get_table_names():
-                hr_cols = {c["name"] for c in inspector.get_columns("health_records")}
-                if "summary" not in hr_cols:
-                    conn.execute(
-                        __import__("sqlalchemy").text(
-                            "ALTER TABLE health_records ADD COLUMN summary TEXT"
-                        )
-                    )
-                    conn.commit()
-                    _logger.info("Added 'summary' column to health_records table")
-
-        sync_engine.dispose()
+        alembic_ini = Path(__file__).resolve().parents[2] / "alembic.ini"
+        command.upgrade(Config(str(alembic_ini)), "head")
     else:
         # Production: migrations should be run separately
         _logger.info(

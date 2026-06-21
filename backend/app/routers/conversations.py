@@ -4,7 +4,7 @@ import asyncio
 import json
 import logging
 from uuid import UUID
-from fastapi import APIRouter, Depends, HTTPException, Request
+from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
@@ -45,9 +45,15 @@ def _verification_to_dict(v):
 async def list_conversations(
     household: Household = Depends(get_household_from_token),
     db: AsyncSession = Depends(get_db),
+    limit: int = Query(50, le=200, ge=1),
 ):
-    """List all conversations."""
-    result = await db.execute(select(Conversation).where(Conversation.household_id == household.id))
+    """List recent conversations (newest first, bounded)."""
+    result = await db.execute(
+        select(Conversation)
+        .where(Conversation.household_id == household.id)
+        .order_by(Conversation.updated_at.desc())
+        .limit(limit)
+    )
     convs = list(result.scalars().all())
     return [
         {

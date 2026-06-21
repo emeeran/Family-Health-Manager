@@ -202,3 +202,40 @@ async def test_staging_file_not_leaked_across_members(auth_client):
         params={"token": token_b},
     )
     assert leak.status_code == 404
+
+
+async def test_member_detail_latest_insight_scoped_to_member(auth_client, db_session):
+    """Member detail's latest_insight must be scoped to the member. Previously
+    _detail_latest_insight had no member filter and returned the GLOBAL latest
+    insight (a cross-household leak on the member-detail page)."""
+    token_a = auth_client.params["token"]
+    token_b = await _token(auth_client, "insightB_user")
+    member_a = await _create_member(auth_client, token_a)
+    member_b = await _create_member(auth_client, token_b)
+
+    create = await auth_client.post(
+        f"/api/v1/members/{member_a}/records", json=RECORD_PAYLOAD, params={"token": token_a}
+    )
+    record_a = create.json()["id"]
+    db_session.add(
+        AIInsight(
+            health_record_id=UUID(record_a),
+            prompt="Summarize this record",  # a regular (non-system) insight
+            response="SECRET-latest-insight-A",
+            provider_used="test",
+            generated_at=datetime.now(timezone.utc),
+        )
+    )
+    await db_session.flush()
+
+    # Owner (A) sees their record's insight.
+    own = (
+        await auth_client.get(f"/api/v1/members/{member_a}/detail", params={"token": token_a})
+    ).json()
+    assert own.get("latest_insight") is not None
+
+    # B's member detail must NOT surface A's insight (the old global-latest leak).
+    theirs = (
+        await auth_client.get(f"/api/v1/members/{member_b}/detail", params={"token": token_b})
+    ).json()
+    assert theirs.get("latest_insight") is None

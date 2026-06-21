@@ -1,4 +1,4 @@
-import { createContext, useContext, useState, useCallback } from "react";
+import { createContext, useContext, useState, useCallback, useMemo } from "react";
 
 interface QuickViewContextValue {
   recordId: string | null;
@@ -34,17 +34,13 @@ export function RecordQuickViewProvider({ children }: { children: React.ReactNod
     setMemberId(null);
   }, []);
 
-  return (
-    <QuickViewContext.Provider
-      value={{
-        recordId,
-        memberId,
-        openQuickView,
-        closeQuickView,
-        isOpen: recordId !== null,
-      }}
-    >
-      {children}
-    </QuickViewContext.Provider>
+  // Memoize so the context value is stable across renders that don't change
+  // open/close state — this provider wraps the whole app, so without this every
+  // consumer of useRecordQuickView re-renders whenever the provider re-renders.
+  const value = useMemo<QuickViewContextValue>(
+    () => ({ recordId, memberId, openQuickView, closeQuickView, isOpen: recordId !== null }),
+    [recordId, memberId, openQuickView, closeQuickView]
   );
+
+  return <QuickViewContext.Provider value={value}>{children}</QuickViewContext.Provider>;
 }
