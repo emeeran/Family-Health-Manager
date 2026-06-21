@@ -275,12 +275,23 @@ class MedicationService:
         return reminders
 
     async def remove_outdated_prescriptions(
-        self, member_id: UUID, medicine_names: list[str]
+        self,
+        member_id: UUID,
+        medicine_names: list[str],
+        *,
+        protect_record_id: UUID | None = None,
     ) -> int:
         """Remove older prescriptions for the given medicine names across all records.
 
         Keeps only the most-recent prescription per medicine (by record_date).
         Returns the number of prescriptions removed.
+
+        ``protect_record_id`` is never pruned or soft-deleted — used by the
+        create-record flow so the record a user just entered always persists,
+        even if a newer record shares the same medicine (otherwise a new record
+        with a past date is soft-deleted mid-create and the post-save
+        navigation 404s). Its medicines are still registered as "seen" so older
+        duplicates in *other* records get pruned.
         """
         if not medicine_names:
             return 0
@@ -318,6 +329,17 @@ class MedicationService:
 
             prescriptions = parsed.get("prescriptions", [])
             if not isinstance(prescriptions, list):
+                continue
+
+            if protect_record_id is not None and r.id == protect_record_id:
+                # Never prune or soft-delete the record being created/edited.
+                # Still register its medicines as seen so older duplicates in
+                # other records are pruned.
+                for rx in prescriptions:
+                    if isinstance(rx, dict):
+                        key = self._normalize_medicine_name(rx.get("medicine", "").strip())
+                        if key:
+                            kept.add(key)
                 continue
 
             changed = False
