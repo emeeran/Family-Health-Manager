@@ -1,4 +1,4 @@
-import { memo } from "react";
+import { memo, useRef } from "react";
 import type { UseFormRegister } from "react-hook-form";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -9,6 +9,7 @@ import { Plus, X } from "lucide-react";
 import type { FormValues } from "@/components/records/record-form-utils";
 import type { ProviderResponse } from "@/lib/types/provider";
 import { sortedProviders, stripProviderTitle } from "@/lib/provider-utils";
+import { useScrollToFirstError } from "@/hooks/use-scroll-to-error";
 
 interface StepVisitDetailsProps {
   providers: ProviderResponse[];
@@ -47,8 +48,11 @@ export const StepVisitDetails = memo(function StepVisitDetails({
   onTagInputChange,
   providerLabel = "Provider",
 }: StepVisitDetailsProps) {
+  const rootRef = useRef<HTMLDivElement>(null);
+  useScrollToFirstError(rootRef, chiefComplaintError ?? "");
+
   return (
-    <div className="space-y-4">
+    <div ref={rootRef} className="space-y-4">
       <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">
         Visit Details
       </p>

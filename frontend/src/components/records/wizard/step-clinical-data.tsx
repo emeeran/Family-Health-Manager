@@ -1,10 +1,11 @@
-import { memo, useMemo } from "react";
+import { memo, useMemo, useRef } from "react";
 import type { UseFormRegister } from "react-hook-form";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { TypeSpecificFields } from "@/components/records/type-specific-fields";
 import { DynamicTable } from "@/components/records/dynamic-table";
 import { getConfig, getTables } from "@/lib/record-type-configs";
+import { useScrollToFirstError } from "@/hooks/use-scroll-to-error";
 import type { ExtractionBatch } from "@/lib/extraction-store";
 import type { RecordType } from "@/lib/types/enums";
 import type { FormValues } from "@/components/records/record-form-utils";
@@ -46,6 +47,9 @@ export const StepClinicalData = memo(function StepClinicalData({
   medicineSuggestions,
 }: StepClinicalDataProps) {
   const tables = useMemo(() => (recordType ? getTables(getConfig(recordType)) : []), [recordType]);
+  const rootRef = useRef<HTMLDivElement>(null);
+  const errorSignature = errors ? Object.keys(errors).join(",") : "";
+  useScrollToFirstError(rootRef, errorSignature);
 
   // For doctor visits, hide chief_complaint and notes from TypeSpecificFields (handled in step 2)
   const typeSpecificConfig = useMemo(() => {
@@ -67,7 +71,7 @@ export const StepClinicalData = memo(function StepClinicalData({
   const hasStructuredContent = hasCustomFields || hasTables;
 
   return (
-    <div className="space-y-4">
+    <div ref={rootRef} className="space-y-4">
       <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">
         Clinical Data
       </p>
