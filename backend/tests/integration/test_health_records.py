@@ -1,5 +1,7 @@
 """Integration tests for health records CRUD."""
 
+import json
+
 import pytest
 
 
@@ -40,6 +42,62 @@ async def test_create_record(auth_client):
     assert body["clinical_data"] == "Routine checkup, all vitals normal"
     assert body["record_type"] == "doctor_visit"
     assert body["is_deleted"] is False
+
+
+async def test_create_record_syncs_medications_and_lab_results_inline(auth_client, db_session):
+    """Both medication and lab-result syncs run during save.
+
+    Regression for the shared-AsyncSession hazard: the syncs used to run
+    concurrently on one session via asyncio.gather, which could trip a
+    concurrent-use error that each sync's try/except silently swallowed —
+    dropping one or both syncs.
+    """
+    from sqlalchemy import select
+    from uuid import UUID
+
+    from app.models.lab_result import LabResult
+    from app.models.medication import Medication
+
+    member_id = await _create_member(auth_client)
+    member_uuid = UUID(member_id)
+    resp = await auth_client.post(
+        f"/api/v1/members/{member_id}/records",
+        json={
+            "record_type": "doctor_visit",
+            "record_date": "2025-01-15",
+            "clinical_data": json.dumps(
+                {
+                    "_type": "structured",
+                    "prescriptions": [
+                        {"medicine": "Metformin", "dosage": "500mg", "duration": "30 days"}
+                    ],
+                    "lab_results": [{"test_name": "HbA1c", "result": "6.4"}],
+                }
+            ),
+        },
+    )
+    assert resp.status_code == 201
+
+    meds = (
+        (
+            await db_session.execute(
+                select(Medication).where(Medication.family_member_id == member_uuid)
+            )
+        )
+        .scalars()
+        .all()
+    )
+    labs = (
+        (
+            await db_session.execute(
+                select(LabResult).where(LabResult.family_member_id == member_uuid)
+            )
+        )
+        .scalars()
+        .all()
+    )
+    assert meds, "medication sync was dropped during save"
+    assert labs, "lab result sync was dropped during save"
 
 
 async def test_create_doctor_visit_exposes_report_field(auth_client):

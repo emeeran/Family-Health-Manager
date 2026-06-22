@@ -783,28 +783,31 @@ async def create_record(
     if staging_file_ids:
         attachment_service = AttachmentService(db)
         names = original_file_names.split(",") if original_file_names else []
+        items: list[tuple[str, str | None]] = []
         for i, fid in enumerate(staging_file_ids.split(",")):
             fid = fid.strip()
             if fid:
-                try:
-                    orig_name = names[i].strip() if i < len(names) else None
-                    await attachment_service.attach_staged_file(
-                        record.id,
-                        fid,
-                        orig_name,
-                        background_tasks=background_tasks,
-                    )
-                except ValueError:
-                    logger.warning("Staging file %s not found, skipping", fid)
+                orig_name = names[i].strip() if i < len(names) else None
+                items.append((fid, orig_name))
+        if items:
+            # Batched: finalize all files concurrently (session-free), single flush.
+            # attach_staged_files logs+skips missing files itself, so no need to
+            # catch ValueError per file here.
+            await attachment_service.attach_staged_files(
+                record.id, items, background_tasks=background_tasks
+            )
 
     # NOTE: we deliberately do NOT prune older duplicate prescriptions here.
     # The rule is "latest Rx wins, then offer to modify" — dedup runs only when
     # the user confirms the medication-sync dialog (apply_medication_changes),
     # not silently on create. See MedicationService.remove_outdated_prescriptions.
 
-    # Performance optimization: sync medications and lab results in parallel
-    # using asyncio.gather() instead of running them sequentially. Each sync
-    # is wrapped in its own try/except so one failure does not cancel the other.
+    # Sync medications and lab results SERIALLY on the request session. A
+    # SQLAlchemy AsyncSession is not safe for concurrent use: a previous
+    # asyncio.gather() over both syncs could trip a concurrent-use error that
+    # each sync's own try/except silently swallowed — quietly dropping one or
+    # both. Each is still independently wrapped so one failure doesn't skip the
+    # other.
     if request.clinical_data:
         try:
             from app.services.medication_service import MedicationService
@@ -816,32 +819,26 @@ async def create_record(
             med_svc = MedicationService(db)
             lab_svc = LabResultService(db)
 
-            async def _sync_medications() -> None:
-                """Sync medications with individual error handling."""
-                try:
-                    await med_svc.sync_from_record(
-                        member_id,
-                        record.id,
-                        request.clinical_data,
-                        request.record_date,
-                        provider_name_val,
-                    )
-                except (json.JSONDecodeError, ValueError, TypeError, AttributeError) as exc:
-                    logger.warning("Medication sync failed: %s", exc)
+            try:
+                await med_svc.sync_from_record(
+                    member_id,
+                    record.id,
+                    request.clinical_data,
+                    request.record_date,
+                    provider_name_val,
+                )
+            except (json.JSONDecodeError, ValueError, TypeError, AttributeError) as exc:
+                logger.warning("Medication sync failed: %s", exc)
 
-            async def _sync_lab_results() -> None:
-                """Sync lab results with individual error handling."""
-                try:
-                    await lab_svc.sync_from_record(
-                        member_id,
-                        record.id,
-                        request.clinical_data,
-                        request.record_date,
-                    )
-                except (json.JSONDecodeError, ValueError, TypeError, AttributeError) as exc:
-                    logger.warning("Lab result sync failed: %s", exc)
-
-            await asyncio.gather(_sync_medications(), _sync_lab_results())
+            try:
+                await lab_svc.sync_from_record(
+                    member_id,
+                    record.id,
+                    request.clinical_data,
+                    request.record_date,
+                )
+            except (json.JSONDecodeError, ValueError, TypeError, AttributeError) as exc:
+                logger.warning("Lab result sync failed: %s", exc)
         except Exception as exc:
             logger.warning("Medication/lab sync skipped: %s", exc)
 

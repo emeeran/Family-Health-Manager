@@ -153,3 +153,55 @@ async def test_attach_round_trip_uses_encrypted_relocate(isolated_storage, db_se
     assert not staged_path.exists()  # staged file consumed
     assert not (get_staging_dir() / f"{unique_filename}.meta").exists()
     assert await decrypt_file(final) == PDF_BODY  # original retrievable
+
+
+async def test_attach_staged_files_batches_into_single_flush(isolated_storage, db_session, monkeypatch):
+    """attach_staged_files finalizes all files concurrently and flushes once
+    (not once per file)."""
+    from uuid import uuid4
+
+    from app.services.attachment_service import AttachmentService
+
+    # Stage three distinct files (distinct content → distinct hashes).
+    names = []
+    for i in range(3):
+        upload = _pdf_upload(body=PDF_BODY + bytes([65 + i]) * 10)
+        _path, unique_filename, _hash = await save_staged_secured(upload)
+        names.append(unique_filename)
+
+    flush_calls = {"n": 0}
+    real_flush = db_session.flush
+
+    async def _counting_flush(*a, **kw):
+        flush_calls["n"] += 1
+        return await real_flush(*a, **kw)
+
+    monkeypatch.setattr(db_session, "flush", _counting_flush)
+
+    svc = AttachmentService(db_session)
+    attachments = await svc.attach_staged_files(
+        uuid4(), [(n, f"doc_{i}.pdf") for i, n in enumerate(names)]
+    )
+
+    assert len(attachments) == 3
+    assert flush_calls["n"] == 1, f"expected 1 flush, got {flush_calls['n']}"
+    assert all(a.encrypted for a in attachments)
+
+
+async def test_attach_staged_files_skips_missing_keeps_rest(isolated_storage, db_session):
+    """A missing staging id is skipped; the rest still attach (matches the prior
+    per-file loop's skip-on-ValueError behavior)."""
+    from uuid import uuid4
+
+    from app.services.attachment_service import AttachmentService
+
+    _p1, n1, _ = await save_staged_secured(_pdf_upload(body=PDF_BODY + b"X" * 10))
+    _p2, n2, _ = await save_staged_secured(_pdf_upload(body=PDF_BODY + b"Y" * 10))
+
+    svc = AttachmentService(db_session)
+    attachments = await svc.attach_staged_files(
+        uuid4(), [(n1, "a.pdf"), ("nonexistent-staging-id", "missing.pdf"), (n2, "b.pdf")]
+    )
+
+    assert len(attachments) == 2
+    assert {a.file_name for a in attachments} == {"a.pdf", "b.pdf"}

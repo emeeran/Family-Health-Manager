@@ -1,5 +1,7 @@
 """Attachment service."""
 
+import asyncio
+import logging
 from pathlib import Path
 from uuid import UUID
 
@@ -19,6 +21,8 @@ from app.core.storage import (
     _read_staging_meta,
     _safe_unlink,
 )
+
+logger = logging.getLogger(__name__)
 
 
 class AttachmentService:
@@ -89,7 +93,6 @@ class AttachmentService:
             if isinstance(background_tasks, BackgroundTasks):
                 background_tasks.add_task(
                     generate_thumbnail_background,
-                    self.db,
                     attachment.id,
                     file_path,
                     content_hash,
@@ -270,7 +273,6 @@ class AttachmentService:
             if isinstance(background_tasks, BackgroundTasks):
                 background_tasks.add_task(
                     generate_thumbnail_background,
-                    self.db,
                     attachment.id,
                     dest_path,
                     content_hash,
@@ -279,3 +281,116 @@ class AttachmentService:
                 )
 
         return attachment
+
+    async def attach_staged_files(
+        self,
+        record_id: UUID,
+        items: list[tuple[str, str | None]],
+        background_tasks: "BackgroundTasks | None" = None,
+    ) -> list[Attachment]:
+        """Batch-attach multiple staged files to a record.
+
+        File finalization (hash/encrypt/relocate/stat) is session-free, so it is
+        run concurrently with asyncio.gather; the Attachment rows are then added
+        and flushed in a SINGLE call. This replaces an N×(finalize+flush) loop
+        while keeping all session use serial (AsyncSession is not concurrency-safe).
+
+        ``items`` is a list of ``(staging_file_id, original_file_name)``.
+        Missing staging files are skipped (logged); any other error is re-raised
+        so the caller's transaction rolls back. Returns the created attachments.
+        """
+        import mimetypes
+
+        staging_root = get_staging_dir().resolve()
+
+        # 1. Validate every staging path serially before doing any file I/O.
+        #    Missing files are skipped (matches the prior per-file loop, which
+        #    caught ValueError and continued); a path-traversal attempt is a
+        #    genuine error and aborts the batch.
+        validated: list[tuple[str, str | None, Path]] = []
+        for staging_file_id, original_file_name in items:
+            staging_file_id = (staging_file_id or "").strip()
+            if not staging_file_id:
+                continue
+            staging_path = (staging_root / staging_file_id).resolve()
+            if not staging_path.is_relative_to(staging_root):
+                raise ValueError("Invalid staging file ID")
+            if not staging_path.exists():
+                logger.warning("Staging file %s not found, skipping", staging_file_id)
+                continue
+            validated.append((staging_file_id, original_file_name, staging_path))
+
+        if not validated:
+            return []
+
+        # 2. Concurrent, session-free finalization. return_exceptions keeps a
+        #    single failure from cancelling its siblings.
+        async def _finalize(staging_file_id: str, staging_path: Path):
+            ext = Path(staging_file_id).suffix or ".bin"
+            meta = _read_staging_meta(staging_file_id)
+            if meta and meta.get("content_hash"):
+                mime_type = (
+                    meta.get("mime")
+                    or mimetypes.guess_type(staging_file_id)[0]
+                    or "application/octet-stream"
+                )
+                dest_path, content_hash = await finalize_staged_to_content_addressed(
+                    staging_path, meta["content_hash"], meta.get("ext") or ext
+                )
+                _safe_unlink(staging_root / f"{staging_file_id}.meta")
+            else:
+                mime_type = (
+                    mimetypes.guess_type(staging_file_id)[0] or "application/octet-stream"
+                )
+                dest_path, content_hash = await _store_plaintext_file(staging_path, ext, mime_type)
+                staging_path.unlink(missing_ok=True)
+            return dest_path, content_hash, mime_type, dest_path.stat().st_size
+
+        results = await asyncio.gather(
+            *[_finalize(sid, sp) for sid, _on, sp in validated],
+            return_exceptions=True,
+        )
+
+        # 3. Build + add Attachment rows serially; flush once.
+        built: list[tuple[Attachment, Path, str, str]] = []
+        for (staging_file_id, original_file_name, _sp), res in zip(validated, results):
+            if isinstance(res, BaseException):
+                # Missing files are non-fatal (skip + continue); anything else
+                # aborts the save so get_db rolls back.
+                if isinstance(res, ValueError) and "not found" in str(res):
+                    logger.warning("Staging file %s not found, skipping", staging_file_id)
+                    continue
+                raise res
+            dest_path, content_hash, mime_type, file_size = res
+            attachment = Attachment(
+                health_record_id=record_id,
+                file_path=str(dest_path),
+                file_name=original_file_name or staging_file_id,
+                mime_type=mime_type,
+                file_size=file_size,
+                content_hash=content_hash,
+                storage_backend="local",
+                thumbnail_path=None,
+                encrypted=True,
+            )
+            self.db.add(attachment)
+            built.append((attachment, dest_path, content_hash, mime_type))
+
+        if built:
+            await self.db.flush()
+
+        # 4. Register thumbnail BackgroundTasks serially (ids populated by flush).
+        if background_tasks is not None and isinstance(background_tasks, BackgroundTasks):
+            from app.core.thumbnails import generate_thumbnail_background
+
+            for attachment, dest_path, content_hash, mime_type in built:
+                background_tasks.add_task(
+                    generate_thumbnail_background,
+                    attachment.id,
+                    dest_path,
+                    content_hash,
+                    mime_type,
+                    True,
+                )
+
+        return [a for a, _dp, _ch, _mt in built]

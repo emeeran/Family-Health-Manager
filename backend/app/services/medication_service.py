@@ -48,6 +48,18 @@ class MedicationService:
         today = date.today()
         synced = 0
 
+        # One query for the member's active meds, indexed by medicine_key — avoids
+        # the N+1 (a SELECT per prescription) when superseding prior prescriptions.
+        active_result = await self.db.execute(
+            select(Medication).where(
+                Medication.family_member_id == member_id,
+                Medication.status == "active",
+            )
+        )
+        active_by_key: dict[str, list[Medication]] = {}
+        for med in active_result.scalars().all():
+            active_by_key.setdefault(med.medicine_key or "", []).append(med)
+
         for i, rx in enumerate(prescriptions):
             medicine = (rx.get("medicine") or "").strip()
             if not medicine:
@@ -60,15 +72,12 @@ class MedicationService:
             end_date = record_date + timedelta(days=duration_days)
             status = "active" if end_date >= today else "completed"
 
-            # Supersede any existing active medication with the same key
-            existing = await self.db.execute(
-                select(Medication).where(
-                    Medication.family_member_id == member_id,
-                    Medication.medicine_key == medicine_key,
-                    Medication.status == "active",
-                )
-            )
-            for old_med in existing.scalars().all():
+            # Supersede existing active meds with the same key from the prefetched
+            # index. We deliberately do NOT index the newly-added row, so a second
+            # prescription in this same record sharing a key won't supersede its
+            # sibling — matching the prior per-query behavior (unflushed rows were
+            # invisible to the in-loop SELECT).
+            for old_med in active_by_key.get(medicine_key, ()):
                 old_med.status = "superseded"
 
             self.db.add(
