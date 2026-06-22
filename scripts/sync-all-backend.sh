@@ -12,7 +12,10 @@ sudo rsync -av --delete \
   --exclude='prompts/' \
   /home/em/code/finished/health-manager/backend/app/ \
   /opt/health-manager/backend/app/
-sudo rm -rf /opt/health-manager/backend/app/**/**/ __pycache__
+# Remove __pycache__ dirs only. (The previous `rm -rf app/**/**/` was a bug:
+# without globstar, `**` collapses to `*`, so the glob matched `app/*/*/` and
+# deleted EVERY directory two levels deep — including app/services/ai/.)
+sudo find /opt/health-manager/backend/app -type d -name __pycache__ -exec rm -rf {} + 2>/dev/null
 sudo systemctl restart health-manager
 sleep 3
 echo "Backend status:"
