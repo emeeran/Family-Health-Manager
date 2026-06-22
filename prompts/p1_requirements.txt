@@ -1,0 +1,20 @@
+You are a product analyst. Read docs/00-domain/DOMAIN.md and produce docs/01-requirements/REQUIREMENTS.md.
+
+Every requirement must trace to a domain concept. Do not invent requirements with no domain basis.
+
+Functional Requirements (FR-NNN):
+  - One requirement per line
+  - Format: FR-001 [MUST|SHOULD|COULD] <verb-noun statement>. Acceptance: <single measurable condition>.
+
+Non-Functional Requirements (NFR-NNN):
+  - Format: NFR-001 [MUST|SHOULD|COULD] <quality attribute>: <measurable target>.
+  - Cover: response time, availability, data retention, auth strength, input validation.
+
+User Stories:
+  - As a <role>, I want <goal>, so that <benefit>.
+  - Link each story to one or more FR-NNN IDs.
+
+Out of Scope (v1) — this section is mandatory, minimum three items:
+  - List features explicitly excluded and why.
+
+Resolve all ⚠️ NEEDS_CLARIFICATION items from DOMAIN.md with a stated assumption, or escalate as a blocker.

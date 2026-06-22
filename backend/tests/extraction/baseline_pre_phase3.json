@@ -1,0 +1,99 @@
+{
+  "overall": {
+    "precision": 0.9795918367346939,
+    "recall": 1.0,
+    "f1": 0.9896907216494846
+  },
+  "per_field": {
+    "record_type": {
+      "tp": 5,
+      "fp": 0,
+      "fn": 0
+    },
+    "record_date": {
+      "tp": 5,
+      "fp": 0,
+      "fn": 0
+    },
+    "record_time": {
+      "tp": 1,
+      "fp": 0,
+      "fn": 0
+    },
+    "diagnosis": {
+      "tp": 3,
+      "fp": 0,
+      "fn": 0
+    },
+    "existing_conditions": {
+      "tp": 0,
+      "fp": 1,
+      "fn": 0
+    },
+    "chief_complaint": {
+      "tp": 1,
+      "fp": 0,
+      "fn": 0
+    },
+    "investigations": {
+      "tp": 0,
+      "fp": 0,
+      "fn": 0
+    },
+    "provider_name": {
+      "tp": 5,
+      "fp": 0,
+      "fn": 0
+    },
+    "prescription_text": {
+      "tp": 0,
+      "fp": 0,
+      "fn": 0
+    },
+    "next_review_date": {
+      "tp": 2,
+      "fp": 0,
+      "fn": 0
+    },
+    "weight": {
+      "tp": 2,
+      "fp": 0,
+      "fn": 0
+    },
+    "height": {
+      "tp": 2,
+      "fp": 0,
+      "fn": 0
+    },
+    "blood_pressure": {
+      "tp": 2,
+      "fp": 0,
+      "fn": 0
+    },
+    "heart_rate": {
+      "tp": 1,
+      "fp": 0,
+      "fn": 0
+    },
+    "temperature": {
+      "tp": 1,
+      "fp": 0,
+      "fn": 0
+    },
+    "prescriptions": {
+      "tp": 5,
+      "fp": 0,
+      "fn": 0
+    },
+    "lab_tests": {
+      "tp": 3,
+      "fp": 0,
+      "fn": 0
+    },
+    "eyeglass": {
+      "tp": 10,
+      "fp": 0,
+      "fn": 0
+    }
+  }
+}

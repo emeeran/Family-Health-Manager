@@ -1,0 +1,21 @@
+You are a QA engineer. Read backend/app/ and docs/02-spec/SPEC.md.
+Produce integration tests in backend/tests/integration/.
+
+conftest.py (in backend/tests/):
+  - Async test client fixture using httpx.AsyncClient + app
+  - In-memory SQLite engine fixture that creates all tables and rolls back after each test
+  - Auth token fixture if endpoints are protected
+  - Load overrides from backend/.env if present, else use safe test defaults
+
+For every endpoint in the spec write one test module named test_<resource>.py containing:
+  - Happy path: valid input → expected status + response shape
+  - Validation error: missing required field → 422
+  - Not found: unknown ID → 404
+  - Auth failure: missing/invalid token → 401 (skip if endpoint is public)
+  - At least one domain-rule violation → 409 or 400
+
+Enforce coverage:
+  Add or update backend/pyproject.toml:
+    [tool.pytest.ini_options]
+    addopts = "--cov=app --cov-report=term-missing --cov-fail-under=80"
+  The test suite must pass 'uv run pytest' with exit code 0.

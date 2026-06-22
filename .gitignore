@@ -1,0 +1,61 @@
+# Python
+__pycache__/
+*.py[cod]
+*.pyo
+.venv/
+*.egg-info/
+dist/
+build/
+original*/
+local/
+trash2review/
+
+# Environment
+.env
+*.env.local
+
+# Editors
+.vscode/settings.json
+.idea/
+*.swp
+*~
+
+# Testing / Coverage
+.pytest_cache/
+.mypy_cache/
+htmlcov/
+.coverage
+test-results/
+
+# OS
+.DS_Store
+Thumbs.db
+
+# DB
+*.db
+*.sqlite3
+
+# Node
+node_modules/
+frontend/dist/
+
+# App data (SQLite DB, uploads, etc.)
+backend/data/
+backend/openapi.json
+
+# Scripts
+scripts/
+
+# Trash
+trash2review/
+
+# Claude Code
+.claude/
+
+# Packaging build output
+staging/
+*.deb
+
+# AI tool caches
+.cache_ggshield
+.qwen/

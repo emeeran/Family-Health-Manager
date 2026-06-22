@@ -1,0 +1,12 @@
+[Unit]
+Description=Health Manager disaster-recovery restore trigger
+Documentation=file:///opt/health-manager/restore-archive.sh
+
+[Path]
+# The app (running as the unprivileged health-manager user) writes the chosen
+# archive name here; this path-unit fires the root restore service.
+PathChanged=/var/lib/health-manager/data/.restore-request
+Unit=health-manager-restore.service
+
+[Install]
+WantedBy=multi-user.target

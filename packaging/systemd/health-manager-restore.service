@@ -1,0 +1,13 @@
+[Unit]
+Description=Health Manager disaster-recovery restore (privileged)
+Documentation=file:///opt/health-manager/restore-archive.sh
+# Intentionally no After=/Requires= on health-manager.service — this unit must
+# be free to stop and start the app service during a restore.
+
+[Service]
+Type=oneshot
+ExecStart=/opt/health-manager/restore-archive.sh
+# Runs as root (default): needs `systemctl restart` + `chown` of the data dir.
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=health-manager-restore

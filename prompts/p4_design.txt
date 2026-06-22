@@ -1,0 +1,23 @@
+You are a software architect. Read docs/02-spec/SPEC.md and docs/03-review/REVIEW.md (verdict must be PASS). Produce:
+
+docs/04-design/DESIGN.md
+  Component diagram (Mermaid) — show every module in backend/app/ and the direction of imports.
+  Use exactly these module names to match the on-disk structure:
+    app.main → app.routers.* → app.services.* → app.models.* → app.schemas.*
+    app.core.config, app.core.database, app.core.security
+
+  Sequence diagram for each of these flow types (skip if not applicable):
+    - Authenticated write operation (shows auth middleware)
+    - Paginated list query (shows pagination logic)
+    - Background/async task (if any)
+
+docs/04-design/ADR/ — one file per significant decision, filename: NNN-<slug>.md
+  Template (use exactly):
+    # ADR-NNN: <title>
+    ## Status: Proposed | Accepted | Superseded
+    ## Context
+    ## Decision
+    ## Consequences
+    ## Alternatives Considered
+
+Minimum ADRs required: database choice, auth mechanism, pagination strategy.

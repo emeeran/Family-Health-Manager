@@ -1,0 +1,92 @@
+import { apiRequest } from "../api-client";
+import type {
+  HouseholdUpdate,
+  HouseholdResponse,
+  HouseholdSettingsResponse,
+  HouseholdSettingsUpdate,
+  AIProviderConfig,
+  AIProviderConfigResponse,
+  FetchedModelsResponse,
+  ProviderKeyStatus,
+  ProviderKeysResponse,
+  ImportFromEnvResponse,
+} from "../types/household";
+import type { HealthRecordResponse } from "../types/health-record";
+
+export function getHousehold() {
+  return apiRequest<HouseholdResponse>("/household");
+}
+
+export function updateHousehold(data: HouseholdUpdate) {
+  return apiRequest<HouseholdResponse>("/household", { method: "PUT", body: data });
+}
+
+export function listHouseholdRecords(limit?: number) {
+  return apiRequest<HealthRecordResponse[]>("/household/records", {
+    params: limit ? { limit: String(limit) } : undefined,
+  });
+}
+
+export function searchHouseholdRecords(query: string, limit?: number) {
+  return apiRequest<HealthRecordResponse[]>("/household/records/search", {
+    params: { q: query, ...(limit ? { limit: String(limit) } : {}) },
+  });
+}
+
+export function resetDatabase(password: string, confirmation: string) {
+  return apiRequest<{ message: string }>("/household/reset-database", {
+    method: "POST",
+    body: { password, confirmation },
+  });
+}
+
+export function getSettings() {
+  return apiRequest<HouseholdSettingsResponse>("/household/settings");
+}
+
+export function updateSettings(data: HouseholdSettingsUpdate) {
+  return apiRequest<HouseholdSettingsResponse>("/household/settings", {
+    method: "PUT",
+    body: data,
+  });
+}
+
+export function getAIProviderConfig() {
+  return apiRequest<AIProviderConfigResponse>("/household/ai-provider-config");
+}
+
+export function updateAIProviderConfig(config: AIProviderConfig) {
+  return apiRequest<AIProviderConfigResponse>("/household/ai-provider-config", {
+    method: "PUT",
+    body: config,
+  });
+}
+
+export function fetchProviderModels(provider?: string) {
+  return apiRequest<FetchedModelsResponse>("/household/ai-provider-config/fetch-models", {
+    params: provider ? { provider } : undefined,
+  });
+}
+
+export function getProviderKeys() {
+  return apiRequest<ProviderKeysResponse>("/system/provider-keys");
+}
+
+export function updateProviderKey(provider: string, value: string) {
+  return apiRequest<ProviderKeyStatus>("/system/provider-keys", {
+    method: "PUT",
+    body: { provider, value },
+  });
+}
+
+export function deleteProviderKey(provider: string) {
+  return apiRequest<{ deleted: string }>(`/system/provider-keys/${provider}`, {
+    method: "DELETE",
+  });
+}
+
+export function importProviderKeysFromEnv() {
+  return apiRequest<ImportFromEnvResponse>("/system/provider-keys/import-from-env", {
+    method: "POST",
+  });
+}

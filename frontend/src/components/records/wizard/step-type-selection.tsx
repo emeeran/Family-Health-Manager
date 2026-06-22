@@ -1,0 +1,107 @@
+import { memo } from "react";
+import type { UseFormRegister } from "react-hook-form";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
+import { RECORD_TYPE_OPTIONS, type FormValues } from "@/components/records/record-form-utils";
+import type { RecordType } from "@/lib/types/enums";
+
+interface StepTypeSelectionProps {
+  recordType: RecordType | undefined;
+  onRecordTypeChange: (type: RecordType) => void;
+  register: UseFormRegister<FormValues>;
+  errors: Record<string, { message?: string }>;
+  uploadSection?: React.ReactNode;
+  nlSection?: React.ReactNode;
+  showTime?: boolean;
+}
+
+export const StepTypeSelection = memo(function StepTypeSelection({
+  recordType,
+  onRecordTypeChange,
+  register,
+  errors,
+  uploadSection,
+  nlSection,
+  showTime,
+}: StepTypeSelectionProps) {
+  return (
+    <div className="space-y-4">
+      <div className="space-y-3">
+        <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">
+          Record Type & Date
+        </p>
+        <div className="grid gap-2 md:grid-cols-2">
+          <div className="space-y-0.5">
+            <Label className="text-xs">Record Type</Label>
+            <Select
+              value={recordType ?? ""}
+              onValueChange={(v) => {
+                if (v) onRecordTypeChange(v as RecordType);
+              }}
+            >
+              <SelectTrigger className="h-8">
+                <SelectValue placeholder="Select type" />
+              </SelectTrigger>
+              <SelectContent>
+                {RECORD_TYPE_OPTIONS.map(([value, label]) => (
+                  <SelectItem key={value} value={value}>
+                    {label}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+            {errors.record_type && (
+              <p role="alert" className="text-[11px] text-destructive">
+                {errors.record_type.message}
+              </p>
+            )}
+          </div>
+          <div className="space-y-0.5">
+            <Label htmlFor="record_date" className="text-xs">
+              Date
+            </Label>
+            <Input
+              id="record_date"
+              type="date"
+              aria-describedby="err-record_date"
+              {...register("record_date")}
+              className="h-8"
+            />
+            {errors.record_date && (
+              <p role="alert" className="text-[11px] text-destructive">
+                {errors.record_date.message}
+              </p>
+            )}
+          </div>
+          {showTime && (
+            <div className="space-y-0.5">
+              <Label htmlFor="record_time" className="text-xs">
+                Time
+              </Label>
+              <Input
+                id="record_time"
+                type="time"
+                aria-label="Record time"
+                {...register("record_time")}
+                className="h-8"
+              />
+            </div>
+          )}
+        </div>
+      </div>
+
+      {/* Upload & Extract section injected from wizard parent */}
+      {uploadSection}
+
+      {/* Natural-language "describe in words" section injected from wizard parent */}
+      {nlSection}
+    </div>
+  );
+});

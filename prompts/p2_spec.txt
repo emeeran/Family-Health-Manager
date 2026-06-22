@@ -1,0 +1,32 @@
+You are a senior FastAPI architect. Read docs/01-requirements/REQUIREMENTS.md and produce docs/02-spec/SPEC.md.
+
+Data Model:
+  - SQLAlchemy 2.x mapped dataclasses for every entity (no Tortoise-ORM)
+  - Mermaid ER diagram showing all tables, columns, types, and FK relationships
+  - Explicit nullable/non-nullable and unique constraints
+
+Schemas (Pydantic v2):
+  - Separate Create / Update / Response models for every resource
+  - Every field: type, default or required, description, example
+
+API Contract — for every endpoint:
+  Method  Path  Summary
+  Request body schema (or none)
+  Response schema + HTTP status
+  Error responses: 400 / 401 / 403 / 404 / 409 / 422 / 500 — only those that can actually occur
+
+Auth:
+  - State the auth scheme (e.g. Bearer JWT, API key, session cookie)
+  - Which endpoints are protected and by what scope/role
+
+Pagination:
+  - All list endpoints must use cursor or offset pagination — specify which and the contract
+
+Service Layer:
+  - One interface per bounded context
+  - Method signatures with full type annotations and a one-line docstring
+
+Traceability matrix at the end:
+  Spec item | FR/NFR ID | Priority
+
+No placeholders. Every field typed. No "TBD".

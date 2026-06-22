@@ -1,0 +1,145 @@
+#!/bin/bash
+set -e
+
+# Post-install script for health-manager
+
+# Ensure an external CLI dependency the app shells out to is installed. The deb
+# declares these via Depends: (which `apt install ./file.deb` resolves), but a
+# bare `dpkg -i` does NOT resolve dependencies — so install defensively here to
+# keep the app fully functional regardless of install method. Graceful: if apt
+# is unavailable or offline, warn but never fail the install (the app degrades
+# cleanly without these binaries).
+ensure_package() {
+    local pkg="$1" bin="${2:-$1}"
+    if command -v "$bin" >/dev/null 2>&1; then
+        return 0
+    fi
+    echo "health-manager: '$bin' not found — installing $pkg..."
+    if command -v apt-get >/dev/null 2>&1; then
+        export DEBIAN_FRONTEND=noninteractive
+        apt-get update -qq >/dev/null 2>&1 || true
+        if apt-get install -y --no-install-recommends "$pkg"; then
+            echo "health-manager: $pkg installed."
+        else
+            echo "health-manager: WARNING — could not install $pkg automatically (offline or apt error)." >&2
+            echo "                 Install it manually: sudo apt-get install $pkg" >&2
+        fi
+    else
+        echo "health-manager: WARNING — apt-get unavailable; cannot auto-install $pkg." >&2
+        echo "                 The app needs $pkg. Install it via your package manager." >&2
+    fi
+}
+
+# Ensure a required secret env var is present and non-empty in config.env.
+# config.env is a preserved dpkg conffile, so on upgrade the user's existing
+# values are kept and the placeholder lines are absent — generate/append in that
+# case too, so a package upgrade can NEVER leave the app without a secret.
+# (APP_ENV=production refuses to start without HEALTH_CHECK_SECRET; a missing
+# SECRET_KEY crashes Settings(); a missing ENCRYPTION_KEY would silently fall
+# back to a SECRET_KEY-derived key over already-encrypted data.) New installs
+# substitute the placeholder literal.
+#   $1 = env var name, $2 = placeholder literal, $3 = python generator expr
+ensure_secret() {
+    local name="$1" placeholder="$2" generator="$3"
+    local cfg=/etc/health-manager/config.env
+    if grep -q -- "$placeholder" "$cfg"; then
+        local val
+        val=$(python3 -c "$generator")
+        sed -i "s|$placeholder|${val}|" "$cfg"
+    elif ! grep -qE "^${name}=[^[:space:]]" "$cfg"; then
+        # Line missing, or value empty (NAME=) → (re)generate.
+        local val
+        val=$(python3 -c "$generator")
+        if grep -qE "^${name}=" "$cfg"; then
+            sed -i "s|^${name}=.*|${name}=${val}|" "$cfg"
+        else
+            echo "${name}=${val}" >> "$cfg"
+        fi
+    fi
+}
+
+case "$1" in
+    configure)
+        # tesseract-ocr: required for OCR of scanned PDFs/images. Without it,
+        # scanned-document extraction fails with "no readable data found in
+        # document" (the app skips OCR and falls back to vision AI).
+        ensure_package tesseract-ocr tesseract
+
+        # ghostscript: used to downsample/optimize scanned PDFs on ingest so
+        # attachments stay small. The app degrades gracefully (stores the PDF
+        # unoptimized) if absent, but install it so the optimization path works.
+        ensure_package ghostscript gs
+
+        # Create health-manager system user if it doesn't exist
+        if ! id -u health-manager &>/dev/null; then
+            useradd --system --no-create-home --shell /usr/sbin/nologin \
+                --comment "Health Manager Service" health-manager
+        fi
+
+        # Create data directories
+        mkdir -p /var/lib/health-manager/data/attachments
+        mkdir -p /var/lib/health-manager/data/backups
+        chown -R health-manager:health-manager /var/lib/health-manager
+
+        # Create log directory
+        mkdir -p /var/log/health-manager
+        chown -R health-manager:health-manager /var/log/health-manager
+
+        # Set ownership on installed files
+        chown -R health-manager:health-manager /opt/health-manager
+
+        # Create symlink so relative paths in the codebase resolve
+        # to the persistent data directory:
+        #   ./data/health.db      → /var/lib/health-manager/data/health.db
+        #   ./data/scheduler.db   → /var/lib/health-manager/data/scheduler.db
+        #   ./data/attachments/   → /var/lib/health-manager/data/attachments/
+        #   ./data/backups/       → /var/lib/health-manager/data/backups/
+        rm -f /opt/health-manager/backend/data
+        ln -s /var/lib/health-manager/data /opt/health-manager/backend/data
+        chown -h health-manager:health-manager /opt/health-manager/backend/data
+
+        # Generate/ensure SECRET_KEY, ENCRYPTION_KEY and HEALTH_CHECK_SECRET.
+        ensure_secret SECRET_KEY '<generate-secret-key>' \
+            'import secrets; print(secrets.token_urlsafe(48))'
+        ensure_secret ENCRYPTION_KEY '<generate-encryption-key>' \
+            'import base64, os; print(base64.urlsafe_b64encode(os.urandom(32)).decode())'
+        ensure_secret HEALTH_CHECK_SECRET '<generate-health-secret>' \
+            'import secrets; print(secrets.token_urlsafe(24))'
+
+        chmod 600 /etc/health-manager/config.env
+        chown health-manager:health-manager /etc/health-manager/config.env
+
+        # Make caddy binary executable
+        chmod +x /opt/health-manager/caddy
+
+        # Update desktop icon cache
+        gtk-update-icon-cache -f /usr/share/icons/hicolor 2>/dev/null || true
+        update-desktop-database /usr/share/applications 2>/dev/null || true
+
+        # Reload systemd daemon
+        systemctl daemon-reload
+
+        # Enable and start services
+        systemctl enable health-manager.service
+        systemctl enable health-manager-caddy.service
+        systemctl start health-manager.service || echo "WARNING: health-manager.service failed to start. Check: journalctl -eu health-manager.service"
+        systemctl start health-manager-caddy.service || echo "WARNING: health-manager-caddy.service failed to start. Check: journalctl -eu health-manager-caddy.service"
+
+        # Disaster-recovery restore trigger: the path unit watches for a
+        # restore-request flag file written by the app, then runs the root
+        # restore helper. Enable + start only the path unit (the service is
+        # triggered on demand; not started at boot).
+        chmod 755 /opt/health-manager/restore-archive.sh
+        systemctl enable health-manager-restore.path
+        systemctl start health-manager-restore.path || echo "WARNING: health-manager-restore.path failed to start. One-click restore will be unavailable."
+        ;;
+
+    abort-upgrade|abort-remove|abort-deconfigure)
+        ;;
+
+    *)
+        echo "postinst called with unknown argument \`$1'" >&2
+        ;;
+esac
+
+exit 0

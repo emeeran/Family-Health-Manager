@@ -1,0 +1,83 @@
+# Health Manager Caddy configuration
+# Listens on the port specified by the PORT env var (default: 8080) over plain
+# HTTP — intended for localhost use (the desktop entry opens http://localhost:8080)
+# or for sitting behind another TLS-terminating reverse proxy.
+#
+# To serve REMOTE users over HTTPS, replace the site address below with your
+# domain so Caddy auto-provisions Let's Encrypt certificates, e.g.:
+#     health.example.com {
+#         import site_block
+#     }
+# and open ports 80/443. HSTS (set in the header block) then takes effect.
+
+# Reusable upstream: transport timeouts + an active health check so a wedged
+# uvicorn (process up but hanging) is detected instead of holding client
+# connections open indefinitely.
+(backend_proxy) {
+	reverse_proxy 127.0.0.1:8000 {
+		transport http {
+			dial_timeout 3s
+			read_timeout 60s
+			write_timeout 60s
+		}
+		health_uri /health
+		health_interval 30s
+		health_timeout 3s
+	}
+}
+
+:{$PORT:8080} {
+	# Health check → backend
+	handle /health* {
+		import backend_proxy
+	}
+
+	# API requests → backend (preserves /api/v1/... path)
+	handle /api/* {
+		import backend_proxy
+	}
+
+	# Static frontend files (built by Vite)
+	handle {
+		root * /opt/health-manager/frontend
+
+		# Vite emits content-hashed bundles under /assets/* — they're immutable,
+		# so cache them aggressively (a year) to skip revalidation round-trips.
+		@indexhtml path /index.html / /
+		header @indexhtml Cache-Control "no-cache"
+
+		# Fallback to index.html only for paths that don't look like static assets
+		@not_static {
+			not path *.js *.css *.png *.jpg *.jpeg *.gif *.svg *.ico *.woff *.woff2 *.json *.map
+		}
+		rewrite @not_static /index.html
+
+		header /assets/* Cache-Control "public, max-age=31536000, immutable"
+		file_server
+	}
+
+	# Compression
+	encode gzip zstd
+
+	# Security headers
+	header {
+		X-Content-Type-Options nosniff
+		X-Frame-Options DENY
+		X-XSS-Protection "1; mode=block"
+		Referrer-Policy strict-origin-when-cross-origin
+		# HSTS only protects once traffic is over TLS (domain site address above or
+		# an upstream TLS terminator); ignored on plain HTTP, enforced on HTTPS.
+		Strict-Transport-Security "max-age=31536000; includeSubDomains"
+		Permissions-Policy "geolocation=(), microphone=(), camera=()"
+		# NOTE: script-src/style-src include 'unsafe-inline' (React inline styles).
+		# Tightening requires a nonce/hash pipeline — tracked as a follow-up.
+		Content-Security-Policy "default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; img-src 'self' data: blob:; font-src 'self' data: https://fonts.gstatic.com; connect-src 'self' https://fonts.gstatic.com https://fonts.googleapis.com; frame-ancestors 'none'; base-uri 'self'; form-action 'self'"
+		-Server
+	}
+
+	# Logging
+	log {
+		output stdout
+		format console
+	}
+}
