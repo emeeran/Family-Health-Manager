@@ -658,12 +658,11 @@ async def _generate_transcription_report_background(record_id: UUID, household_i
 async def _generate_insight_background(record_id: UUID) -> None:
     """Generate the AI insight for a newly-created record.
 
-    Runs as a FastAPI BackgroundTask — NOT loop.create_task — so it starts
-    AFTER the request's transaction commits. spawn_insight_task() schedules a
-    raw asyncio task that can run at the next await (follow-up reminder,
-    cache invalidation), before get_db() commits. Its own session then can't
-    see the just-inserted record (READ COMMITTED) and silently no-ops with
-    "Record ... not found for insight generation". generate_record_insight()
+    Runs as a FastAPI BackgroundTask. get_db is request-scoped, so its commit
+    runs AFTER background tasks — which is why create_record() does an explicit
+    `await db.commit()` before returning: without it this task's own session
+    can't see the still-uncommitted record ("Record ... not found for insight
+    generation") and hits "database is locked" on SQLite. generate_record_insight
     opens its own session and swallows all errors internally.
     """
     from app.services.insight_service import InsightService
@@ -893,6 +892,15 @@ async def create_record(
             )
         except Exception:
             logger.warning("Failed to create follow-up reminder for record %s", record.id)
+
+    # Commit BEFORE returning. FastAPI runs BackgroundTasks during response send
+    # (get_db is request-scoped, so its commit/close happens AFTER background
+    # tasks). Without this explicit commit, the record (and synced meds/labs/
+    # attachments) is still uncommitted when the summary/transcription/insight
+    # tasks fire — their own sessions can't see it ("Record not found for insight
+    # generation", empty summaries) and hit "database is locked" on SQLite
+    # because the request session still holds the write lock.
+    await db.commit()
 
     await cache.invalidate_async(f"household_records:{household.id}")
     await cache.invalidate_async(f"dashboard_summary:{household.id}")

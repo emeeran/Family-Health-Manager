@@ -6,6 +6,7 @@ from pathlib import Path
 from uuid import UUID
 
 from sqlalchemy import update
+from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.storage import get_thumbnails_dir
 
@@ -103,6 +104,7 @@ async def generate_thumbnail(
 
 
 async def generate_thumbnail_background(
+    db: AsyncSession,
     attachment_id: UUID,
     file_path: Path,
     content_hash: str,
@@ -111,10 +113,10 @@ async def generate_thumbnail_background(
 ) -> None:
     """Generate a thumbnail in a background task and persist the path to the DB.
 
-    Opens its OWN session: FastAPI BackgroundTasks run after get_db() has both
-    committed and closed the request session, so a request-scoped `db` would be
-    closed by the time this executes (the write would raise and be swallowed,
-    leaving thumbnail_path unset). Mirrors _generate_insight_background.
+    Uses the request's own session: background tasks run while get_db()'s
+    session is still open (request-scoped — it commits/closes only after
+    background tasks finish), so the just-flushed attachment is visible here and
+    a single commit persists both the thumbnail and the pending record work.
 
     The attachment is saved with thumbnail_path=None initially; this function
     updates it once the thumbnail is ready. If a client requests the thumbnail
@@ -128,16 +130,15 @@ async def generate_thumbnail_background(
         if thumb_path is None:
             return
 
-        from app.core.database import SessionLocal
+        # Update the attachment row with the generated thumbnail path
         from app.models.attachment import Attachment
 
-        async with SessionLocal() as db:
-            await db.execute(
-                update(Attachment)
-                .where(Attachment.id == attachment_id)
-                .values(thumbnail_path=str(thumb_path))
-            )
-            await db.commit()
+        await db.execute(
+            update(Attachment)
+            .where(Attachment.id == attachment_id)
+            .values(thumbnail_path=str(thumb_path))
+        )
+        await db.commit()
         logger.info("Background thumbnail saved for attachment %s", attachment_id)
     except Exception:
         # Gracefully handle all errors — thumbnail generation is non-critical

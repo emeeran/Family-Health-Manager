@@ -93,6 +93,7 @@ class AttachmentService:
             if isinstance(background_tasks, BackgroundTasks):
                 background_tasks.add_task(
                     generate_thumbnail_background,
+                    self.db,
                     attachment.id,
                     file_path,
                     content_hash,
@@ -273,6 +274,7 @@ class AttachmentService:
             if isinstance(background_tasks, BackgroundTasks):
                 background_tasks.add_task(
                     generate_thumbnail_background,
+                    self.db,
                     attachment.id,
                     dest_path,
                     content_hash,
@@ -386,6 +388,7 @@ class AttachmentService:
             for attachment, dest_path, content_hash, mime_type in built:
                 background_tasks.add_task(
                     generate_thumbnail_background,
+                    self.db,
                     attachment.id,
                     dest_path,
                     content_hash,
