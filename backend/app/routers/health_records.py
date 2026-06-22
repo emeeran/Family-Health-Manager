@@ -655,6 +655,22 @@ async def _generate_transcription_report_background(record_id: UUID, household_i
         logger.warning("Background transcription report failed for %s: %s", record_id, exc)
 
 
+async def _generate_insight_background(record_id: UUID) -> None:
+    """Generate the AI insight for a newly-created record.
+
+    Runs as a FastAPI BackgroundTask — NOT loop.create_task — so it starts
+    AFTER the request's transaction commits. spawn_insight_task() schedules a
+    raw asyncio task that can run at the next await (follow-up reminder,
+    cache invalidation), before get_db() commits. Its own session then can't
+    see the just-inserted record (READ COMMITTED) and silently no-ops with
+    "Record ... not found for insight generation". generate_record_insight()
+    opens its own session and swallows all errors internally.
+    """
+    from app.services.insight_service import InsightService
+
+    await InsightService(None).generate_record_insight(record_id)  # type: ignore[arg-type]
+
+
 @router.post("", status_code=201, response_model=HealthRecordResponse)
 async def create_record(
     member_id: UUID,
@@ -854,13 +870,12 @@ async def create_record(
         except (json.JSONDecodeError, ValueError, TypeError, AttributeError) as exc:
             logger.warning("Vitals sync skipped: %s", exc)
 
-    # Fire-and-forget AI insight generation
-    try:
-        from app.services.insight_service import spawn_insight_task
-
-        spawn_insight_task(record.id)
-    except Exception:
-        logger.debug("Insight generation skipped")
+    # Fire-and-forget AI insight generation. Registered as a FastAPI BackgroundTask
+    # (not spawn_insight_task/loop.create_task) so it runs AFTER get_db commits —
+    # otherwise its own session can't see the just-created record (race condition).
+    if background_tasks is None:
+        background_tasks = BackgroundTasks()
+    background_tasks.add_task(_generate_insight_background, record.id)
 
     # Invalidate cached member context so next insight uses fresh data
     AIService.invalidate_member_cache(member_id)

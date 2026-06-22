@@ -50,6 +50,34 @@ async def test_create_doctor_visit_exposes_report_field(auth_client):
     assert "transcription_report" in resp.json()
 
 
+async def test_create_record_runs_insight_post_commit(auth_client, monkeypatch):
+    """Insight generation for a new record runs as a post-commit BackgroundTask.
+
+    Regression for the race where it ran via loop.create_task at the next await
+    (follow-up reminder / cache invalidation), BEFORE get_db() committed — so its
+    own session couldn't see the just-inserted record and logged
+    "Record ... not found for insight generation". A FastAPI BackgroundTask is
+    awaited within the ASGI request cycle, so the spy must have been invoked with
+    the created record's id by the time the POST returns.
+    """
+    from app.services.insight_service import InsightService
+
+    invoked = {}
+
+    async def _spy(self, record_id):
+        invoked["record_id"] = str(record_id)
+        return None
+
+    monkeypatch.setattr(InsightService, "generate_record_insight", _spy)
+
+    member_id = await _create_member(auth_client)
+    resp = await auth_client.post(
+        f"/api/v1/members/{member_id}/records", json=RECORD_PAYLOAD
+    )
+    assert resp.status_code == 201
+    assert invoked.get("record_id") == resp.json()["id"]
+
+
 async def test_regenerate_report_builds_transcription_report(auth_client):
     """The regenerate-report endpoint persists a transcription report.
 
