@@ -191,7 +191,7 @@ export const DrugInteractionReport = memo(function DrugInteractionReport({
                       <div className="flex items-start gap-2.5">
                         <Icon className={`h-5 w-5 mt-0.5 shrink-0 ${config.iconColor}`} />
                         <div className="flex-1 min-w-0">
-                          <div className="flex items-center gap-2 mb-1">
+                          <div className="flex items-center gap-2 mb-1 flex-wrap">
                             <span className="text-sm font-bold">
                               {interaction.drugs.join(" + ")}
                             </span>
@@ -200,6 +200,16 @@ export const DrugInteractionReport = memo(function DrugInteractionReport({
                             >
                               {config.label}
                             </span>
+                            {interaction.source === "drugbank" ? (
+                              <span className="inline-flex items-center gap-1 px-2 py-0.5 text-[10px] font-semibold rounded bg-emerald-100 text-emerald-700 dark:bg-emerald-900/60 dark:text-emerald-300">
+                                <Shield className="h-3 w-3" />
+                                DrugBank · verified
+                              </span>
+                            ) : (
+                              <span className="inline-flex items-center px-2 py-0.5 text-[10px] font-medium rounded bg-slate-100 text-slate-500 dark:bg-slate-800 dark:text-slate-400">
+                                AI estimate
+                              </span>
+                            )}
                           </div>
                           <p className="text-sm text-foreground/80">{interaction.description}</p>
                           <p className="text-sm text-foreground/60 mt-1.5">

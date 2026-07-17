@@ -6,6 +6,9 @@ import type {
   MemberDashboardResponse,
   MemberDetailResponse,
   DrugInteractionResponse,
+  DrugRecallsResponse,
+  DrugLabelSummary,
+  AdverseEventReaction,
   ActiveMedication,
   Hba1cHistoryEntry,
   PreventiveRecommendation,
@@ -80,6 +83,29 @@ export function getLatestDrugInteractions(memberId: string) {
   return apiRequest<DrugInteractionResponse>(`/members/${memberId}/latest-drug-interactions`, {
     timeout: 120_000,
   });
+}
+
+/** FDA recall reports matching any of the member's active medications (free, no key). */
+export function getDrugRecalls(memberId: string) {
+  return apiRequest<DrugRecallsResponse>(`/members/${memberId}/drug-recalls`, {
+    timeout: 30_000,
+  });
+}
+
+/** FDA prescribing label (key sections) for a single medication. */
+export function getDrugLabel(memberId: string, medicine: string) {
+  return apiRequest<{ label: DrugLabelSummary | null }>(`/members/${memberId}/drug-label`, {
+    params: { medicine },
+    timeout: 30_000,
+  });
+}
+
+/** Top reported adverse reactions (FAERS) for a single medication. */
+export function getDrugAdverseEvents(memberId: string, medicine: string) {
+  return apiRequest<{ events: AdverseEventReaction[] }>(
+    `/members/${memberId}/drug-adverse-events`,
+    { params: { medicine }, timeout: 30_000 }
+  );
 }
 
 export function addMedication(

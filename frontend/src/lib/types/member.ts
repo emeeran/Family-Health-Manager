@@ -105,12 +105,50 @@ export interface DrugInteraction {
   severity: "high" | "moderate" | "low";
   description: string;
   recommendation: string;
+  /** Who flagged the interaction: "drugbank" (authoritative) or "ai" (AI estimate). */
+  source?: "drugbank" | "ai";
+  /** DrugBank evidence_level (level_1/level_2) when source is drugbank. */
+  evidence_level?: string;
 }
 
 export interface DrugInteractionResponse {
   interactions: DrugInteraction[];
   medications_checked: number;
   cached_at: string | null;
+}
+
+/** FDA recall (enforcement) report matching one of the member's active meds. */
+export interface DrugRecall {
+  generic_name: string;
+  product_description: string;
+  reason_for_recall: string;
+  classification: string;
+  status: string;
+  recalling_firm: string;
+  recall_initiation_date: string;
+  code_info: string;
+  matched_medications?: string[];
+}
+
+export interface DrugRecallsResponse {
+  recalls: DrugRecall[];
+  medications_checked: number;
+  checked_at: string;
+}
+
+/** FDA prescribing-label section (text-only). Only non-empty sections are sent. */
+export interface DrugLabelSummary {
+  generic_name: string;
+  brand_name: string | null;
+  manufacturer: string | null;
+  effective_date: string | null;
+  sections: Record<string, string>;
+}
+
+/** A frequently-reported adverse reaction (FAERS) with its report count. */
+export interface AdverseEventReaction {
+  term: string;
+  count: number;
 }
 
 export interface BmiHistoryEntry {

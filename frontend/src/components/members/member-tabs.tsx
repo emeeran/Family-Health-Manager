@@ -1,13 +1,14 @@
 import { memo, useCallback } from "react";
 import { useSearchParams } from "react-router-dom";
-import { User, FileText } from "lucide-react";
+import { User, FileText, ShieldCheck } from "lucide-react";
 import type { MemberDetailResponse } from "@/lib/types/member";
 import { OverviewTab } from "./tabs/overview-tab";
 import { RecordsTab } from "./tabs/records-tab";
+import { SafetyTab } from "./tabs/safety-tab";
 
-type TabId = "overview" | "records";
+type TabId = "overview" | "records" | "safety";
 
-const VALID_TABS = new Set<string>(["overview", "records"]);
+const VALID_TABS = new Set<string>(["overview", "records", "safety"]);
 
 interface TabConfig {
   id: TabId;
@@ -18,6 +19,7 @@ interface TabConfig {
 const TABS: TabConfig[] = [
   { id: "overview", label: "Overview", icon: User },
   { id: "records", label: "Records", icon: FileText },
+  { id: "safety", label: "Safety", icon: ShieldCheck },
 ];
 
 interface MemberTabsProps {
@@ -69,6 +71,7 @@ export const MemberTabs = memo(function MemberTabs({ data }: MemberTabsProps) {
       <div className="mt-2">
         {activeTab === "overview" && <OverviewTab data={data} />}
         {activeTab === "records" && <RecordsTab data={data} />}
+        {activeTab === "safety" && <SafetyTab data={data} />}
       </div>
     </div>
   );

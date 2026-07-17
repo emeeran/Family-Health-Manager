@@ -77,6 +77,16 @@ class Settings(BaseSettings):
     OLLAMA_TEXT_MODEL: str = "qwen3"
     OLLAMA_TIMEOUT: int = 90  # seconds — per-call timeout for Ollama requests
 
+    # External drug-information APIs (all server-side only — never sent to the
+    # client). DrugBank's Clinical API is a paid subscription; leaving
+    # DRUGBANK_API_KEY empty keeps drug-drug interaction checking on the existing
+    # AI (Ollama/cloud) path. openFDA and RxNorm are free and need no key.
+    DRUGBANK_API_KEY: str = ""
+    DRUGBANK_REGION: str = "us"  # at/ca/eu/... — filters DrugBank results
+    OPENFDA_API_KEY: str = ""  # Optional; raises openFDA rate limits (1k/day→120k/day)
+    OPENFDA_BASE_URL: str = "https://api.fda.gov"
+    RXNORM_BASE_URL: str = "https://rxnav.nlm.nih.gov/REST"
+
     # Cloud provider models (configurable so they can be swapped without code
     # edits). OpenRouter defaults to FREE-tier models (the ":free" suffix) to
     # avoid 402 "payment required" on paid models — they're rate-limited, but
