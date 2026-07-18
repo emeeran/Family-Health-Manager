@@ -12,6 +12,8 @@ import type {
   MedlinePlusTopic,
   DailyMedLabel,
   ClinicalTrial,
+  CanadianDrugProduct,
+  UkAlert,
   ActiveMedication,
   Hba1cHistoryEntry,
   PreventiveRecommendation,
@@ -131,6 +133,22 @@ export function getClinicalTrials(memberId: string, condition: string, limit = 8
 export function getConditionInfo(memberId: string, codeSystem: string, code: string) {
   return apiRequest<{ results: MedlinePlusTopic[] }>(`/members/${memberId}/condition-info`, {
     params: { code_system: codeSystem, code },
+    timeout: 30_000,
+  });
+}
+
+/** Health Canada DPD product for an 8-digit DIN (no name search available). */
+export function getCanadianProduct(memberId: string, din: string) {
+  return apiRequest<{ product: CanadianDrugProduct | null }>(
+    `/members/${memberId}/canadian-product`,
+    { params: { din }, timeout: 30_000 }
+  );
+}
+
+/** MHRA drug-safety alerts/news (GOV.UK) for a drug or term — UK recall source. */
+export function getUkAlerts(memberId: string, term: string, limit = 5) {
+  return apiRequest<{ alerts: UkAlert[]; term: string }>(`/members/${memberId}/uk-alerts`, {
+    params: { term, limit: String(limit) },
     timeout: 30_000,
   });
 }

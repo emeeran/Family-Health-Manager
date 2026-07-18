@@ -5,7 +5,9 @@ ClinicalTrials.gov v2, DailyMed v2). HTTP is faked — no network."""
 from app.services.health_resources.providers import (
     clinicaltrials,
     dailymed,
+    healthcanada,
     medlineplus,
+    mhra,
 )
 
 
@@ -140,3 +142,84 @@ async def test_dailymed_skips_entries_without_setid():
     body = {"data": [{"title": "No setid here"}, {"title": "OK", "setid": "xyz"}]}
     out = await dailymed.labels(FakeClient(_ok(body)), "metformin", 3)
     assert len(out) == 1 and out[0]["setid"] == "xyz"
+
+
+# ── Health Canada DPD (DIN lookup) ────────────────────────────────────
+
+
+async def test_healthcanada_parses_din():
+    body = [{
+        "drug_code": 71120,
+        "drug_identification_number": "02246893",
+        "brand_name": "APO-VERAP SR",
+        "descriptor": "",
+        "company_name": "APOTEX INC",
+        "class_name": "Human",
+        "ai_group_no": "0113846001",
+        "last_update_date": "2026-06-29",
+    }]
+    out = await healthcanada.lookup(FakeClient(_ok(body)), "02246893")
+    assert out == {
+        "din": "02246893",
+        "brand_name": "APO-VERAP SR",
+        "descriptor": "",
+        "company_name": "APOTEX INC",
+        "class_name": "Human",
+        "drug_code": 71120,
+        "ai_group_no": "0113846001",
+        "last_update_date": "2026-06-29",
+    }
+
+
+async def test_healthcanada_rejects_non_8_digit():
+    # No request should be made for an invalid DIN.
+    assert await healthcanada.lookup(FakeClient(lambda *a: _FakeResp(200, [{"x": 1}])), "123") is None
+    assert await healthcanada.lookup(FakeClient(lambda *a: _FakeResp(200, [])), "") is None
+
+
+async def test_healthcanada_not_found_is_none():
+    # Valid 8-digit DIN but DPD returns no product.
+    assert await healthcanada.lookup(FakeClient(_ok([])), "02246893") is None
+    assert await healthcanada.lookup(FakeClient(lambda *a: _FakeResp(200, None)), "02246893") is None
+
+
+# ── MHRA (GOV.UK search) ──────────────────────────────────────────────
+
+
+async def test_mhra_parses_results_and_absolutises_link():
+    body = {
+        "total": 1,
+        "results": [
+            {
+                "title": "Metformin – MHRA Update",
+                "link": "/government/news/metformin-mhra-update",
+                "description": "MHRA update on metformin.",
+                "public_timestamp": "2019-12-06T20:23:00Z",
+                "format": "press_release",
+            }
+        ],
+    }
+    out = await mhra.search(FakeClient(_ok(body)), "metformin", 5)
+    assert out == [
+        {
+            "title": "Metformin – MHRA Update",
+            "url": "https://www.gov.uk/government/news/metformin-mhra-update",
+            "description": "MHRA update on metformin.",
+            "date": "2019-12-06T20:23:00Z",
+            "format": "press_release",
+        }
+    ]
+
+
+async def test_mhra_empty_term_noop():
+    assert await mhra.search(FakeClient(_ok({})), "", 5) == []
+
+
+async def test_mhra_non_dict_body_is_empty():
+    assert await mhra.search(FakeClient(lambda *a: _FakeResp(200, None)), "x", 5) == []
+
+
+async def test_mhra_keeps_absolute_url():
+    body = {"results": [{"title": "T", "link": "https://other.example/x", "format": "press_release"}]}
+    out = await mhra.search(FakeClient(_ok(body)), "x", 5)
+    assert out[0]["url"] == "https://other.example/x"

@@ -92,6 +92,10 @@ class Settings(BaseSettings):
     MEDLINEPLUS_CONNECT_URL: str = "https://connect.medlineplus.gov/service"
     CLINICALTRIALS_BASE_URL: str = "https://clinicaltrials.gov/api/v2"
     DAILYMED_BASE_URL: str = "https://dailymed.nlm.nih.gov/dailymed/services/v2"
+    # Health Canada Drug Product Database — DIN/code lookup only (no name search).
+    HEALTH_CANADA_DPD_URL: str = "https://health-products.canada.ca/api/drug"
+    # GOV.UK search API — powers MHRA drug alerts (UK equivalent of openFDA recalls).
+    GOV_UK_SEARCH_URL: str = "https://www.gov.uk/api/search.json"
 
     # Cloud provider models (configurable so they can be swapped without code
     # edits). OpenRouter defaults to FREE-tier models (the ":free" suffix) to

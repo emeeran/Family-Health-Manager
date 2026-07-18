@@ -6,11 +6,14 @@ Free, no key. Member-scoped. Complements the drug-* endpoints: those answer
 - ``/drug-education``      — MedlinePlus patient pages + DailyMed full labels
 - ``/clinical-trials``     — ClinicalTrials.gov trials for a condition
 - ``/condition-info``      — MedlinePlus education for an ICD-10/SNOMED/LOINC code
+- ``/canadian-product``    — Health Canada DPD product for an 8-digit DIN
+- ``/uk-alerts``           — MHRA drug-safety alerts (GOV.UK) for a drug/term
 
 All degrade to empty/null on external failure so a panel never 500s.
 """
 
 import logging
+import re
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -21,6 +24,8 @@ from app.models.base import FamilyMember
 from app.services.health_resources import HealthResourcesService
 
 logger = logging.getLogger(__name__)
+
+_DIN_RE = re.compile(r"^\d{8}$")
 
 router = APIRouter(prefix="/members", tags=["Health Resources"])
 
@@ -63,3 +68,31 @@ async def get_condition_info(
         raise HTTPException(status_code=422, detail="code query parameter is required")
     results = await HealthResourcesService(db).condition_info(code_system, code.strip())
     return {"results": results}
+
+
+@router.get("/{member_id}/canadian-product")
+async def get_canadian_product(
+    din: str = Query(..., description="8-digit Canadian Drug Identification Number"),
+    member: FamilyMember = Depends(require_member_in_household),
+    db: AsyncSession = Depends(get_db),
+):
+    """Health Canada DPD product for a DIN (no name search available)."""
+    din_clean = din.strip()
+    if not _DIN_RE.match(din_clean):
+        raise HTTPException(status_code=422, detail="DIN must be exactly 8 digits")
+    product = await HealthResourcesService(db).canadian_product(din_clean)
+    return {"product": product}
+
+
+@router.get("/{member_id}/uk-alerts")
+async def get_uk_alerts(
+    term: str = Query(..., description="Drug name or term to search MHRA alerts for"),
+    limit: int = Query(5, ge=1, le=20),
+    member: FamilyMember = Depends(require_member_in_household),
+    db: AsyncSession = Depends(get_db),
+):
+    """MHRA drug-safety alerts/news (GOV.UK) for a drug or term — UK recall source."""
+    if not term.strip():
+        raise HTTPException(status_code=422, detail="term query parameter is required")
+    alerts = await HealthResourcesService(db).uk_alerts(term.strip(), limit)
+    return {"alerts": alerts, "term": term.strip()}

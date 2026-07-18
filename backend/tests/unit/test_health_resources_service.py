@@ -107,3 +107,52 @@ async def test_condition_info_passes_code_system():
     ):
         await svc.condition_info("icd10", "E11.9")
     mock_mp.assert_awaited_once_with(_FAKE_CLIENT, "icd10", "E11.9")
+
+
+# ── canadian_product (DPD DIN lookup) ─────────────────────────────────
+
+
+async def test_canadian_product_passes_din():
+    svc = HealthResourcesService()
+    canned = {"din": "02246893", "brand_name": "APO-VERAP SR", "descriptor": ""}
+    with (
+        _patch_client(),
+        patch(
+            "app.services.health_resources.service.healthcanada.lookup",
+            new_callable=AsyncMock,
+            return_value=canned,
+        ) as mock_lookup,
+    ):
+        out = await svc.canadian_product("02246893")
+    assert out == canned
+    mock_lookup.assert_awaited_once_with(_FAKE_CLIENT, "02246893")
+
+
+async def test_canadian_product_empty_input():
+    with _patch_client():
+        assert await HealthResourcesService().canadian_product("") is None
+        assert await HealthResourcesService().canadian_product("   ") is None
+
+
+# ── uk_alerts (MHRA) ──────────────────────────────────────────────────
+
+
+async def test_uk_alerts_passes_term():
+    svc = HealthResourcesService()
+    canned = [{"title": "MHRA Update", "url": "https://www.gov.uk/x", "description": "", "date": "", "format": "press_release"}]
+    with (
+        _patch_client(),
+        patch(
+            "app.services.health_resources.service.mhra.search",
+            new_callable=AsyncMock,
+            return_value=canned,
+        ) as mock_search,
+    ):
+        out = await svc.uk_alerts("metformin", 5)
+    assert out == canned
+    mock_search.assert_awaited_once_with(_FAKE_CLIENT, "metformin", 5)
+
+
+async def test_uk_alerts_empty_term():
+    with _patch_client():
+        assert await HealthResourcesService().uk_alerts("") == []

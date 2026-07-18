@@ -16,7 +16,9 @@ from app.services.drug_info.providers import rxnorm
 from app.services.health_resources.providers import (
     clinicaltrials,
     dailymed,
+    healthcanada,
     medlineplus,
+    mhra,
 )
 
 logger = logging.getLogger(__name__)
@@ -72,4 +74,29 @@ class HealthResourcesService:
             return await medlineplus.connect(client, code_system, code)
         except Exception:
             logger.warning("condition_info failed %s/%s", code_system, code, exc_info=True)
+            return []
+
+    async def canadian_product(self, din: str) -> dict | None:
+        """Health Canada DPD product for an 8-digit DIN, or None.
+
+        DPD has no name search (multi-MB dumps); this is a DIN/code lookup only.
+        """
+        if not din or not din.strip():
+            return None
+        try:
+            client = await get_drug_info_client()
+            return await healthcanada.lookup(client, din.strip())
+        except Exception:
+            logger.warning("canadian_product failed for %r", din, exc_info=True)
+            return None
+
+    async def uk_alerts(self, term: str, limit: int = 5) -> list[dict]:
+        """MHRA drug-safety entries (UK) for a drug/term, via the GOV.UK search API."""
+        if not term or not term.strip():
+            return []
+        try:
+            client = await get_drug_info_client()
+            return await mhra.search(client, term, limit)
+        except Exception:
+            logger.warning("uk_alerts failed for %r", term, exc_info=True)
             return []

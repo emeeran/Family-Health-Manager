@@ -26,11 +26,13 @@ import {
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { DrugInteractionReport } from "@/components/members/drug-interaction-report";
+import { CanadianDinLookup } from "@/components/members/canadian-din-lookup";
 import {
   getDrugAdverseEvents,
   getDrugEducation,
   getDrugLabel,
   getDrugRecalls,
+  getUkAlerts,
 } from "@/lib/api/members";
 import { ApiError } from "@/lib/api-client";
 import type {
@@ -41,6 +43,7 @@ import type {
   DrugRecall,
   MedlinePlusTopic,
   MemberDetailResponse,
+  UkAlert,
 } from "@/lib/types/member";
 
 interface SafetyTabProps {
@@ -68,6 +71,8 @@ export const SafetyTab = memo(function SafetyTab({ data }: SafetyTabProps) {
       <DrugRecallsPanel memberId={memberId} medCount={medCount} />
 
       <DrugInfoLookup memberId={memberId} medications={medications} />
+
+      <CanadianDinLookup memberId={memberId} />
     </div>
   );
 });
@@ -216,6 +221,7 @@ function DrugInfoLookup({ memberId, medications }: InfoLookupProps) {
   const [events, setEvents] = useState<AdverseEventReaction[]>([]);
   const [medlineplus, setMedlineplus] = useState<MedlinePlusTopic[]>([]);
   const [dailymed, setDailymed] = useState<DailyMedLabel[]>([]);
+  const [ukAlerts, setUkAlerts] = useState<UkAlert[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -225,6 +231,7 @@ function DrugInfoLookup({ memberId, medications }: InfoLookupProps) {
       setEvents([]);
       setMedlineplus([]);
       setDailymed([]);
+      setUkAlerts([]);
       return;
     }
     let cancelled = false;
@@ -234,13 +241,15 @@ function DrugInfoLookup({ memberId, medications }: InfoLookupProps) {
       getDrugLabel(memberId, medicine),
       getDrugAdverseEvents(memberId, medicine),
       getDrugEducation(memberId, medicine),
+      getUkAlerts(memberId, medicine),
     ])
-      .then(([labelResp, eventsResp, eduResp]) => {
+      .then(([labelResp, eventsResp, eduResp, ukResp]) => {
         if (cancelled) return;
         setLabel(labelResp.label);
         setEvents(eventsResp.events);
         setMedlineplus(eduResp.medlineplus);
         setDailymed(eduResp.dailymed);
+        setUkAlerts(ukResp.alerts);
       })
       .catch((err) => {
         if (cancelled) return;
@@ -253,6 +262,7 @@ function DrugInfoLookup({ memberId, medications }: InfoLookupProps) {
         setEvents([]);
         setMedlineplus([]);
         setDailymed([]);
+        setUkAlerts([]);
       })
       .finally(() => {
         if (!cancelled) setLoading(false);
@@ -356,7 +366,7 @@ function DrugInfoLookup({ memberId, medications }: InfoLookupProps) {
                   </div>
                 )}
 
-                {(medlineplus.length > 0 || dailymed.length > 0) && (
+                {(medlineplus.length > 0 || dailymed.length > 0 || ukAlerts.length > 0) && (
                   <div className="rounded-md border border-border bg-muted/20 p-3 space-y-1.5">
                     <p className="text-xs font-semibold text-muted-foreground">Learn more</p>
                     {medlineplus.map((mp) => (
@@ -382,6 +392,22 @@ function DrugInfoLookup({ memberId, medications }: InfoLookupProps) {
                       >
                         <ExternalLink className="h-3 w-3 shrink-0" />
                         {dm.title || "Full label"} (DailyMed)
+                      </a>
+                    ))}
+                    {ukAlerts.map((ua) => (
+                      <a
+                        key={ua.url}
+                        href={ua.url}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="flex items-center gap-1.5 text-xs text-amber-700 hover:underline dark:text-amber-400"
+                        title="UK MHRA drug-safety update"
+                      >
+                        <ExternalLink className="h-3 w-3 shrink-0" />
+                        {ua.title || "MHRA alert"}
+                        {ua.date && (
+                          <span className="text-muted-foreground">· {ua.date.slice(0, 7)}</span>
+                        )}
                       </a>
                     ))}
                   </div>

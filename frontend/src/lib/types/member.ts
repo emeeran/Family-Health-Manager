@@ -175,6 +175,27 @@ export interface ClinicalTrial {
   url: string;
 }
 
+/** A Health Canada DPD product resolved from an 8-digit DIN. */
+export interface CanadianDrugProduct {
+  din: string;
+  brand_name: string;
+  descriptor: string;
+  company_name: string;
+  class_name: string;
+  drug_code: number | null;
+  ai_group_no: string;
+  last_update_date: string;
+}
+
+/** An MHRA drug-safety entry (UK) from the GOV.UK search API. */
+export interface UkAlert {
+  title: string;
+  url: string;
+  description: string;
+  date: string;
+  format: string;
+}
+
 export interface BmiHistoryEntry {
   date: string;
   bmi: number;
