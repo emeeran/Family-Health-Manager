@@ -15,7 +15,6 @@ from __future__ import annotations
 import asyncio
 import logging
 import re
-from collections.abc import Awaitable, Callable
 
 import httpx
 
@@ -122,14 +121,10 @@ async def fetch_json(
     params: dict | None = None,
     headers: dict | None = None,
     json_body: dict | None = None,
-    not_found_is_empty: bool = True,
 ) -> tuple[int, dict | list | None]:
     """Perform an HTTP request and parse JSON, surfacing the status + parsed body.
 
-    - On a transport/connect error, logs and returns ``(599, None)`` (no raise).
-    - On 404 with ``not_found_is_empty`` (the openFDA "no results" case), the
-      caller typically treats that as an empty result.
-
+    On a transport/connect error, logs and returns ``(599, None)`` (no raise).
     Returns ``(status_code, parsed_json_or_None)`` so each provider can apply
     its own envelope handling without re-implementing error trapping.
     """
@@ -148,29 +143,3 @@ async def fetch_json(
     except ValueError:
         logger.warning("Drug-info response from %s was not valid JSON", url)
         return resp.status_code, None
-
-
-async def gather_results(
-    fn: Callable[..., Awaitable], items: list
-) -> list:
-    """Run ``fn`` over ``items`` concurrently and flatten non-empty results.
-
-    Each provider call is independent (one med → one openFDA recall search), so
-    we fan them out. Exceptions in any single call are logged and swallowed so
-    one slow/failed med doesn't blank the whole panel.
-    """
-    import asyncio
-
-    async def _one(item):
-        try:
-            return await fn(item)
-        except Exception:  # noqa: BLE001 — degrade per-item, never break the panel
-            logger.warning("Drug-info lookup failed for %r", item, exc_info=True)
-            return []
-
-    batches = await asyncio.gather(*[_one(i) for i in items]) if items else []
-    flat: list = []
-    for batch in batches:
-        if batch:
-            flat.extend(batch)
-    return flat

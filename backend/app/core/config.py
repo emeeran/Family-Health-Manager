@@ -117,13 +117,8 @@ class Settings(BaseSettings):
     # AI Verification
     AI_VERIFICATION_ENABLED: bool = True
 
-    # Email notifications
-    SMTP_HOST: str = ""
-    SMTP_PORT: int = 587
-    SMTP_USER: str = ""
-    SMTP_PASSWORD: str = ""
-    SMTP_FROM: str = ""
-    EMAIL_ENABLED: bool = False
+    # Email notifications were removed (email_service.py is parked in
+    # trash2review). Re-add an EMAIL_* block here if email is revived.
 
     def model_post_init(self, __context) -> None:
         """Validate settings after loading."""
