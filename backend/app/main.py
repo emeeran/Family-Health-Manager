@@ -32,6 +32,7 @@ from app.routers import (
     member_smart_report,
     member_drug_interactions,
     member_drug_info,
+    member_resources,
     member_preventive,
     providers,
     provider_assignments,
@@ -379,6 +380,7 @@ app.include_router(member_preconsultation.router, prefix="/api/v1")
 app.include_router(member_smart_report.router, prefix="/api/v1")
 app.include_router(member_drug_interactions.router, prefix="/api/v1")
 app.include_router(member_drug_info.router, prefix="/api/v1")
+app.include_router(member_resources.router, prefix="/api/v1")
 app.include_router(member_preventive.router, prefix="/api/v1")
 app.include_router(providers.router, prefix="/api/v1")
 app.include_router(provider_assignments.router, prefix="/api/v1")

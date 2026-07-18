@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, type ReactNode } from "react";
-import { ArrowLeft, Download, FileHeart } from "lucide-react";
+import { ArrowLeft, Download } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { VerificationBadge } from "@/components/shared/verification-badge";
 import { SystemStatusGrid } from "@/components/members/reports/system-status-grid";
@@ -58,6 +58,55 @@ function MetaItem({
       <div className="text-[11px] font-medium uppercase tracking-wide text-gray-500">{label}</div>
       <div className={`text-[14px] text-gray-900 ${mono ? "font-mono" : ""}`}>{value}</div>
     </div>
+  );
+}
+
+/**
+ * Stylized health-dashboard cover graphic, replicating the SmartReport PDF
+ * cover: a soft blue panel holding a white bar chart, a green upward trend
+ * line, a red heart with a pulse trace, and orange star/cross accents.
+ * Inline SVG so it scales crisply and prints/PDF-exports cleanly.
+ */
+function SmartReportCoverGraphic() {
+  return (
+    <svg viewBox="0 0 120 120" className="h-24 w-24" role="img" aria-label="Health summary graphic">
+      <rect x="6" y="10" width="108" height="102" rx="22" fill="#E3F2FD" />
+      {/* orange star accent (top-left) */}
+      <path
+        d="M28 19l2.3 5 5.5.6-4.1 3.7 1.1 5.4L28 31l-4.8 2.7 1.1-5.4-4.1-3.7 5.5-.6z"
+        fill="#FF5722"
+      />
+      {/* orange medical cross (top-right) */}
+      <g fill="#FF5722">
+        <rect x="85" y="20" width="15" height="5" rx="2.5" />
+        <rect x="90" y="15" width="5" height="15" rx="2.5" />
+      </g>
+      {/* red heart with white ECG pulse */}
+      <path d="M60 50c-5-8-17-6-17 3 0 8 17 17 17 17s17-9 17-17c0-9-12-11-17-3z" fill="#EF4444" />
+      <path
+        d="M50 51h4l2.5-4 3 8 2.2-4H66"
+        fill="none"
+        stroke="#FFFFFF"
+        strokeWidth="2"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+      {/* white bar chart (bottom) */}
+      <rect x="24" y="82" width="13" height="20" rx="2.5" fill="#FFFFFF" />
+      <rect x="42" y="74" width="13" height="28" rx="2.5" fill="#FFFFFF" />
+      <rect x="60" y="78" width="13" height="24" rx="2.5" fill="#FFFFFF" />
+      <rect x="78" y="71" width="13" height="31" rx="2.5" fill="#FFFFFF" />
+      {/* green upward trend line over the bars */}
+      <polyline
+        points="26,78 45,68 63,72 81,60"
+        fill="none"
+        stroke="#22C55E"
+        strokeWidth="3.5"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+      <circle cx="81" cy="60" r="3.5" fill="#22C55E" />
+    </svg>
   );
 }
 
@@ -193,21 +242,24 @@ export function SmartReportViewer({
           className="overflow-hidden rounded-xl border border-gray-200 bg-white shadow-sm"
         >
           {/* Cover */}
-          <header className="bg-[#FFF8F0] px-6 py-6 sm:px-8">
+          <header className="bg-[#F5F0E6] px-6 py-6 sm:px-8">
             <div className="flex items-start justify-between gap-4">
               <div className="min-w-0">
                 <p className="text-[11px] font-semibold uppercase tracking-[0.2em] text-[#FF5722]">
-                  DAWNSTAR · Smart Report
+                  Family Health Keeper
                 </p>
-                <h1 className="mt-2 text-2xl font-bold tracking-tight text-gray-900 sm:text-3xl">
+                <p className="mt-1 text-[11px] text-gray-500">
+                  Crafted with <span className="text-red-500">♥</span>
+                </p>
+                <h1 className="mt-3 text-2xl font-bold tracking-tight text-gray-900 sm:text-3xl">
                   Smart Health Report
                 </h1>
                 <p className="mt-1 text-sm text-gray-500">
                   Helping you understand your health better
                 </p>
               </div>
-              <div className="hidden h-12 w-12 shrink-0 items-center justify-center rounded-xl bg-[#E3F2FD] sm:flex">
-                <FileHeart className="h-6 w-6 text-[#FF5722]" />
+              <div className="hidden shrink-0 sm:block">
+                <SmartReportCoverGraphic />
               </div>
             </div>
             <div className="mt-5 grid grid-cols-2 gap-x-6 gap-y-3 sm:grid-cols-3">
@@ -281,7 +333,7 @@ export function SmartReportViewer({
 
           {/* Footer */}
           <footer className="flex flex-wrap items-center justify-between gap-2 border-t border-gray-200 px-6 py-3 text-[11px] text-gray-500 sm:px-8">
-            <span className="font-semibold uppercase tracking-wide">SMART REPORT</span>
+            <span className="font-semibold uppercase tracking-wide">Family Health Keeper</span>
             <span>
               {memberName} · {dateStr}
             </span>

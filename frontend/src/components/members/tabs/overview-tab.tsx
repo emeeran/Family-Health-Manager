@@ -28,6 +28,7 @@ import { DrugInteractionReport } from "@/components/members/drug-interaction-rep
 import { ProvidersUhidCard } from "@/components/members/providers-uhid-card";
 import { DedupDialog } from "@/components/records/dedup-dialog";
 import { VaccinationsSection } from "@/components/members/vaccinations-section";
+import { ClinicalTrialsCard } from "@/components/members/clinical-trials-card";
 import {
   InsightReport,
   PreConsultationNoteViewer,
@@ -768,6 +769,7 @@ ${histParts.length > 0 ? `<h2>Medical History</h2><div style="line-height:1.8;ma
         />
         <VaccinationsSection memberId={member.id} />
       </div>
+      <ClinicalTrialsCard memberId={member.id} />
       {(preventive_recommendations?.length ?? 0) > 0 && (
         <Card className="shadow-none">
           <CardContent className="pt-4 pb-3">

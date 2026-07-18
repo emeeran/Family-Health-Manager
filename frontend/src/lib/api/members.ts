@@ -9,6 +9,9 @@ import type {
   DrugRecallsResponse,
   DrugLabelSummary,
   AdverseEventReaction,
+  MedlinePlusTopic,
+  DailyMedLabel,
+  ClinicalTrial,
   ActiveMedication,
   Hba1cHistoryEntry,
   PreventiveRecommendation,
@@ -106,6 +109,30 @@ export function getDrugAdverseEvents(memberId: string, medicine: string) {
     `/members/${memberId}/drug-adverse-events`,
     { params: { medicine }, timeout: 30_000 }
   );
+}
+
+/** Patient-education links (MedlinePlus) + full-label links (DailyMed) for a med. */
+export function getDrugEducation(memberId: string, medicine: string) {
+  return apiRequest<{ medlineplus: MedlinePlusTopic[]; dailymed: DailyMedLabel[] }>(
+    `/members/${memberId}/drug-education`,
+    { params: { medicine }, timeout: 30_000 }
+  );
+}
+
+/** Clinical trials (ClinicalTrials.gov v2) matching a condition. */
+export function getClinicalTrials(memberId: string, condition: string, limit = 8) {
+  return apiRequest<{ trials: ClinicalTrial[]; condition: string }>(
+    `/members/${memberId}/clinical-trials`,
+    { params: { condition, limit: String(limit) }, timeout: 30_000 }
+  );
+}
+
+/** MedlinePlus patient-education for an ICD-10/SNOMED/LOINC code. */
+export function getConditionInfo(memberId: string, codeSystem: string, code: string) {
+  return apiRequest<{ results: MedlinePlusTopic[] }>(`/members/${memberId}/condition-info`, {
+    params: { code_system: codeSystem, code },
+    timeout: 30_000,
+  });
 }
 
 export function addMedication(

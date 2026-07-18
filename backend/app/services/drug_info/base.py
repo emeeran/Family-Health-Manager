@@ -31,6 +31,10 @@ SEVERITY_TO_APP: dict[str, str] = {
 
 _DRUG_INFO_LIMITS = httpx.Limits(max_connections=20, max_keepalive_connections=10)
 _DRUG_INFO_TIMEOUT = 30.0  # seconds — these are fast JSON endpoints
+# NLM (RxNorm, MedlinePlus Connect) silently returns 200 + empty body for a
+# blank or curl/* User-Agent; identifying the client keeps responses populated
+# and follows NLM's "tell us who you are" guidance.
+_DRUG_INFO_UA = "FamilyHealthKeeper/1.1 (self-hosted family health record)"
 
 _drug_info_client: httpx.AsyncClient | None = None
 _client_lock: asyncio.Lock | None = None
@@ -44,12 +48,15 @@ def _get_lock() -> asyncio.Lock:
 
 
 async def get_drug_info_client() -> httpx.AsyncClient:
-    """Get or create the shared httpx client for openFDA / RxNorm / DrugBank."""
+    """Get or create the shared httpx client for openFDA / RxNorm / DrugBank /
+    MedlinePlus / ClinicalTrials.gov / DailyMed (all free external lookups)."""
     global _drug_info_client
     async with _get_lock():
         if _drug_info_client is None or _drug_info_client.is_closed:
             _drug_info_client = httpx.AsyncClient(
-                timeout=_DRUG_INFO_TIMEOUT, limits=_DRUG_INFO_LIMITS
+                timeout=_DRUG_INFO_TIMEOUT,
+                limits=_DRUG_INFO_LIMITS,
+                headers={"User-Agent": _DRUG_INFO_UA},
             )
         return _drug_info_client
 

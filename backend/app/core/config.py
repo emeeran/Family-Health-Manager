@@ -87,6 +87,12 @@ class Settings(BaseSettings):
     OPENFDA_BASE_URL: str = "https://api.fda.gov"
     RXNORM_BASE_URL: str = "https://rxnav.nlm.nih.gov/REST"
 
+    # External health-information APIs (free, no key) for patient education,
+    # clinical-trial search, and full drug labels. All degrade to empty on failure.
+    MEDLINEPLUS_CONNECT_URL: str = "https://connect.medlineplus.gov/service"
+    CLINICALTRIALS_BASE_URL: str = "https://clinicaltrials.gov/api/v2"
+    DAILYMED_BASE_URL: str = "https://dailymed.nlm.nih.gov/dailymed/services/v2"
+
     # Cloud provider models (configurable so they can be swapped without code
     # edits). OpenRouter defaults to FREE-tier models (the ":free" suffix) to
     # avoid 402 "payment required" on paid models — they're rate-limited, but

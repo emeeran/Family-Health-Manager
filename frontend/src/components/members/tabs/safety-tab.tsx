@@ -15,6 +15,7 @@ import { memo, useEffect, useMemo, useState } from "react";
 import {
   AlertTriangle,
   CheckCircle2,
+  ExternalLink,
   Info,
   Loader2,
   Pill,
@@ -25,13 +26,20 @@ import {
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { DrugInteractionReport } from "@/components/members/drug-interaction-report";
-import { getDrugAdverseEvents, getDrugLabel, getDrugRecalls } from "@/lib/api/members";
+import {
+  getDrugAdverseEvents,
+  getDrugEducation,
+  getDrugLabel,
+  getDrugRecalls,
+} from "@/lib/api/members";
 import { ApiError } from "@/lib/api-client";
 import type {
   ActiveMedication,
   AdverseEventReaction,
+  DailyMedLabel,
   DrugLabelSummary,
   DrugRecall,
+  MedlinePlusTopic,
   MemberDetailResponse,
 } from "@/lib/types/member";
 
@@ -206,6 +214,8 @@ function DrugInfoLookup({ memberId, medications }: InfoLookupProps) {
 
   const [label, setLabel] = useState<DrugLabelSummary | null>(null);
   const [events, setEvents] = useState<AdverseEventReaction[]>([]);
+  const [medlineplus, setMedlineplus] = useState<MedlinePlusTopic[]>([]);
+  const [dailymed, setDailymed] = useState<DailyMedLabel[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -213,16 +223,24 @@ function DrugInfoLookup({ memberId, medications }: InfoLookupProps) {
     if (!medicine) {
       setLabel(null);
       setEvents([]);
+      setMedlineplus([]);
+      setDailymed([]);
       return;
     }
     let cancelled = false;
     setLoading(true);
     setError(null);
-    Promise.all([getDrugLabel(memberId, medicine), getDrugAdverseEvents(memberId, medicine)])
-      .then(([labelResp, eventsResp]) => {
+    Promise.all([
+      getDrugLabel(memberId, medicine),
+      getDrugAdverseEvents(memberId, medicine),
+      getDrugEducation(memberId, medicine),
+    ])
+      .then(([labelResp, eventsResp, eduResp]) => {
         if (cancelled) return;
         setLabel(labelResp.label);
         setEvents(eventsResp.events);
+        setMedlineplus(eduResp.medlineplus);
+        setDailymed(eduResp.dailymed);
       })
       .catch((err) => {
         if (cancelled) return;
@@ -233,6 +251,8 @@ function DrugInfoLookup({ memberId, medications }: InfoLookupProps) {
         );
         setLabel(null);
         setEvents([]);
+        setMedlineplus([]);
+        setDailymed([]);
       })
       .finally(() => {
         if (!cancelled) setLoading(false);
@@ -333,6 +353,37 @@ function DrugInfoLookup({ memberId, medications }: InfoLookupProps) {
                         </span>
                       ))}
                     </div>
+                  </div>
+                )}
+
+                {(medlineplus.length > 0 || dailymed.length > 0) && (
+                  <div className="rounded-md border border-border bg-muted/20 p-3 space-y-1.5">
+                    <p className="text-xs font-semibold text-muted-foreground">Learn more</p>
+                    {medlineplus.map((mp) => (
+                      <a
+                        key={mp.url}
+                        href={mp.url}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="flex items-center gap-1.5 text-xs text-blue-600 hover:underline dark:text-blue-400"
+                      >
+                        <ExternalLink className="h-3 w-3 shrink-0" />
+                        {mp.title || "MedlinePlus patient information"}
+                      </a>
+                    ))}
+                    {dailymed.map((dm) => (
+                      <a
+                        key={dm.setid}
+                        href={dm.url}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="flex items-center gap-1.5 text-xs text-blue-600 hover:underline dark:text-blue-400"
+                        title="Full FDA package insert (DailyMed)"
+                      >
+                        <ExternalLink className="h-3 w-3 shrink-0" />
+                        {dm.title || "Full label"} (DailyMed)
+                      </a>
+                    ))}
                   </div>
                 )}
               </div>

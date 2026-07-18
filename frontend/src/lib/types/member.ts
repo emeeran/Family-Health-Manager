@@ -151,6 +151,30 @@ export interface AdverseEventReaction {
   count: number;
 }
 
+/** A MedlinePlus patient-education health-topic link (MedlinePlus Connect). */
+export interface MedlinePlusTopic {
+  title: string;
+  url: string;
+  summary?: string;
+}
+
+/** A DailyMed Structured Product Label (full package-insert) link. */
+export interface DailyMedLabel {
+  title: string;
+  setid: string;
+  url: string;
+}
+
+/** A clinical trial from ClinicalTrials.gov v2. */
+export interface ClinicalTrial {
+  nct_id: string;
+  title: string;
+  status: string;
+  phase: string;
+  conditions: string[];
+  url: string;
+}
+
 export interface BmiHistoryEntry {
   date: string;
   bmi: number;
