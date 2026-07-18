@@ -94,6 +94,7 @@ async def call_ollama_text(
         "messages": [{"role": "user", "content": prompt}],
         "stream": False,
         "options": {"num_ctx": 16384, "num_predict": 2048, "temperature": 0.3},
+        "keep_alive": settings.OLLAMA_KEEP_ALIVE,
     }
     if fmt:
         payload["format"] = fmt
@@ -124,6 +125,7 @@ async def ollama_chat(model: str, prompt: str, num_predict: int = 4096) -> str |
         "messages": [{"role": "user", "content": prompt}],
         "stream": False,
         "options": {"num_ctx": 32768, "num_predict": num_predict, "temperature": 0.3},
+        "keep_alive": settings.OLLAMA_KEEP_ALIVE,
     }
     timeout = _ollama_timeout(len(prompt))
 
@@ -220,6 +222,7 @@ async def call_ollama_vision(
         ],
         "stream": False,
         "options": {"num_ctx": 8192, "num_predict": 4096, "temperature": 0.2},
+        "keep_alive": settings.OLLAMA_KEEP_ALIVE,
     }
     if fmt:
         payload["format"] = fmt

@@ -76,6 +76,12 @@ class Settings(BaseSettings):
     OLLAMA_MODEL: str = "qwen3"
     OLLAMA_TEXT_MODEL: str = "qwen3"
     OLLAMA_TIMEOUT: int = 90  # seconds — per-call timeout for Ollama requests
+    # Keep the model resident in memory between calls so the local fallback
+    # doesn't re-pay the cold-load (~9s on CPU) on every extraction.
+    OLLAMA_KEEP_ALIVE: str = "30m"
+    # Per-cloud-provider failover cap (seconds) for document extraction: a
+    # slow/dead cloud key is abandoned after this and the next provider is tried.
+    EXTRACTION_PROVIDER_TIMEOUT: int = 15
 
     # External drug-information APIs (all server-side only — never sent to the
     # client). DrugBank's Clinical API is a paid subscription; leaving

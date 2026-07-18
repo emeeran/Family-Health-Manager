@@ -12,6 +12,7 @@ from pathlib import Path
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.core.config import get_settings
 from app.core.provider_keys import any_cloud_provider_configured
 from app.services.ai.providers.gemini import call_gemini_text, call_gemini_vision, call_gemini_ocr
 from app.services.ai.providers.openai import call_openai_text, call_openai_vision
@@ -20,6 +21,48 @@ from app.services.ai.providers.openrouter import call_openrouter_text, call_open
 from app.services.ai.providers.ollama import call_ollama_text, call_ollama_vision, call_ollama_ocr
 
 logger = logging.getLogger(__name__)
+
+settings = get_settings()
+
+
+async def _run_provider_chain(providers, invoke, last_provider_ref: list, kind: str) -> str | None:
+    """Try providers in priority order; first non-empty result wins.
+
+    Each entry in ``providers`` is ``(callable, label, is_local)``. Cloud
+    providers are capped at ``settings.EXTRACTION_PROVIDER_TIMEOUT`` so a slow or
+    dead key fails fast and the next provider is tried; the local Ollama entry
+    (``is_local=True``) is exempt — it keeps its own generous adaptive timeout,
+    since as the last-resort fallback you want it to actually finish.
+
+    ``invoke(fn)`` calls the provider with the arguments appropriate to its kind
+    (text takes a prompt; vision takes b64 + mime + prompt) and returns its text
+    or ``None``.
+    """
+    for fn, label, is_local in providers:
+        try:
+            if is_local:
+                result = await invoke(fn)
+            else:
+                result = await asyncio.wait_for(
+                    invoke(fn), timeout=settings.EXTRACTION_PROVIDER_TIMEOUT
+                )
+        except asyncio.TimeoutError:
+            logger.warning(
+                "%s provider %s timed out after %ds — trying next",
+                kind,
+                label,
+                settings.EXTRACTION_PROVIDER_TIMEOUT,
+            )
+            continue
+        except Exception as exc:
+            logger.warning("%s provider %s failed: %s — trying next", kind, label, exc)
+            continue
+        if result:
+            logger.info("%s extraction succeeded via %s", kind, label)
+            last_provider_ref[0] = label
+            return result
+    logger.error("All %s providers failed for extraction", kind.lower())
+    return None
 
 
 async def _fast_cloud_text_available() -> bool:
@@ -1181,51 +1224,28 @@ async def _format_ocr_transcription(raw_text: str, last_provider_ref: list) -> s
 async def call_text_extraction(pdf_text: str, last_provider_ref: list) -> str | None:
     """Send extracted PDF text to an AI model for structured extraction.
 
-    Races all available providers in parallel — first valid result wins.
-    last_provider_ref is a mutable list [str] used to track the winning provider.
+    Tries providers in priority order — Groq → OpenRouter → Gemini → OpenAI →
+    local Ollama. First non-empty result wins; cloud providers fail fast (capped
+    timeout) so a dead/slow key doesn't stall the chain, and Ollama is the
+    last-resort fallback. ``last_provider_ref`` is a mutable [str] recording the
+    winning provider.
     """
     prompt = f"{EXTRACTION_PROMPT}\n\nDocument Content:\n{pdf_text[:30000]}"
 
     providers = [
-        (call_openrouter_text, "OpenRouter text"),
-        (call_groq_text, "Groq text"),
-        (call_gemini_text, "Gemini text"),
+        (call_groq_text, "Groq text", False),
+        (call_openrouter_text, "OpenRouter text", False),
+        (call_gemini_text, "Gemini text", False),
+        (call_openai_text, "OpenAI text", False),
         # Grammar-constrain Ollama to JSON — halves generation length and
         # guarantees parseable output on the slow CPU-only path.
-        (functools.partial(call_ollama_text, fmt="json"), "Ollama text"),
-        (call_openai_text, "OpenAI text"),
+        (functools.partial(call_ollama_text, fmt="json"), "Ollama text", True),
     ]
 
-    async def _try(fn, label):
-        try:
-            result = await fn(prompt)
-            if result:
-                return label, result
-        except Exception as exc:
-            logger.warning("Text provider %s failed: %s", label, exc)
-        return None
+    async def invoke(fn):
+        return await fn(prompt)
 
-    # Race all providers — first valid result wins
-    tasks = [asyncio.create_task(_try(fn, label)) for fn, label in providers]
-    winner = None
-    for coro in asyncio.as_completed(tasks):
-        result = await coro
-        if result is not None:
-            name, text = result
-            logger.info("Text extraction succeeded via %s", name)
-            last_provider_ref[0] = name
-            winner = text
-            break
-
-    # Cancel remaining tasks
-    for t in tasks:
-        if not t.done():
-            t.cancel()
-    await asyncio.gather(*tasks, return_exceptions=True)
-
-    if winner is None:
-        logger.error("All text providers failed for extraction")
-    return winner
+    return await _run_provider_chain(providers, invoke, last_provider_ref, kind="Text")
 
 
 def merge_extractions(
@@ -1363,45 +1383,26 @@ async def call_vision_provider(
 async def call_vision_provider_from_b64(
     b64_data: str, mime_type: str, last_provider_ref: list
 ) -> str | None:
-    """Send base64-encoded data to vision-capable AI providers — races all in parallel."""
-    providers = [
-        (call_openrouter_vision, "_call_openrouter_vision"),
-        (call_gemini_vision, "_call_gemini_vision"),
-        (call_groq_vision, "_call_groq_vision"),
-        (functools.partial(call_ollama_vision, fmt="json"), "_call_ollama_vision"),
-        (call_openai_vision, "_call_openai_vision"),
-    ]
+    """Send base64-encoded data to vision-capable AI providers in priority order.
+
+    Groq → OpenRouter → Gemini → OpenAI → local Ollama. First non-empty result
+    wins; cloud providers fail fast (capped timeout), Ollama is the last-resort
+    fallback. Responses are truncated to keep prompts bounded.
+    """
     MAX_RESPONSE_CHARS = 4096
 
-    async def _try(fn, name):
-        try:
-            result = await fn(b64_data, mime_type, EXTRACTION_PROMPT)
-            if result:
-                if len(result) > MAX_RESPONSE_CHARS:
-                    result = result[:MAX_RESPONSE_CHARS]
-                return name, result
-        except Exception as exc:
-            logger.warning("Vision provider %s failed: %s", name, exc)
-        return None
+    providers = [
+        (call_groq_vision, "Groq vision", False),
+        (call_openrouter_vision, "OpenRouter vision", False),
+        (call_gemini_vision, "Gemini vision", False),
+        (call_openai_vision, "OpenAI vision", False),
+        (functools.partial(call_ollama_vision, fmt="json"), "Ollama vision", True),
+    ]
 
-    # Race all providers — first valid result wins
-    tasks = [asyncio.create_task(_try(fn, name)) for fn, name in providers]
-    winner = None
-    for coro in asyncio.as_completed(tasks):
-        result = await coro
-        if result is not None:
-            name, text = result
-            logger.info("Vision extraction succeeded via %s", name)
-            last_provider_ref[0] = name
-            winner = text
-            break
+    async def invoke(fn):
+        result = await fn(b64_data, mime_type, EXTRACTION_PROMPT)
+        if result and len(result) > MAX_RESPONSE_CHARS:
+            return result[:MAX_RESPONSE_CHARS]
+        return result
 
-    # Cancel remaining tasks
-    for t in tasks:
-        if not t.done():
-            t.cancel()
-    await asyncio.gather(*tasks, return_exceptions=True)
-
-    if winner is None:
-        logger.error("All vision providers failed for extraction")
-    return winner
+    return await _run_provider_chain(providers, invoke, last_provider_ref, kind="Vision")

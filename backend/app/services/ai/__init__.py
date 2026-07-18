@@ -1000,7 +1000,7 @@ class AIService:
         from app.services.ai.providers.groq import call_groq_text
 
         return await call_groq_text(
-            prompt, model=model or "meta-llama/llama-4-scout-17b-16e-instruct"
+            prompt, model=model or "llama-3.3-70b-versatile"
         )
 
     async def _call_openrouter_text(self, prompt: str, model: str | None = None) -> str | None:

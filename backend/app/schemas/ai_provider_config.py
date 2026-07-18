@@ -19,7 +19,7 @@ PROVIDER_LABELS: dict[str, str] = {
 AVAILABLE_MODELS: dict[str, list[str]] = {
     "ollama": [],  # empty = free-text input
     "openrouter": ["deepseek/deepseek-v4-flash", "google/gemini-2.5-flash-preview"],
-    "groq": ["meta-llama/llama-4-scout-17b-16e-instruct", "llama-3.3-70b-versatile"],
+    "groq": ["llama-3.3-70b-versatile", "llama-3.1-8b-instant"],
     "gemini": ["gemini-2.5-flash", "gemini-2.5-pro", "gemini-2.0-flash"],
     "openai": ["gpt-5.4-mini", "gpt-5.4-nano", "gpt-4o", "gpt-4o-mini"],
 }
@@ -27,12 +27,12 @@ AVAILABLE_MODELS: dict[str, list[str]] = {
 DEFAULT_MODELS: dict[str, str] = {
     "ollama": settings.OLLAMA_TEXT_MODEL,
     "openrouter": "deepseek/deepseek-v4-flash",
-    "groq": "meta-llama/llama-4-scout-17b-16e-instruct",
+    "groq": "llama-3.3-70b-versatile",
     "gemini": "gemini-2.5-flash",
     "openai": "gpt-5.4-mini",
 }
 
-DEFAULT_ORDER: list[str] = ["ollama", "openrouter", "groq", "gemini", "openai"]
+DEFAULT_ORDER: list[str] = ["groq", "openrouter", "gemini", "openai", "ollama"]
 
 
 class ProviderConfigItem(BaseModel):

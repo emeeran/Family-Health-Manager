@@ -9,7 +9,7 @@ logger = logging.getLogger(__name__)
 
 
 async def call_groq_text(
-    prompt: str, model: str = "meta-llama/llama-4-scout-17b-16e-instruct"
+    prompt: str, model: str = "llama-3.3-70b-versatile"
 ) -> str | None:
     """Call Groq API for text-based generation."""
     api_key = await resolve_provider_api_key("groq")
@@ -43,7 +43,7 @@ async def call_groq_vision(b64_data: str, mime_type: str, extraction_prompt: str
         return None
     url = "https://api.groq.com/openai/v1/chat/completions"
     payload = {
-        "model": "meta-llama/llama-4-scout-17b-16e-instruct",
+        "model": "llama-3.3-70b-versatile",
         "messages": [
             {
                 "role": "user",
