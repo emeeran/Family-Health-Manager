@@ -58,5 +58,42 @@ network-exposed deployment.
 - **Auth + household scoping on all new endpoints** — every `/members/{id}/drug-*`, `/drug-education`, `/clinical-trials`, `/canadian-product`, `/uk-alerts` requires `require_member_in_household` or `get_household_from_token`. Verified.
 - **External API base URLs** — all hardcoded constants in `config.py` (not user-configurable) except Ollama (admin-settable — noted as medium SSRF above). No user-redirectable SSRF.
 
+## Missed by pipeline, caught by blind review
+
+The blind reviewer (sanitized, context-blind subagent — see `.pipeline/blind-review.md`)
+found four issues that Phase 4's audit missed:
+
+- [ ] **`health_records.py:764-778`** — background tasks fire before the request
+  session commits (only `flush()`, not `commit()`). The correctness subagent
+  verified line 902 was guarded but **missed lines 764-778** (a different code path).
+  Matches the project's own documented landmine. One-line fix: `await db.commit()`
+  before `background_tasks.add_task`.
+- [ ] **`backup_service.py:63-158`** — encryption key (`ENCRYPTION_KEY`) is **not
+  included in the backup archive**. Restore onto fresh hardware → DB and files that
+  can't be decrypted. Every encrypted attachment, 2FA secret, and provider key
+  permanently lost.
+- [ ] **`frontend/package.json:3` vs `backend/app/core/config.py:22`** — frontend
+  version (1.0.4) and backend version (1.1.1) have **drifted with no skew check**.
+  Deploys can ship an API the UI doesn't speak.
+- [ ] **`routers/auth.py:200-245`** — **2FA bypass via password reset**: sessions
+  revoke but 2FA state isn't re-verified after reset. Combined with weak rate-limiting
+  on auth endpoints, an attacker with a stolen password can force the reset flow and
+  skip the second factor.
+
+**Open question (disagreement):** The correctness subagent said the
+background-task-commit race is "correctly handled at `health_records.py:902`."
+The blind reviewer says it's still live at `health_records.py:764-778`. Both cite
+real lines — these may be **different endpoints** (one guarded, one not). Needs
+human verification of which paths still have the race.
+
+## Both agree (higher confidence)
+
+The blind reviewer independently corroborated these AUDIT.md findings, raising
+confidence: DDI silent-failure (#1), `/health` readiness gap (#6/13), rate-limiter
+not applied to routers (#7), static Fernet salt (#9), untested external-API error
+paths, AI-parse returning empty silently (#17).
+
 ## Subagent reports
-Full per-dimension findings are in the subagent outputs (correctness, security, config, observability, testing/CI, ops). This document synthesizes and deduplicates them.
+Full per-dimension findings are in the subagent outputs (correctness, security,
+config, observability, testing/CI, ops). This document synthesizes and
+deduplicates them. Blind review at `.pipeline/blind-review.md`.
