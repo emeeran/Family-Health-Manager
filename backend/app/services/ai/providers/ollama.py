@@ -76,6 +76,18 @@ async def _retry_request(fn, retries: int = 2, base_delay: float = 0.5):
             await asyncio.sleep(delay)
 
 
+def _ollama_options(**opts: int | float) -> dict:
+    """Build an Ollama ``options`` dict, injecting ``num_thread`` when set.
+
+    Centralized so the CPU-thread pinning (``OLLAMA_NUM_THREAD``) is applied to
+    every payload — it was previously omitted from all of them, leaving Ollama
+    to default to physical cores and underuse SMT on this 6C/12T CPU.
+    """
+    if settings.OLLAMA_NUM_THREAD:
+        opts["num_thread"] = settings.OLLAMA_NUM_THREAD
+    return opts
+
+
 async def call_ollama_text(
     prompt: str, model: str | None = None, fmt: str | None = None
 ) -> str | None:
@@ -93,7 +105,7 @@ async def call_ollama_text(
         "model": use_model,
         "messages": [{"role": "user", "content": prompt}],
         "stream": False,
-        "options": {"num_ctx": 16384, "num_predict": 2048, "temperature": 0.3},
+        "options": _ollama_options(num_ctx=16384, num_predict=2048, temperature=0.3),
         "keep_alive": settings.OLLAMA_KEEP_ALIVE,
     }
     if fmt:
@@ -124,7 +136,7 @@ async def ollama_chat(model: str, prompt: str, num_predict: int = 4096) -> str |
         "model": model,
         "messages": [{"role": "user", "content": prompt}],
         "stream": False,
-        "options": {"num_ctx": 32768, "num_predict": num_predict, "temperature": 0.3},
+        "options": _ollama_options(num_ctx=32768, num_predict=num_predict, temperature=0.3),
         "keep_alive": settings.OLLAMA_KEEP_ALIVE,
     }
     timeout = _ollama_timeout(len(prompt))
@@ -162,7 +174,8 @@ async def ollama_chat_stream(
         "model": model,
         "messages": [{"role": "user", "content": prompt}],
         "stream": True,
-        "options": {"num_ctx": 32768, "num_predict": num_predict, "temperature": 0.3},
+        "options": _ollama_options(num_ctx=32768, num_predict=num_predict, temperature=0.3),
+        "keep_alive": settings.OLLAMA_KEEP_ALIVE,
     }
     timeout = _ollama_timeout(len(prompt), streaming=True)
 
@@ -221,7 +234,7 @@ async def call_ollama_vision(
             }
         ],
         "stream": False,
-        "options": {"num_ctx": 8192, "num_predict": 4096, "temperature": 0.2},
+        "options": _ollama_options(num_ctx=8192, num_predict=1024, temperature=0.2),
         "keep_alive": settings.OLLAMA_KEEP_ALIVE,
     }
     if fmt:
@@ -260,7 +273,8 @@ async def call_ollama_ocr(b64_data: str, mime_type: str) -> str | None:
             }
         ],
         "stream": False,  # type: ignore[dict-item]
-        "options": {"num_ctx": 8192, "num_predict": 4096, "temperature": 0.1},
+        "options": _ollama_options(num_ctx=8192, num_predict=4096, temperature=0.1),
+        "keep_alive": settings.OLLAMA_KEEP_ALIVE,
     }
     client = await get_ollama_client()
     resp = await client.post(

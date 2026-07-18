@@ -1,6 +1,7 @@
 """Application configuration via pydantic-settings."""
 
 import logging
+import os
 from functools import lru_cache
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
@@ -82,6 +83,12 @@ class Settings(BaseSettings):
     # Per-cloud-provider failover cap (seconds) for document extraction: a
     # slow/dead cloud key is abandoned after this and the next provider is tried.
     EXTRACTION_PROVIDER_TIMEOUT: int = 15
+    # CPU-inference thread pinning. Ollama is CPU-only on this hardware (no
+    # CUDA) and commonly defaults ``num_thread`` to *physical* cores, ignoring
+    # SMT. Setting it to the logical core count (``os.cpu_count()``) uses the
+    # full 6C/12T and measurably cuts prompt-eval wall-clock on the local
+    # fallback path. Set 0 to omit and let Ollama auto-select.
+    OLLAMA_NUM_THREAD: int = os.cpu_count() or 8
 
     # External drug-information APIs (all server-side only — never sent to the
     # client). DrugBank's Clinical API is a paid subscription; leaving
