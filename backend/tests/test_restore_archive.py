@@ -67,9 +67,7 @@ def systemctl_guard(tmp_path):
     fake_bin = tmp_path / "fakebin"
     fake_bin.mkdir()
     log = tmp_path / "systemctl.log"
-    (fake_bin / "systemctl").write_text(
-        f'#!/bin/bash\necho "systemctl $*" >> "{log}"\nexit 0\n'
-    )
+    (fake_bin / "systemctl").write_text(f'#!/bin/bash\necho "systemctl $*" >> "{log}"\nexit 0\n')
     (fake_bin / "systemctl").chmod(0o755)
     env_path = f"{fake_bin}:{os.environ.get('PATH', '')}"
     return env_path, log
@@ -117,7 +115,9 @@ def test_restore_swaps_db_and_writes_ok_result(restore_layout, systemctl_guard):
     data_dir, archive_name = restore_layout
     env_path, systemctl_log = systemctl_guard
     result = _run_restore(data_dir, env_path)
-    assert result.returncode == 0, f"restore failed:\nSTDOUT:{result.stdout}\nSTDERR:{result.stderr}"
+    assert result.returncode == 0, (
+        f"restore failed:\nSTDOUT:{result.stdout}\nSTDERR:{result.stderr}"
+    )
     _assert_no_systemctl(systemctl_log)
 
     # DB swapped to the archive's snapshot.

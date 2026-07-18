@@ -8,7 +8,6 @@ summary after any add/edit/delete. With the fix the cache is busted and the next
 DOCTOR_VISIT record that then appears in ``recent_records``.
 """
 
-
 import pytest
 
 pytestmark = pytest.mark.asyncio
@@ -24,9 +23,7 @@ MEMBER_PAYLOAD = {
 
 
 async def test_dashboard_summary_invalidated_after_medication_add(auth_client):
-    member = (
-        await auth_client.post("/api/v1/members", json=MEMBER_PAYLOAD)
-    ).json()["id"]
+    member = (await auth_client.post("/api/v1/members", json=MEMBER_PAYLOAD)).json()["id"]
 
     # Prime the cache, then capture the pre-mutation record count.
     before = (await auth_client.get("/api/v1/dashboard/summary")).json()

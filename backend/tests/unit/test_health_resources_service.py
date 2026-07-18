@@ -30,7 +30,9 @@ async def test_drug_education_chains_rxnorm_to_medlineplus_and_dailymed():
         patch(
             "app.services.health_resources.service.medlineplus.connect",
             new_callable=AsyncMock,
-            return_value=[{"title": "Metformin", "url": "https://medlineplus.gov/x", "summary": ""}],
+            return_value=[
+                {"title": "Metformin", "url": "https://medlineplus.gov/x", "summary": ""}
+            ],
         ) as mock_mp,
         patch(
             "app.services.health_resources.service.dailymed.labels",
@@ -54,7 +56,9 @@ async def test_drug_education_skips_medlineplus_when_no_rxcui():
             new_callable=AsyncMock,
             return_value=None,  # unresolvable
         ),
-        patch("app.services.health_resources.service.medlineplus.connect", new_callable=AsyncMock) as mock_mp,
+        patch(
+            "app.services.health_resources.service.medlineplus.connect", new_callable=AsyncMock
+        ) as mock_mp,
         patch(
             "app.services.health_resources.service.dailymed.labels",
             new_callable=AsyncMock,
@@ -68,7 +72,10 @@ async def test_drug_education_skips_medlineplus_when_no_rxcui():
 
 async def test_drug_education_empty_input():
     assert await HealthResourcesService().drug_education("") == {"medlineplus": [], "dailymed": []}
-    assert await HealthResourcesService().drug_education("   ") == {"medlineplus": [], "dailymed": []}
+    assert await HealthResourcesService().drug_education("   ") == {
+        "medlineplus": [],
+        "dailymed": [],
+    }
 
 
 # ── trials / condition_info passthrough ───────────────────────────────
@@ -76,7 +83,16 @@ async def test_drug_education_empty_input():
 
 async def test_trials_passes_through():
     svc = HealthResourcesService()
-    canned = [{"nct_id": "NCT1", "title": "T", "status": "RECRUITING", "phase": "", "conditions": [], "url": "u"}]
+    canned = [
+        {
+            "nct_id": "NCT1",
+            "title": "T",
+            "status": "RECRUITING",
+            "phase": "",
+            "conditions": [],
+            "url": "u",
+        }
+    ]
     with (
         _patch_client(),
         patch(
@@ -139,7 +155,15 @@ async def test_canadian_product_empty_input():
 
 async def test_uk_alerts_passes_term():
     svc = HealthResourcesService()
-    canned = [{"title": "MHRA Update", "url": "https://www.gov.uk/x", "description": "", "date": "", "format": "press_release"}]
+    canned = [
+        {
+            "title": "MHRA Update",
+            "url": "https://www.gov.uk/x",
+            "description": "",
+            "date": "",
+            "format": "press_release",
+        }
+    ]
     with (
         _patch_client(),
         patch(

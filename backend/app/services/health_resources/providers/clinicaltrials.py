@@ -20,9 +20,7 @@ from app.services.drug_info.base import fetch_json
 logger = logging.getLogger(__name__)
 
 
-async def trials(
-    client: httpx.AsyncClient, condition: str, limit: int = 8
-) -> list[dict]:
+async def trials(client: httpx.AsyncClient, condition: str, limit: int = 8) -> list[dict]:
     """Recruiting-relevant trials for ``condition`` as ``[{nct_id,title,status,phase,conditions,url}]``."""
     if not condition or not condition.strip():
         return []

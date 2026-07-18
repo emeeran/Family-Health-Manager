@@ -125,9 +125,7 @@ async def test_create_record_invokes_insight_background_task(auth_client, monkey
     monkeypatch.setattr(InsightService, "generate_record_insight", _spy)
 
     member_id = await _create_member(auth_client)
-    resp = await auth_client.post(
-        f"/api/v1/members/{member_id}/records", json=RECORD_PAYLOAD
-    )
+    resp = await auth_client.post(f"/api/v1/members/{member_id}/records", json=RECORD_PAYLOAD)
     assert resp.status_code == 201
     assert invoked.get("record_id") == resp.json()["id"]
 
@@ -191,7 +189,9 @@ async def test_delete_record(auth_client):
     assert resp.status_code == 204
 
 
-async def test_create_record_commits_before_background_tasks(auth_client, db_session, monkeypatch, caplog):
+async def test_create_record_commits_before_background_tasks(
+    auth_client, db_session, monkeypatch, caplog
+):
     """create_record commits before background tasks run, so the insight task's
     OWN session can see the record.
 
@@ -208,6 +208,7 @@ async def test_create_record_commits_before_background_tasks(auth_client, db_ses
     monkeypatch.setattr(
         isvc, "SessionLocal", lambda: AsyncSession(db_session.bind, expire_on_commit=False)
     )
+
     # Stub the AI call so the test doesn't depend on Ollama; the point is that
     # the record is FOUND, not that an insight is produced.
     async def _no_ai(self, **_kw):
@@ -219,7 +220,11 @@ async def test_create_record_commits_before_background_tasks(auth_client, db_ses
     with caplog.at_level("WARNING"):
         resp = await auth_client.post(
             f"/api/v1/members/{member_id}/records",
-            json={"record_type": "misc_record", "record_date": "2026-06-22", "clinical_data": "probe"},
+            json={
+                "record_type": "misc_record",
+                "record_date": "2026-06-22",
+                "clinical_data": "probe",
+            },
         )
     assert resp.status_code == 201
     assert "not found for insight generation" not in caplog.text

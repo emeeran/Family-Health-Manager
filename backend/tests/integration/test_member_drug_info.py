@@ -138,7 +138,8 @@ async def test_adverse_events_returns_reactions(auth_client):
     with patch("app.routers.member_drug_info.DrugInfoService") as MockSvc:
         MockSvc.return_value.adverse_events = AsyncMock(return_value=canned)
         resp = await auth_client.get(
-            f"/api/v1/members/{member_id}/drug-adverse-events", params={"medicine": "Metformin 500mg"}
+            f"/api/v1/members/{member_id}/drug-adverse-events",
+            params={"medicine": "Metformin 500mg"},
         )
     assert resp.status_code == 200
     assert resp.json()["events"] == canned

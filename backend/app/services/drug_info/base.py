@@ -129,9 +129,7 @@ async def fetch_json(
     its own envelope handling without re-implementing error trapping.
     """
     try:
-        resp = await client.request(
-            method, url, params=params, headers=headers, json=json_body
-        )
+        resp = await client.request(method, url, params=params, headers=headers, json=json_body)
     except httpx.HTTPError as exc:
         logger.warning("Drug-info request to %s failed: %s", url, type(exc).__name__)
         return 599, None

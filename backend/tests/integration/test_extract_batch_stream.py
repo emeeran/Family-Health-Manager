@@ -171,9 +171,7 @@ async def test_batch_stream_heartbeats_during_long_extract(
     assert stages[-1] == "done"
 
 
-async def test_batch_stream_surfaces_per_file_error(
-    auth_client, monkeypatch, stub_verification
-):
+async def test_batch_stream_surfaces_per_file_error(auth_client, monkeypatch, stub_verification):
     """One file failing does not kill the stream; both file_complete events fire."""
 
     calls = {"n": 0}
@@ -206,9 +204,7 @@ async def test_batch_stream_surfaces_per_file_error(
     assert successes[0]["item"]["extracted"]["diagnosis"] == "recovered"
 
 
-async def test_batch_stream_all_fail_does_not_deadlock(
-    auth_client, monkeypatch, stub_verification
-):
+async def test_batch_stream_all_fail_does_not_deadlock(auth_client, monkeypatch, stub_verification):
     """If every producer raises, the stream still reaches done (no hang)."""
 
     async def failing_extract(self, file_path, mime_type, content_hash=None):

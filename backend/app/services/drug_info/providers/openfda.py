@@ -61,7 +61,9 @@ async def recalls(client: httpx.AsyncClient, generic_name: str) -> list[dict]:
         "limit": _RECALL_LIMIT,
         **_auth_param(),
     }
-    status, body = await fetch_json(client, "GET", f"{_base()}/drug/enforcement.json", params=params)
+    status, body = await fetch_json(
+        client, "GET", f"{_base()}/drug/enforcement.json", params=params
+    )
     out: list[dict] = []
     for row in _results(body):
         out.append(
@@ -117,7 +119,9 @@ async def label(client: httpx.AsyncClient, generic_name: str) -> dict | None:
     }
     # Drop empty sections so the UI only renders what exists.
     label_data["sections"] = {
-        k: v for k, v in label_data.items() if k not in {"generic_name", "brand_name", "manufacturer", "effective_date"} and v
+        k: v
+        for k, v in label_data.items()
+        if k not in {"generic_name", "brand_name", "manufacturer", "effective_date"} and v
     }
     return label_data
 
@@ -127,7 +131,7 @@ async def adverse_events(client: httpx.AsyncClient, generic_name: str) -> list[d
     if not generic_name:
         return []
     params = {
-        "search": f'patient.drug.openfda.generic_name:{_quoted(generic_name)}',
+        "search": f"patient.drug.openfda.generic_name:{_quoted(generic_name)}",
         "count": "patient.reaction.reactionmeddrapt.exact",
         "limit": _EVENT_LIMIT,
         **_auth_param(),

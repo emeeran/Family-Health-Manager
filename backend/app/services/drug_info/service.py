@@ -22,9 +22,30 @@ logger = logging.getLogger(__name__)
 # common units, so "Warfarin 5mg" / "Tab Metformin 500 mg" → "warfarin"/"metformin".
 _DOSAGE_RE = re.compile(r"\b\d+(?:\.\d+)?\s*(?:mg|mcg|ug|ml|gm|g|iu|meq|%|units?)\b", re.I)
 _FORM_WORDS = {
-    "tab", "tabs", "tablet", "tablets", "cap", "caps", "capsule", "capsules",
-    "syp", "syrup", "inj", "injection", "drops", "drop", "cream", "ointment",
-    "gel", "inhaler", "puff", "spray", "suspension", "susp", "strip", "sachet",
+    "tab",
+    "tabs",
+    "tablet",
+    "tablets",
+    "cap",
+    "caps",
+    "capsule",
+    "capsules",
+    "syp",
+    "syrup",
+    "inj",
+    "injection",
+    "drops",
+    "drop",
+    "cream",
+    "ointment",
+    "gel",
+    "inhaler",
+    "puff",
+    "spray",
+    "suspension",
+    "susp",
+    "strip",
+    "sachet",
 }
 
 

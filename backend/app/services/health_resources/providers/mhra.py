@@ -37,9 +37,7 @@ async def search(client: httpx.AsyncClient, term: str, limit: int = 5) -> list[d
         "filter_organisations": _MHRA_ORG,
         "count": str(max(1, min(limit, 20))),
     }
-    status, body = await fetch_json(
-        client, "GET", get_settings().GOV_UK_SEARCH_URL, params=params
-    )
+    status, body = await fetch_json(client, "GET", get_settings().GOV_UK_SEARCH_URL, params=params)
     if not isinstance(body, dict):
         return []
     out: list[dict] = []

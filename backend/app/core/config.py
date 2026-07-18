@@ -54,9 +54,9 @@ class Settings(BaseSettings):
     # main.py. Tiered by path so large scanned-PDF batches aren't rejected at
     # the upload gate while general JSON stays capped low. Tune per deployment
     # via config.env without a rebuild. (backup restore gets the largest cap.)
-    MAX_REQUEST_SIZE_MB: int = 50   # general API JSON payloads
-    MAX_UPLOAD_SIZE_MB: int = 500   # file uploads: /records/extract*, /attachments
-    MAX_BACKUP_SIZE_MB: int = 500   # backup restore
+    MAX_REQUEST_SIZE_MB: int = 50  # general API JSON payloads
+    MAX_UPLOAD_SIZE_MB: int = 500  # file uploads: /records/extract*, /attachments
+    MAX_BACKUP_SIZE_MB: int = 500  # backup restore
 
     # Redis
     REDIS_URL: str = ""  # Empty = in-memory fallback (dev mode)

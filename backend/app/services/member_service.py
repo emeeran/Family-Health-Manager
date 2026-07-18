@@ -671,9 +671,7 @@ class MemberService:
         member_record_ids = select(HealthRecord.id).where(
             HealthRecord.family_member_id == member_id
         )
-        member_conv_ids = select(Conversation.id).where(
-            Conversation.family_member_id == member_id
-        )
+        member_conv_ids = select(Conversation.id).where(Conversation.family_member_id == member_id)
         result = await self.db.execute(
             select(AIInsight)
             .where(

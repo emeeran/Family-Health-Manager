@@ -29,12 +29,12 @@ async def test_ollama_available_when_reachable_and_model_installed(auth_client, 
         "app.core.ollama_service.ollama_status",
         lambda model, url: _ret((True, True)),
     )
+
     # Guard: a generation probe must never run for the status check.
     async def _no_generate(*a, **k):  # pragma: no cover - asserted not called
         raise AssertionError("status check must not generate via call_ollama_text")
-    monkeypatch.setattr(
-        "app.services.ai.providers.ollama.call_ollama_text", _no_generate
-    )
+
+    monkeypatch.setattr("app.services.ai.providers.ollama.call_ollama_text", _no_generate)
     # Neutralise cloud providers so the test is hermetic.
     monkeypatch.setattr("app.routers.ai.is_provider_configured", lambda p: _ret(False))
 

@@ -135,7 +135,12 @@ async def test_openfda_adverse_events_parses_counts():
             {
                 "/drug/event.json": (
                     200,
-                    {"results": [{"term": "Nausea", "count": 42}, {"term": "Headache", "count": 7}]},
+                    {
+                        "results": [
+                            {"term": "Nausea", "count": 42},
+                            {"term": "Headache", "count": 7},
+                        ]
+                    },
                 )
             }
         )
@@ -157,7 +162,9 @@ async def test_rxnorm_resolve_two_step():
         if "approximateTerm" in url:
             return _FakeResp(200, {"approximateGroup": {"candidate": [{"rxcui": "11289"}]}})
         if "/rxcui/11289/properties" in url:
-            return _FakeResp(200, {"properties": {"rxcui": "11289", "name": "warfarin", "tty": "IN"}})
+            return _FakeResp(
+                200, {"properties": {"rxcui": "11289", "name": "warfarin", "tty": "IN"}}
+            )
         return _FakeResp(404, None)
 
     resolved = await rxnorm.resolve(FakeClient(handler), "Warfarin 5mg")
@@ -165,7 +172,9 @@ async def test_rxnorm_resolve_two_step():
 
 
 async def test_rxnorm_resolve_no_candidate_returns_none():
-    client = FakeClient(_by_url({"approximateTerm": (200, {"approximateGroup": {"candidate": []}})}))
+    client = FakeClient(
+        _by_url({"approximateTerm": (200, {"approximateGroup": {"candidate": []}})})
+    )
     assert await rxnorm.resolve(client, "ZZZ unknown") is None
 
 

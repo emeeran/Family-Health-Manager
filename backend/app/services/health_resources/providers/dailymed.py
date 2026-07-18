@@ -20,9 +20,7 @@ from app.services.drug_info.base import fetch_json
 logger = logging.getLogger(__name__)
 
 
-async def labels(
-    client: httpx.AsyncClient, drug_name: str, limit: int = 3
-) -> list[dict]:
+async def labels(client: httpx.AsyncClient, drug_name: str, limit: int = 3) -> list[dict]:
     """Full-label links for ``drug_name`` as ``[{title,setid,url}]``."""
     if not drug_name or not drug_name.strip():
         return []

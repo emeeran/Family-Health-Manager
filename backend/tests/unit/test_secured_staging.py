@@ -155,7 +155,9 @@ async def test_attach_round_trip_uses_encrypted_relocate(isolated_storage, db_se
     assert await decrypt_file(final) == PDF_BODY  # original retrievable
 
 
-async def test_attach_staged_files_batches_into_single_flush(isolated_storage, db_session, monkeypatch):
+async def test_attach_staged_files_batches_into_single_flush(
+    isolated_storage, db_session, monkeypatch
+):
     """attach_staged_files finalizes all files concurrently and flushes once
     (not once per file)."""
     from uuid import uuid4

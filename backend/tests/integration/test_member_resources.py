@@ -60,7 +60,9 @@ async def test_clinical_trials_member_not_found(auth_client):
     from uuid import uuid4
 
     assert (
-        await auth_client.get(f"/api/v1/members/{uuid4()}/clinical-trials", params={"condition": "x"})
+        await auth_client.get(
+            f"/api/v1/members/{uuid4()}/clinical-trials", params={"condition": "x"}
+        )
     ).status_code == 404
 
 
@@ -71,7 +73,16 @@ async def test_clinical_trials_requires_condition(auth_client):
 
 async def test_clinical_trials_returns_trials(auth_client):
     mid = await _create_member(auth_client)
-    canned = [{"nct_id": "NCT1", "title": "T", "status": "RECRUITING", "phase": "PHASE2", "conditions": ["Diabetes"], "url": "u"}]
+    canned = [
+        {
+            "nct_id": "NCT1",
+            "title": "T",
+            "status": "RECRUITING",
+            "phase": "PHASE2",
+            "conditions": ["Diabetes"],
+            "url": "u",
+        }
+    ]
     with patch("app.routers.member_resources.HealthResourcesService") as MockSvc:
         MockSvc.return_value.trials = AsyncMock(return_value=canned)
         resp = await auth_client.get(

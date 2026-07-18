@@ -40,8 +40,13 @@ async def test_ddi_uses_drugbank_when_key_configured(monkeypatch):
             "app.services.drug_info.service.drugbank.ddi",
             new_callable=AsyncMock,
             return_value=[
-                {"drugs": ["Warfarin", "Aspirin"], "severity": "high", "description": "x",
-                 "recommendation": "y", "source": "drugbank"}
+                {
+                    "drugs": ["Warfarin", "Aspirin"],
+                    "severity": "high",
+                    "description": "x",
+                    "recommendation": "y",
+                    "source": "drugbank",
+                }
             ],
         ) as mock_ddi,
     ):
@@ -56,7 +61,9 @@ async def test_ddi_returns_empty_without_key_so_router_falls_back_to_ai(monkeypa
     svc = DrugInfoService()
     with (
         _patch_client(),
-        patch("app.services.drug_info.service.drugbank.search_drug_id", new_callable=AsyncMock) as ms,
+        patch(
+            "app.services.drug_info.service.drugbank.search_drug_id", new_callable=AsyncMock
+        ) as ms,
         patch("app.services.drug_info.service.drugbank.ddi", new_callable=AsyncMock) as md,
     ):
         out = await svc.ddi(_meds("Warfarin 5mg", "Aspirin 75mg"))
@@ -100,7 +107,9 @@ async def test_recalls_dedups_across_meds():
     with (
         _patch_client(),
         patch(
-            "app.services.drug_info.service.rxnorm.resolve", new_callable=AsyncMock, side_effect=fake_resolve
+            "app.services.drug_info.service.rxnorm.resolve",
+            new_callable=AsyncMock,
+            side_effect=fake_resolve,
         ),
         patch(
             "app.services.drug_info.service.openfda.recalls",

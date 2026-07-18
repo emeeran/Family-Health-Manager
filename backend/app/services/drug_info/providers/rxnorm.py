@@ -42,9 +42,7 @@ async def resolve(client: httpx.AsyncClient, name: str) -> dict | None:
     if not rxcui:
         return None
 
-    status, props_body = await fetch_json(
-        client, "GET", f"{_base()}/rxcui/{rxcui}/properties.json"
-    )
+    status, props_body = await fetch_json(client, "GET", f"{_base()}/rxcui/{rxcui}/properties.json")
     props = props_body.get("properties") if isinstance(props_body, dict) else None
     if not isinstance(props, dict) or not props.get("name"):
         return None

@@ -56,7 +56,9 @@ def upgrade() -> None:
         if "role" not in users_cols:
             op.add_column(
                 "users",
-                sa.Column("role", sa.String(length=20), nullable=False, server_default=sa.text("'user'")),
+                sa.Column(
+                    "role", sa.String(length=20), nullable=False, server_default=sa.text("'user'")
+                ),
             )
             bind.execute(
                 sa.text(

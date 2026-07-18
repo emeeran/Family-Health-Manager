@@ -338,33 +338,84 @@ def extract_pdf_text(file_path: str) -> str | None:
 
 # Month name → number, for parsing named-month dates ("02-Jun-2026", "5 June 2026").
 _MONTHS = {
-    "jan": 1, "january": 1, "feb": 2, "february": 2, "mar": 3, "march": 3,
-    "apr": 4, "april": 4, "may": 5, "jun": 6, "june": 6, "jul": 7, "july": 7,
-    "aug": 8, "august": 8, "sep": 9, "sept": 9, "september": 9, "oct": 10,
-    "october": 10, "nov": 11, "november": 11, "dec": 12, "december": 12,
+    "jan": 1,
+    "january": 1,
+    "feb": 2,
+    "february": 2,
+    "mar": 3,
+    "march": 3,
+    "apr": 4,
+    "april": 4,
+    "may": 5,
+    "jun": 6,
+    "june": 6,
+    "jul": 7,
+    "july": 7,
+    "aug": 8,
+    "august": 8,
+    "sep": 9,
+    "sept": 9,
+    "september": 9,
+    "oct": 10,
+    "october": 10,
+    "nov": 11,
+    "november": 11,
+    "dec": 12,
+    "december": 12,
 }
 
 # Specific signals kept tight so a doctor's note that merely mentions a test
 # isn't mis-routed to the lab-report type.
 _LAB_KEYWORDS = (
-    "laboratory report", "lab report", "reference range", "specimen",
-    "test name", "investigation report", "pathology", "biochemistry",
-    "microbiology", "haematology", "hematology",
+    "laboratory report",
+    "lab report",
+    "reference range",
+    "specimen",
+    "test name",
+    "investigation report",
+    "pathology",
+    "biochemistry",
+    "microbiology",
+    "haematology",
+    "hematology",
 )
 
 # All fillable ExtractedFields names, in the gap-fill / clean passes.
 _FILLABLE = (
-    "record_type", "record_date", "record_time", "clinical_data", "diagnosis",
-    "existing_conditions", "chief_complaint", "investigations",
-    "prescription_text", "provider_name", "next_review_date", "prescriptions",
-    "lab_tests", "eyeglass", "weight", "height", "blood_pressure",
-    "heart_rate", "temperature",
+    "record_type",
+    "record_date",
+    "record_time",
+    "clinical_data",
+    "diagnosis",
+    "existing_conditions",
+    "chief_complaint",
+    "investigations",
+    "prescription_text",
+    "provider_name",
+    "next_review_date",
+    "prescriptions",
+    "lab_tests",
+    "eyeglass",
+    "weight",
+    "height",
+    "blood_pressure",
+    "heart_rate",
+    "temperature",
 )
 _STRING_FIELDS = frozenset(
     (
-        "clinical_data", "diagnosis", "existing_conditions", "chief_complaint",
-        "investigations", "prescription_text", "provider_name", "weight",
-        "height", "blood_pressure", "heart_rate", "temperature",
+        "clinical_data",
+        "diagnosis",
+        "existing_conditions",
+        "chief_complaint",
+        "investigations",
+        "prescription_text",
+        "provider_name",
+        "weight",
+        "height",
+        "blood_pressure",
+        "heart_rate",
+        "temperature",
     )
 )
 
@@ -454,7 +505,8 @@ def _clean_extracted(extracted: "ExtractedFields") -> "ExtractedFields":  # noqa
 
 
 def _fill_null_fields(
-    ai: "ExtractedFields", heur: "ExtractedFields"  # noqa: F821
+    ai: "ExtractedFields",
+    heur: "ExtractedFields",  # noqa: F821
 ) -> tuple["ExtractedFields", bool]:  # noqa: F821
     """Copy of ``ai`` with still-empty fields filled from ``heur``.
 
@@ -547,9 +599,7 @@ def heuristic_extract(text: str | None, mime_type: str = "application/pdf") -> "
         # No doctor name — use the provider section's first line as the
         # clinic/hospital name, dropping a trailing date if present.
         if sections.get("provider"):
-            first = next(
-                (ln.strip() for ln in sections["provider"].splitlines() if ln.strip()), ""
-            )
+            first = next((ln.strip() for ln in sections["provider"].splitlines() if ln.strip()), "")
             if first:
                 first = re.split(r"\s*[,;]\s*|\b\d{1,2}[\s/-][A-Za-z]", first)[0].strip()
                 fields.provider_name = _clean_markers(first)
@@ -618,9 +668,9 @@ def _resolve_numeric_date(a: int, b: int) -> tuple[int | None, int]:
     Returns (None, 0) when ambiguous (both ≤ 12) or invalid (both > 12).
     """
     if a > 12 and b <= 12:
-        return a, b          # DD/MM/YYYY
+        return a, b  # DD/MM/YYYY
     if b > 12 and a <= 12:
-        return b, a          # MM/DD/YYYY
+        return b, a  # MM/DD/YYYY
     return None, 0
 
 

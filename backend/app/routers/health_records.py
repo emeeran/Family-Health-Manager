@@ -398,9 +398,7 @@ async def extract_batch_stream(
                                         exc,
                                     )
                 except Exception as exc:  # safety net — never exit without enqueuing
-                    logger.error(
-                        "Batch stream producer failed for %s: %s", file.filename, exc
-                    )
+                    logger.error("Batch stream producer failed for %s: %s", file.filename, exc)
                     item = BatchExtractionItemSchema(
                         filename=file.filename or "unknown",
                         error=f"Extraction failed: {exc}",

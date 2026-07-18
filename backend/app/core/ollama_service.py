@@ -25,9 +25,7 @@ async def is_ollama_running(url: str | None = None) -> bool:
         return False
 
 
-async def ollama_status(
-    model: str | None = None, url: str | None = None
-) -> tuple[bool, bool]:
+async def ollama_status(model: str | None = None, url: str | None = None) -> tuple[bool, bool]:
     """Instant reachability + model-presence check via ``/api/tags``.
 
     Returns ``(reachable, model_present)``. Unlike a generation probe, this
@@ -53,9 +51,7 @@ async def ollama_status(
     if not model:
         return True, True
     base = model.split(":", 1)[0]
-    present = any(
-        m == model or m.split(":", 1)[0] == base for m in models
-    )
+    present = any(m == model or m.split(":", 1)[0] == base for m in models)
     return True, present
 
 

@@ -192,30 +192,60 @@ async def get_ai_status(
             }
         elif prov.id == "gemini":
             if not await is_provider_configured("gemini"):
-                return {"name": label, "id": prov.id, "model": model, "available": False, "error": "No API key"}
+                return {
+                    "name": label,
+                    "id": prov.id,
+                    "model": model,
+                    "available": False,
+                    "error": "No API key",
+                }
             from app.services.ai.providers.gemini import call_gemini_text
 
             result = await call_gemini_text(test_prompt, model=model)
         elif prov.id == "openrouter":
             if not await is_provider_configured("openrouter"):
-                return {"name": label, "id": prov.id, "model": model, "available": False, "error": "No API key"}
+                return {
+                    "name": label,
+                    "id": prov.id,
+                    "model": model,
+                    "available": False,
+                    "error": "No API key",
+                }
             from app.services.ai.providers.openrouter import call_openrouter_text
 
             result = await call_openrouter_text(test_prompt, model=model)
         elif prov.id == "groq":
             if not await is_provider_configured("groq"):
-                return {"name": label, "id": prov.id, "model": model, "available": False, "error": "No API key"}
+                return {
+                    "name": label,
+                    "id": prov.id,
+                    "model": model,
+                    "available": False,
+                    "error": "No API key",
+                }
             from app.services.ai.providers.groq import call_groq_text
 
             result = await call_groq_text(test_prompt, model=model)
         elif prov.id == "openai":
             if not await is_provider_configured("openai"):
-                return {"name": label, "id": prov.id, "model": model, "available": False, "error": "No API key"}
+                return {
+                    "name": label,
+                    "id": prov.id,
+                    "model": model,
+                    "available": False,
+                    "error": "No API key",
+                }
             from app.services.ai.providers.openai import call_openai_text
 
             result = await call_openai_text(test_prompt, model=model)
         else:
-            return {"name": label, "id": prov.id, "model": model, "available": False, "error": "Unknown provider"}
+            return {
+                "name": label,
+                "id": prov.id,
+                "model": model,
+                "available": False,
+                "error": "Unknown provider",
+            }
 
         return {
             "name": label,
@@ -233,9 +263,21 @@ async def get_ai_status(
         try:
             return await asyncio.wait_for(_probe(prov), timeout=20)
         except asyncio.TimeoutError:
-            return {"name": label, "id": prov.id, "model": model, "available": False, "error": "Timed out"}
+            return {
+                "name": label,
+                "id": prov.id,
+                "model": model,
+                "available": False,
+                "error": "Timed out",
+            }
         except Exception as exc:
-            return {"name": label, "id": prov.id, "model": model, "available": False, "error": _friendly_error(exc)}
+            return {
+                "name": label,
+                "id": prov.id,
+                "model": model,
+                "available": False,
+                "error": _friendly_error(exc),
+            }
 
     # Run all provider checks concurrently — wall-clock is the slowest provider
     # (≤ the per-provider cap), not the sum. Order is preserved by gather.

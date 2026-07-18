@@ -341,9 +341,7 @@ class AttachmentService:
                 )
                 _safe_unlink(staging_root / f"{staging_file_id}.meta")
             else:
-                mime_type = (
-                    mimetypes.guess_type(staging_file_id)[0] or "application/octet-stream"
-                )
+                mime_type = mimetypes.guess_type(staging_file_id)[0] or "application/octet-stream"
                 dest_path, content_hash = await _store_plaintext_file(staging_path, ext, mime_type)
                 staging_path.unlink(missing_ok=True)
             return dest_path, content_hash, mime_type, dest_path.stat().st_size

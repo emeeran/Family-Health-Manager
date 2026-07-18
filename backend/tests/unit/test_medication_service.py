@@ -341,7 +341,11 @@ async def test_sync_from_record_handles_two_prescriptions_same_key(db_session):
 
     assert synced == 2
     meds = (
-        (await db_session.execute(select(Medication).where(Medication.family_member_id == member_id)))
+        (
+            await db_session.execute(
+                select(Medication).where(Medication.family_member_id == member_id)
+            )
+        )
         .scalars()
         .all()
     )

@@ -149,9 +149,9 @@ def test_heuristic_fallback_gap_fills_without_overwriting():
     out = _heuristic_fallback(result, "garbage OCR that triggered vision", "application/pdf")
 
     assert out.extracted.record_type is RecordType.DOCTOR_VISIT  # backfilled
-    assert out.extracted.record_date == date(2025, 1, 12)        # backfilled
+    assert out.extracted.record_date == date(2025, 1, 12)  # backfilled
     assert out.extracted.diagnosis == "Type 2 Diabetes Mellitus"  # backfilled
-    assert out.extracted.clinical_data == "AI summary"           # NOT overwritten
+    assert out.extracted.clinical_data == "AI summary"  # NOT overwritten
 
 
 def test_heuristic_fallback_does_not_overwrite_ai_values():
@@ -163,7 +163,7 @@ def test_heuristic_fallback_does_not_overwrite_ai_values():
     result = ExtractionResult(extracted=ai, transcription=SECTION_TRANSCRIPTION)
     out = _heuristic_fallback(result, None, "application/pdf")
     assert out.extracted.record_type is RecordType.LAB_REPORT  # AI wins
-    assert out.extracted.diagnosis == "AI diagnosis"           # AI wins
+    assert out.extracted.diagnosis == "AI diagnosis"  # AI wins
 
 
 def test_heuristic_fallback_prefers_transcription_over_bad_ocr():
