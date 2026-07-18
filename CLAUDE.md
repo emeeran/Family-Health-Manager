@@ -66,3 +66,4 @@ health-manager/
 - Frontend uses shadcn/ui components — check `src/components/ui/` before adding new ones.
 - Vite dev proxy: `vite.config.ts` proxies `/api` to backend. No CORS needed in dev.
 - Pre-commit: ruff lint + prettier format. Pre-push: mypy + tsc.
+- Commit messages: NEVER add `Co-Authored-By: Claude` or any AI co-author trailer. A commit-msg hook (lefthook) strips it automatically.

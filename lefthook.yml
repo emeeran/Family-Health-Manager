@@ -1,5 +1,10 @@
-# Lefthook configuration — pre-commit & pre-push hooks
+# Lefthook configuration — pre-commit, commit-msg & pre-push hooks
 # Install: lefthook install (from repo root)
+
+commit-msg:
+  commands:
+    strip-ai-trailer:
+      run: sed -i '/Co-Authored-By:.*Claude.*noreply@anthropic\.com/d' {1}
 
 pre-commit:
   parallel: true
