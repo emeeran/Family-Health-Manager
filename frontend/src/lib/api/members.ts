@@ -12,6 +12,8 @@ import type {
   MedlinePlusTopic,
   DailyMedLabel,
   ClinicalTrial,
+  ConditionLookup,
+  MemberConditionsResponse,
   CanadianDrugProduct,
   UkAlert,
   ActiveMedication,
@@ -119,6 +121,19 @@ export function getDrugEducation(memberId: string, medicine: string) {
     `/members/${memberId}/drug-education`,
     { params: { medicine }, timeout: 30_000 }
   );
+}
+
+/** Free-text condition → ICD-10 + MedlinePlus patient education (keyless). */
+export function getConditionLookup(memberId: string, condition: string) {
+  return apiRequest<ConditionLookup>(`/members/${memberId}/condition-lookup`, {
+    params: { condition },
+    timeout: 30_000,
+  });
+}
+
+/** Distinct condition/diagnosis strings drawn from the member's records. */
+export function getMemberConditions(memberId: string) {
+  return apiRequest<MemberConditionsResponse>(`/members/${memberId}/conditions`);
 }
 
 /** Clinical trials (ClinicalTrials.gov v2) matching a condition. */

@@ -89,6 +89,31 @@ def _label_section(row: dict, key: str) -> str:
     return strip_html(val if isinstance(val, str) else "")
 
 
+def _label_sections(row: dict, *keys: str) -> str:
+    """Join several label-section keys into one block (e.g. pregnancy variants).
+
+    Newer labels consolidate pregnancy/lactation under ``pregnancy_and_lactation``;
+    older ones split it into ``pregnancy`` + ``nursing_mothers``. Merge whichever
+    are present so the section is populated regardless of the label's generation.
+    """
+    parts = [_label_section(row, key) for key in keys]
+    return " ".join(part for part in parts if part).strip()
+
+
+def _drug_class(openfda_meta: dict) -> str | None:
+    """Best-effort pharmacologic class from the openfda metadata.
+
+    Prefers the established pharmacologic class (EPC), then the chemical/
+    structured classes. Values look like ``["Biguanide [EPC]"]`` — keep the
+    name, drop the ``[EPC]`` source tag.
+    """
+    for key in ("pharm_class_epc", "pharm_class_cs", "pharm_class_moa"):
+        first = _first(openfda_meta.get(key))
+        if first:
+            return first.split(" [")[0].strip()
+    return None
+
+
 async def label(client: httpx.AsyncClient, generic_name: str) -> dict | None:
     """The most recent FDA label for a generic drug (key sections only)."""
     if not generic_name:
@@ -109,20 +134,29 @@ async def label(client: httpx.AsyncClient, generic_name: str) -> dict | None:
         "generic_name": generic_name,
         "brand_name": _first(openfda_meta.get("brand_name")),
         "manufacturer": _first(openfda_meta.get("manufacturer_name")),
+        "drug_class": _drug_class(openfda_meta),
         "indications_and_usage": _label_section(row, "indications_and_usage"),
         "warnings_and_cautions": _label_section(row, "warnings_and_cautions"),
         "boxed_warning": _label_section(row, "boxed_warning"),
         "drug_interactions": _label_section(row, "drug_interactions"),
         "dosage_and_administration": _label_section(row, "dosage_and_administration"),
         "contraindications": _label_section(row, "contraindications"),
+        "adverse_reactions": _label_section(row, "adverse_reactions"),
+        "overdosage": _label_section(row, "overdosage"),
+        "mechanism_of_action": _label_section(row, "mechanism_of_action"),
+        "clinical_pharmacology": _label_section(row, "clinical_pharmacology"),
+        "pregnancy_and_lactation": _label_sections(
+            row, "pregnancy_and_lactation", "pregnancy", "nursing_mothers"
+        ),
+        "patient_medication_information": _label_section(row, "patient_medication_information"),
+        "drug_abuse_and_dependence": _label_section(row, "drug_abuse_and_dependence"),
+        "description": _label_section(row, "description"),
         "effective_date": _first(row.get("effective_time")),
     }
+    # Scalars surfaced at the top of the card, not as collapsible sections.
+    _meta = {"generic_name", "brand_name", "manufacturer", "drug_class", "effective_date"}
     # Drop empty sections so the UI only renders what exists.
-    label_data["sections"] = {
-        k: v
-        for k, v in label_data.items()
-        if k not in {"generic_name", "brand_name", "manufacturer", "effective_date"} and v
-    }
+    label_data["sections"] = {k: v for k, v in label_data.items() if k not in _meta and v}
     return label_data
 
 

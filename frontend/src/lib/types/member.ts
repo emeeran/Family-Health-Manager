@@ -141,6 +141,7 @@ export interface DrugLabelSummary {
   generic_name: string;
   brand_name: string | null;
   manufacturer: string | null;
+  drug_class: string | null;
   effective_date: string | null;
   sections: Record<string, string>;
 }
@@ -163,6 +164,20 @@ export interface DailyMedLabel {
   title: string;
   setid: string;
   url: string;
+}
+
+/** A normalized condition lookup result (clinicaltables → MedlinePlus Connect). */
+export interface ConditionLookup {
+  query: string;
+  name: string | null;
+  icd10_code: string | null;
+  synonyms: string[];
+  topics: MedlinePlusTopic[];
+}
+
+/** Response for the member's distinct condition/diagnosis strings. */
+export interface MemberConditionsResponse {
+  conditions: string[];
 }
 
 /** A clinical trial from ClinicalTrials.gov v2. */

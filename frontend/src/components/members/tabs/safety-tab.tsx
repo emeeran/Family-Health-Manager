@@ -276,9 +276,17 @@ function DrugInfoLookup({ memberId, medications }: InfoLookupProps) {
     indications_and_usage: "Uses",
     warnings_and_cautions: "Warnings",
     boxed_warning: "Boxed Warning",
-    drug_interactions: "Drug Interactions",
-    dosage_and_administration: "Dosage",
     contraindications: "Contraindications",
+    drug_interactions: "Drug Interactions",
+    adverse_reactions: "Adverse Reactions",
+    dosage_and_administration: "Dosage",
+    overdosage: "Overdosage",
+    mechanism_of_action: "Mechanism of Action",
+    clinical_pharmacology: "Clinical Pharmacology",
+    pregnancy_and_lactation: "Pregnancy & Lactation",
+    patient_medication_information: "Patient Information",
+    drug_abuse_and_dependence: "Abuse & Dependence",
+    description: "Description",
   };
 
   return (
@@ -314,13 +322,18 @@ function DrugInfoLookup({ memberId, medications }: InfoLookupProps) {
               <div className="space-y-3">
                 {label ? (
                   <div>
-                    <div className="flex items-center gap-2 mb-2">
+                    <div className="flex items-center gap-2 mb-2 flex-wrap">
                       <Pill className="h-3.5 w-3.5 text-muted-foreground" />
                       <span className="text-sm font-semibold">
                         {label.brand_name ? `${label.brand_name} (` : ""}
                         {label.generic_name}
                         {label.brand_name ? ")" : ""}
                       </span>
+                      {label.drug_class && (
+                        <span className="inline-flex items-center rounded-full bg-muted px-2 py-0.5 text-[10px] font-medium text-muted-foreground">
+                          {label.drug_class}
+                        </span>
+                      )}
                     </div>
                     <div className="space-y-2">
                       {Object.entries(label.sections).map(([key, text]) => (

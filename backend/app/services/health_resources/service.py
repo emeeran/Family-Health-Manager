@@ -11,9 +11,11 @@ from __future__ import annotations
 
 import logging
 
+from app.core.cache import cache
 from app.services.drug_info.base import get_drug_info_client
 from app.services.drug_info.providers import rxnorm
 from app.services.health_resources.providers import (
+    clinicaltables,
     clinicaltrials,
     dailymed,
     healthcanada,
@@ -75,6 +77,44 @@ class HealthResourcesService:
         except Exception:
             logger.warning("condition_info failed %s/%s", code_system, code, exc_info=True)
             return []
+
+    async def condition_lookup(self, condition: str) -> dict:
+        """Free-text condition → normalized name/ICD-10 + MedlinePlus education.
+
+        Chains clinicaltables (name→ICD-10-CM) into the existing MedlinePlus
+        Connect provider (ICD-10→patient education). This is the keyless entry
+        point that turns a free-text diagnosis into the coded lookups the other
+        endpoints need. Result is cached 24h (conditions are stable; NLM asks
+        callers to cache). Always returns a dict so the panel never 500s.
+        """
+        text = (condition or "").strip()
+        empty = {"query": text, "name": None, "icd10_code": None, "synonyms": [], "topics": []}
+        if not text:
+            return empty
+        key = f"condition_lookup:{text.lower()}"
+        cached = await cache.get_async(key)
+        if cached:
+            return cached
+        try:
+            client = await get_drug_info_client()
+            normalized = await clinicaltables.normalize_condition(client, text)
+            name = (normalized or {}).get("name") or text
+            icd10 = (normalized or {}).get("icd10_code")
+            synonyms = (normalized or {}).get("synonyms") or []
+            # Connect matches best on a code — skip when normalization found none.
+            topics = await medlineplus.connect(client, "icd10", icd10) if icd10 else []
+            result = {
+                "query": text,
+                "name": name,
+                "icd10_code": icd10,
+                "synonyms": synonyms,
+                "topics": topics,
+            }
+        except Exception:
+            logger.warning("condition_lookup failed for %r", text, exc_info=True)
+            result = empty
+        await cache.set_async(key, result, ttl=86400)
+        return result
 
     async def canadian_product(self, din: str) -> dict | None:
         """Health Canada DPD product for an 8-digit DIN, or None.

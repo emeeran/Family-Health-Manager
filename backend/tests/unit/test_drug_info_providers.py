@@ -124,6 +124,66 @@ async def test_openfda_label_parses_and_strips_html():
     assert "indications_and_usage" in label["sections"]
 
 
+async def test_openfda_label_extracts_full_sections_and_drug_class():
+    """The expanded label pull covers the 'complete drug info' dimensions."""
+    client = FakeClient(
+        _by_url(
+            {
+                "/drug/label.json": (
+                    200,
+                    {
+                        "results": [
+                            {
+                                "openfda": {
+                                    "brand_name": ["Glucophage"],
+                                    "manufacturer_name": ["Bristol"],
+                                    "pharm_class_epc": ["Biguanide [EPC]"],
+                                },
+                                "effective_time": ["20230101"],
+                                "indications_and_usage": ["<p>Type 2 diabetes</p>"],
+                                "adverse_reactions": ["<p>Nausea, diarrhoea</p>"],
+                                "mechanism_of_action": ["<p>Decreases hepatic glucose</p>"],
+                                "clinical_pharmacology": ["<p>Absorption ~50%</p>"],
+                                "pregnancy": ["<p>No well-controlled studies</p>"],
+                                "nursing_mothers": ["<p>Excreted in milk</p>"],
+                                "patient_medication_information": ["<p>Take with food</p>"],
+                                "drug_abuse_and_dependence": ["<p>None expected</p>"],
+                                "overdosage": ["<p>Lactic acidosis</p>"],
+                                "description": ["<p>White crystalline powder</p>"],
+                            }
+                        ]
+                    },
+                )
+            }
+        )
+    )
+    label = await openfda.label(client, "metformin")
+    assert label is not None
+    # drug_class derived from pharm_class_epc, [EPC] tag stripped, surfaced as a scalar.
+    assert label["drug_class"] == "Biguanide"
+    assert "drug_class" not in label["sections"]
+    # Each new section landed in the rendered sections dict, HTML-stripped.
+    assert label["sections"]["adverse_reactions"] == "Nausea, diarrhoea"
+    assert label["sections"]["mechanism_of_action"] == "Decreases hepatic glucose"
+    assert label["sections"]["clinical_pharmacology"] == "Absorption ~50%"
+    # pregnancy + nursing_mothers merged into one section regardless of order.
+    assert "No well-controlled studies" in label["sections"]["pregnancy_and_lactation"]
+    assert "Excreted in milk" in label["sections"]["pregnancy_and_lactation"]
+    assert label["sections"]["patient_medication_information"] == "Take with food"
+    assert label["sections"]["overdosage"] == "Lactic acidosis"
+    assert label["sections"]["description"] == "White crystalline powder"
+
+
+async def test_openfda_label_drug_class_none_without_pharm_class():
+    """No pharm_class arrays → drug_class is None (not a key in sections)."""
+    client = FakeClient(
+        _by_url({"/drug/label.json": (200, {"results": [{"indications_and_usage": ["x"]}]})})
+    )
+    label = await openfda.label(client, "unknowndrug")
+    assert label is not None
+    assert label["drug_class"] is None
+
+
 async def test_openfda_label_no_results_returns_none():
     client = FakeClient(lambda *a: _FakeResp(404, {"error": {"code": "NOT_FOUND"}}))
     assert await openfda.label(client, "unknowndrug") is None

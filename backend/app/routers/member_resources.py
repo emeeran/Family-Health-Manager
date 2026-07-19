@@ -16,11 +16,13 @@ import logging
 import re
 
 from fastapi import APIRouter, Depends, HTTPException, Query
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.database import get_db
 from app.core.deps import require_member_in_household
 from app.models.base import FamilyMember
+from app.models.record import HealthRecord
 from app.services.health_resources import HealthResourcesService
 
 logger = logging.getLogger(__name__)
@@ -68,6 +70,41 @@ async def get_condition_info(
         raise HTTPException(status_code=422, detail="code query parameter is required")
     results = await HealthResourcesService(db).condition_info(code_system, code.strip())
     return {"results": results}
+
+
+@router.get("/{member_id}/condition-lookup")
+async def get_condition_lookup(
+    condition: str = Query(..., description="Condition name (free text) to look up"),
+    member: FamilyMember = Depends(require_member_in_household),
+    db: AsyncSession = Depends(get_db),
+):
+    """Free-text condition → ICD-10 + MedlinePlus patient education.
+
+    Normalizes the term via NIH Clinical Tables, then feeds the code to
+    MedlinePlus Connect. Keyless; degrades to an empty result on failure.
+    """
+    if not condition.strip():
+        raise HTTPException(status_code=422, detail="condition query parameter is required")
+    return await HealthResourcesService(db).condition_lookup(condition.strip())
+
+
+@router.get("/{member_id}/conditions")
+async def get_member_conditions(
+    member: FamilyMember = Depends(require_member_in_household),
+    db: AsyncSession = Depends(get_db),
+):
+    """Distinct condition/diagnosis strings drawn from the member's records."""
+    result = await db.execute(
+        select(HealthRecord.diagnosis)
+        .where(
+            HealthRecord.family_member_id == member.id,
+            HealthRecord.is_deleted.is_(False),
+            HealthRecord.diagnosis.is_not(None),
+        )
+        .distinct()
+    )
+    conditions = [d.strip() for d in result.scalars() if d and d.strip()]
+    return {"conditions": conditions}
 
 
 @router.get("/{member_id}/canadian-product")

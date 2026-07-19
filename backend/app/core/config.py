@@ -20,7 +20,7 @@ class Settings(BaseSettings):
     # Application
     APP_ENV: str = "development"
     APP_NAME: str = "DAWNSTAR Family Health Keeper"
-    APP_VERSION: str = "1.2.0"
+    APP_VERSION: str = "1.2.1"
     DEBUG: bool = False
     # Root log level (DEBUG/INFO/WARNING/ERROR/CRITICAL). Default WARNING keeps
     # the journal quiet; raise it for diagnosis without a rebuild.
@@ -104,6 +104,10 @@ class Settings(BaseSettings):
     # clinical-trial search, and full drug labels. All degrade to empty on failure.
     MEDLINEPLUS_CONNECT_URL: str = "https://connect.medlineplus.gov/service"
     CLINICALTRIALS_BASE_URL: str = "https://clinicaltrials.gov/api/v2"
+    # NIH Clinical Tables — free-text condition → ICD-10-CM code + synonyms.
+    # Powers the disease & conditions lookup (unlocks the MedlinePlus Connect
+    # coded endpoint from free-text diagnoses). Keyless.
+    CLINICALTABLES_BASE_URL: str = "https://clinicaltables.nlm.nih.gov"
     DAILYMED_BASE_URL: str = "https://dailymed.nlm.nih.gov/dailymed/services/v2"
     # Health Canada Drug Product Database — DIN/code lookup only (no name search).
     HEALTH_CANADA_DPD_URL: str = "https://health-products.canada.ca/api/drug"
