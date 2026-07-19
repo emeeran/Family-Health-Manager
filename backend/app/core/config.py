@@ -145,9 +145,16 @@ class Settings(BaseSettings):
     # Path to a gcloud user-credentials JSON (``gcloud auth application-default
     # login``) or a service-account key. When set + readable, the Gemini
     # provider authenticates with an OAuth Bearer token derived from it and
-    # ignores the API key; the API key remains the fallback. Leave empty to use
-    # the API-key path (default). Also honors GOOGLE_APPLICATION_CREDENTIALS.
+    # routes through Vertex AI (which accepts the cloud-platform scope ADC
+    # grants); the Generative Language API needs a scope gcloud won't grant, so
+    # ADC only works via Vertex. The API key (Gen Lang API) remains the fallback
+    # when no ADC is set. Leave empty to use the API-key path (default). Also
+    # honors GOOGLE_APPLICATION_CREDENTIALS.
     GEMINI_ADC_FILE: str = ""
+    # Vertex AI routing (used only when GEMINI_ADC_FILE is set). Set VERTEX_PROJECT
+    # to the project that owns the ADC creds (e.g. gen-lang-client-0426752244).
+    VERTEX_PROJECT: str = ""
+    VERTEX_LOCATION: str = "us-central1"
 
     # Storage
     STORAGE_PATH: str = "./data/attachments"

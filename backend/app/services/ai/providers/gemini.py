@@ -1,4 +1,15 @@
-"""Google Gemini AI provider."""
+"""Google Gemini AI provider.
+
+Two auth paths, picked automatically:
+- **Application Default Credentials → Vertex AI.** ADC user-credentials (from
+  ``gcloud auth application-default login``) carry the ``cloud-platform`` scope,
+  which Vertex AI accepts. The Generative Language API needs a ``generative-
+  language`` scope that gcloud will *not* grant, so ADC only reaches Gemini via
+  Vertex (project-scoped endpoints). Requires ``GEMINI_ADC_FILE`` +
+  ``VERTEX_PROJECT``.
+- **API key → Generative Language API.** The fallback when no ADC is set; uses
+  the ``x-goog-api-key`` header against ``generativelanguage.googleapis.com``.
+"""
 
 import json
 import logging
@@ -26,8 +37,8 @@ def _adc_access_token() -> str | None:
     Reads the ADC file (:func:`gemini_adc_file_path`), refreshes the token via
     Google's OAuth2 endpoint, and caches it. Returns ``None`` when no ADC file
     is configured, the file isn't an ``authorized_user`` credential, or the
-    refresh fails — callers fall back to the API key. Synchronous (the refresh
-    runs ~once per hour; the brief blocking call is acceptable).
+    refresh fails. Synchronous (the refresh runs ~once per hour; the brief
+    blocking call is acceptable).
     """
     now = time.time()
     cached = _adc_cache["token"]
@@ -66,33 +77,34 @@ def _adc_access_token() -> str | None:
         return None
 
 
-async def _gemini_auth_headers() -> dict[str, str] | None:
-    """Auth headers for a Gemini request.
+async def _gemini_generate(model: str, parts: list, temperature: float = 0.1) -> str | None:
+    """Call Gemini ``generateContent`` via Vertex AI (ADC) or Gen Lang API (key).
 
-    Prefers Application Default Credentials (OAuth ``Bearer`` token); falls back
-    to the API key (``x-goog-api-key``). Returns ``None`` when neither is
-    available so callers can treat the provider as unconfigured.
+    ``parts`` is the Gemini ``parts`` list (e.g. ``[{"text": prompt}]`` or with
+    an ``inline_data`` for vision). Returns the concatenated text response, or
+    ``None`` when neither ADC nor an API key is available.
     """
-    token = _adc_access_token()
-    if token:
-        return {"Authorization": f"Bearer {token}"}
-    api_key = await resolve_provider_api_key("gemini")
-    if api_key:
-        return {"x-goog-api-key": api_key}
-    return None
-
-
-async def call_gemini_text(prompt: str, model: str | None = None) -> str | None:
-    """Call Google Gemini for text-based generation."""
-    headers = await _gemini_auth_headers()
-    if not headers:
-        return None
-    model = model or settings.GEMINI_TEXT_MODEL
-    url = f"https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent"
     payload = {
-        "contents": [{"parts": [{"text": prompt}]}],
-        "generationConfig": {"temperature": 0.1},
+        # Vertex requires an explicit role on each content; the Gen Lang API
+        # accepts it too, so it's included unconditionally.
+        "contents": [{"role": "user", "parts": parts}],
+        "generationConfig": {"temperature": temperature},
     }
+
+    token = _adc_access_token()
+    if token and settings.VERTEX_PROJECT:
+        url = (
+            f"https://{settings.VERTEX_LOCATION}-aiplatform.googleapis.com/v1/projects/"
+            f"{settings.VERTEX_PROJECT}/locations/{settings.VERTEX_LOCATION}/"
+            f"publishers/google/models/{model}:generateContent"
+        )
+        headers = {"Authorization": f"Bearer {token}", "Content-Type": "application/json"}
+    else:
+        api_key = await resolve_provider_api_key("gemini")
+        if not api_key:
+            return None
+        url = f"https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent"
+        headers = {"x-goog-api-key": api_key, "Content-Type": "application/json"}
 
     async def _do_call():
         client = await get_cloud_client()
@@ -104,59 +116,32 @@ async def call_gemini_text(prompt: str, model: str | None = None) -> str | None:
     return data["candidates"][0]["content"]["parts"][0]["text"]
 
 
+async def call_gemini_text(prompt: str, model: str | None = None) -> str | None:
+    """Call Google Gemini for text-based generation."""
+    return await _gemini_generate(model or settings.GEMINI_TEXT_MODEL, [{"text": prompt}])
+
+
 async def call_gemini_vision(b64_data: str, mime_type: str, extraction_prompt: str) -> str | None:
     """Call Google Gemini API for vision extraction."""
-    headers = await _gemini_auth_headers()
-    if not headers:
-        return None
-    url = (
-        "https://generativelanguage.googleapis.com/v1beta/"
-        f"models/{settings.GEMINI_VISION_MODEL}:generateContent"
-    )
-    payload = {
-        "contents": [
-            {
-                "parts": [
-                    {"text": extraction_prompt},
-                    {"inline_data": {"mime_type": mime_type, "data": b64_data}},
-                ]
-            }
+    return await _gemini_generate(
+        settings.GEMINI_VISION_MODEL,
+        [
+            {"text": extraction_prompt},
+            {"inline_data": {"mime_type": mime_type, "data": b64_data}},
         ],
-        "generationConfig": {"temperature": 0.1},
-    }
-    client = await get_cloud_client()
-    resp = await client.post(url, json=payload, headers=headers)
-    resp.raise_for_status()
-    data = resp.json()
-    return data["candidates"][0]["content"]["parts"][0]["text"]
+    )
 
 
 async def call_gemini_ocr(b64_data: str, mime_type: str) -> str | None:
     """Use Google Gemini to OCR an image to text."""
-    headers = await _gemini_auth_headers()
-    if not headers:
-        return None
     ocr_prompt = (
         "Transcribe all the text in this document, including any handwritten text. "
         "Return ONLY the raw text, nothing else."
     )
-    url = (
-        "https://generativelanguage.googleapis.com/v1beta/"
-        f"models/{settings.GEMINI_VISION_MODEL}:generateContent"
-    )
-    payload = {
-        "contents": [
-            {
-                "parts": [
-                    {"text": ocr_prompt},
-                    {"inline_data": {"mime_type": mime_type, "data": b64_data}},
-                ]
-            }
+    return await _gemini_generate(
+        settings.GEMINI_VISION_MODEL,
+        [
+            {"text": ocr_prompt},
+            {"inline_data": {"mime_type": mime_type, "data": b64_data}},
         ],
-        "generationConfig": {"temperature": 0.1},
-    }
-    client = await get_cloud_client()
-    resp = await client.post(url, json=payload, headers=headers)
-    resp.raise_for_status()
-    data = resp.json()
-    return data["candidates"][0]["content"]["parts"][0]["text"]
+    )
