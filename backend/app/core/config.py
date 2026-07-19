@@ -86,6 +86,14 @@ class Settings(BaseSettings):
     # Per-cloud-provider failover cap (seconds) for document extraction: a
     # slow/dead cloud key is abandoned after this and the next provider is tried.
     EXTRACTION_PROVIDER_TIMEOUT: int = 15
+    # Hard wall-clock cap (seconds) for the LOCAL Ollama extraction path. The
+    # local path is the last-resort fallback and was previously unbounded — so a
+    # stuck qwen3 thinking-model generation could pin the CPU for tens of
+    # minutes (observed: 47 min at ~10 cores, freezing the whole box). 300 s is
+    # generous enough for a genuine CPU extraction (prompt eval + ~2k output
+    # tokens on a 4 B model) yet bounds the runaway. If it ever fires, the
+    # extraction fails gracefully instead of hanging the UI at 45 % forever.
+    EXTRACTION_LOCAL_TIMEOUT: int = 300
     # CPU-inference thread pinning. Ollama is CPU-only on this hardware (no
     # CUDA) and commonly defaults ``num_thread`` to *physical* cores, ignoring
     # SMT. Setting it to the logical core count (``os.cpu_count()``) uses the

@@ -31,27 +31,32 @@ async def _run_provider_chain(providers, invoke, last_provider_ref: list, kind: 
     Each entry in ``providers`` is ``(callable, label, is_local)``. Cloud
     providers are capped at ``settings.EXTRACTION_PROVIDER_TIMEOUT`` so a slow or
     dead key fails fast and the next provider is tried; the local Ollama entry
-    (``is_local=True``) is exempt — it keeps its own generous adaptive timeout,
-    since as the last-resort fallback you want it to actually finish.
+    (``is_local=True``) gets a larger but still bounded cap
+    (``settings.EXTRACTION_LOCAL_TIMEOUT``) — as the last-resort fallback you
+    want it to actually finish, but a stuck thinking-model generation must not be
+    allowed to pin the CPU indefinitely.
 
     ``invoke(fn)`` calls the provider with the arguments appropriate to its kind
     (text takes a prompt; vision takes b64 + mime + prompt) and returns its text
     or ``None``.
     """
     for fn, label, is_local in providers:
+        timeout = (
+            settings.EXTRACTION_LOCAL_TIMEOUT
+            if is_local
+            else settings.EXTRACTION_PROVIDER_TIMEOUT
+        )
         try:
-            if is_local:
-                result = await invoke(fn)
-            else:
-                result = await asyncio.wait_for(
-                    invoke(fn), timeout=settings.EXTRACTION_PROVIDER_TIMEOUT
-                )
+            result = await asyncio.wait_for(invoke(fn), timeout=timeout)
         except asyncio.TimeoutError:
             logger.warning(
-                "%s provider %s timed out after %ds — trying next",
+                "%s provider %s timed out after %ds — %s",
                 kind,
                 label,
-                settings.EXTRACTION_PROVIDER_TIMEOUT,
+                timeout,
+                "abandoning (local fallback was last resort)"
+                if is_local
+                else "trying next",
             )
             continue
         except Exception as exc:
