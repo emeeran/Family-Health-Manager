@@ -20,7 +20,7 @@ class Settings(BaseSettings):
     # Application
     APP_ENV: str = "development"
     APP_NAME: str = "DAWNSTAR Family Health Keeper"
-    APP_VERSION: str = "1.2.2"
+    APP_VERSION: str = "1.2.3"
     DEBUG: bool = False
     # Root log level (DEBUG/INFO/WARNING/ERROR/CRITICAL). Default WARNING keeps
     # the journal quiet; raise it for diagnosis without a rebuild.
