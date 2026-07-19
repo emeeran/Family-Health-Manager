@@ -100,6 +100,12 @@ async def call_ollama_text(
     if not base_url:
         return None
     use_model = model or settings.OLLAMA_TEXT_MODEL
+    # Structured (JSON) extraction: suppress qwen3 reasoning. Thinking is slow on
+    # CPU and emits <think> tags that bloat the response; /no_think + think:false
+    # give faster, cleaner JSON. (parse_extraction also strips any <think> that
+    # slips through, so this is belt-and-suspenders.)
+    if fmt:
+        prompt = f"{prompt}\n/no_think"
     url = f"{base_url}/api/chat"
     payload = {
         "model": use_model,
@@ -110,6 +116,7 @@ async def call_ollama_text(
     }
     if fmt:
         payload["format"] = fmt
+        payload["think"] = False
     timeout = _ollama_timeout(len(prompt))
 
     async def _do():
@@ -218,14 +225,20 @@ async def call_ollama_vision(
 ) -> str | None:
     """Call local Ollama API for vision extraction.
 
-    ``fmt`` enables grammar-constrained output (e.g. ``"json"``) for extraction.
+    Uses the configured vision model (``OLLAMA_VISION_MODEL``); returns ``None``
+    (skipped) when no vision model is set or it isn't pulled, so the provider
+    chain falls through cleanly instead of feeding an image to a text-only model
+    (the old behaviour with text-only ``qwen3``). ``fmt`` enables
+    grammar-constrained output (e.g. ``"json"``) for extraction.
     """
     base_url = await resolve_provider_value("ollama")
-    if not base_url:
+    if not base_url or not settings.OLLAMA_VISION_MODEL:
         return None
+    if fmt:
+        extraction_prompt = f"{extraction_prompt}\n/no_think"
     url = f"{base_url}/api/chat"
     payload = {
-        "model": settings.OLLAMA_MODEL,
+        "model": settings.OLLAMA_VISION_MODEL,
         "messages": [
             {
                 "role": "user",
@@ -239,6 +252,7 @@ async def call_ollama_vision(
     }
     if fmt:
         payload["format"] = fmt
+        payload["think"] = False
     try:
         client = await get_ollama_client()
         resp = await client.post(
@@ -249,14 +263,19 @@ async def call_ollama_vision(
         resp.raise_for_status()
         data = resp.json()
         return data.get("message", {}).get("content")
-    except (httpx.TimeoutException, httpx.ConnectError):
+    except (httpx.TimeoutException, httpx.ConnectError, httpx.HTTPStatusError):
+        # HTTPStatusError covers "model not found" (vision model not pulled).
         return None
 
 
 async def call_ollama_ocr(b64_data: str, mime_type: str) -> str | None:
-    """Use local Ollama vision to OCR an image to text."""
+    """Use local Ollama vision to OCR an image to text.
+
+    Requires a configured vision model (``OLLAMA_VISION_MODEL``); returns ``None``
+    when unset or not pulled.
+    """
     base_url = await resolve_provider_value("ollama")
-    if not base_url:
+    if not base_url or not settings.OLLAMA_VISION_MODEL:
         return None
     ocr_prompt = (
         "Transcribe all the text in this document, including any handwritten text. "
@@ -264,7 +283,7 @@ async def call_ollama_ocr(b64_data: str, mime_type: str) -> str | None:
     )
     url = f"{base_url}/api/chat"
     payload = {
-        "model": settings.OLLAMA_MODEL,
+        "model": settings.OLLAMA_VISION_MODEL,
         "messages": [
             {
                 "role": "user",
@@ -276,12 +295,15 @@ async def call_ollama_ocr(b64_data: str, mime_type: str) -> str | None:
         "options": _ollama_options(num_ctx=8192, num_predict=4096, temperature=0.1),
         "keep_alive": settings.OLLAMA_KEEP_ALIVE,
     }
-    client = await get_ollama_client()
-    resp = await client.post(
-        url,
-        json=payload,
-        timeout=_ollama_timeout(len(ocr_prompt)),
-    )
-    resp.raise_for_status()
-    data = resp.json()
-    return data.get("message", {}).get("content")
+    try:
+        client = await get_ollama_client()
+        resp = await client.post(
+            url,
+            json=payload,
+            timeout=_ollama_timeout(len(ocr_prompt)),
+        )
+        resp.raise_for_status()
+        data = resp.json()
+        return data.get("message", {}).get("content")
+    except (httpx.TimeoutException, httpx.ConnectError, httpx.HTTPStatusError):
+        return None

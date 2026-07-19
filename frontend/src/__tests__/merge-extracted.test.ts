@@ -7,6 +7,7 @@ import {
 } from "@/components/records/merge-extracted";
 import type { ExtractedFields } from "@/lib/types/health-record";
 import type { NLParseResponse } from "@/lib/api/records";
+import type { TableRowDef } from "@/lib/record-type-configs";
 
 // Build a MergeContext backed by vi.fn mocks (cast to satisfy the real types).
 function makeCtx(): MergeContext {
@@ -17,6 +18,27 @@ function makeCtx(): MergeContext {
     setTableData: vi.fn(),
     setExtractedFields: vi.fn(),
     tables: [{ key: "lab_results", label: "Labs", fields: [] }],
+  };
+  return ctx as unknown as MergeContext;
+}
+
+// Stateful form mock: setValue writes through to a backing store so
+// getValues("record_type") reflects the type the merge just applied — this is
+// what the lab-table resolution relies on (ctx.tables is stale pre-merge).
+function makeStatefulCtx(tables: TableRowDef[] = []): MergeContext {
+  const state: Record<string, unknown> = {};
+  const ctx = {
+    providerList: [],
+    form: {
+      setValue: vi.fn((k: string, v: unknown) => {
+        state[k] = v;
+      }),
+      getValues: vi.fn((k: string) => (state[k] === undefined ? "" : state[k])),
+    },
+    setCustomValues: vi.fn(),
+    setTableData: vi.fn(),
+    setExtractedFields: vi.fn(),
+    tables,
   };
   return ctx as unknown as MergeContext;
 }
@@ -97,6 +119,36 @@ describe("mergeExtractedFields", () => {
     });
     expect(populated.has("prescriptions")).toBe(false);
     expect(ctx.setTableData).not.toHaveBeenCalled();
+  });
+
+  it("resolves the lab table from the live record_type, not stale ctx.tables", () => {
+    // ctx.tables is EMPTY (reflects a pre-merge type with no lab table), yet the
+    // extraction switches the form to lab_report — labs must still land under
+    // the "tests" key that lab_report actually renders.
+    const ctx = makeStatefulCtx([]);
+    mergeExtractedFields(ctx, {
+      ...nilFields,
+      record_type: "lab_report",
+      lab_tests: [{ test_name: "HbA1c", result: "8.9" }],
+    });
+    const result = lastUpdater(ctx.setTableData)({});
+    expect(result).toEqual({
+      tests: [expect.objectContaining({ test_name: "HbA1c", result: "8.9" })],
+    });
+  });
+
+  it("surfaces lab rows in clinical_data when no lab table exists", () => {
+    // No record type, no lab table → labs must not be silently dropped.
+    const ctx = makeStatefulCtx([]);
+    const { populated } = mergeExtractedFields(ctx, {
+      ...nilFields,
+      lab_tests: [{ test_name: "HbA1c", result: "8.9" }],
+    });
+    expect(populated.has("lab_tests")).toBe(true);
+    expect(ctx.form.setValue).toHaveBeenCalledWith(
+      "clinical_data",
+      expect.stringContaining("HbA1c")
+    );
   });
 });
 

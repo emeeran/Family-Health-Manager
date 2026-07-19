@@ -7,7 +7,7 @@ import json
 import logging
 import re
 from dataclasses import dataclass
-from datetime import date
+from datetime import date, datetime, time
 from pathlib import Path
 
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -1301,79 +1301,202 @@ def merge_extractions(
 
 
 def strip_markdown_fences(text: str) -> str:
-    """Remove markdown code fences from AI response text."""
-    cleaned = re.sub(r"```json\s*", "", text)
-    return re.sub(r"```\s*", "", cleaned).strip()
+    """Remove markdown code fences from AI response text (kept for back-compat)."""
+    return strip_llm_noise(text)
+
+
+# Reasoning wrappers emitted by qwen3 and other "thinking" models. These are
+# stripped BEFORE JSON parsing because they routinely contain stray ``{``/``}``
+# that mislead the brace-matcher into extracting a fragment of the reasoning
+# instead of the real JSON object — the primary cause of blank extracted fields
+# on the local Ollama path.
+_REASONING_BLOCK_RE = re.compile(
+    r"<(?:think|thinking|reflection)>.*?</(?:think|thinking|reflection)>",
+    re.DOTALL | re.IGNORECASE,
+)
+# Unclosed reasoning tag (model truncated mid-thought): drop everything after it.
+_REASONING_OPEN_RE = re.compile(r"<(?:think|thinking|reflection)>.*", re.DOTALL | re.IGNORECASE)
+
+
+def strip_llm_noise(text: str) -> str:
+    """Normalize an LLM response before JSON parsing.
+
+    Removes qwen3-style reasoning wrappers, markdown code fences, and any
+    leading prose so the remaining text begins at (or near) the JSON object.
+    """
+    text = _REASONING_BLOCK_RE.sub("", text)
+    text = _REASONING_OPEN_RE.sub("", text)
+    text = re.sub(r"```json\s*", "", text)
+    text = re.sub(r"```\s*", "", text)
+    return text.strip()
+
+
+def _parse_json_object(text: str) -> dict | None:
+    """Best-effort extraction of a JSON object dict from noisy LLM text.
+
+    Tries, in order: the whole text, the maximal ``{...}`` span (first ``{`` to
+    last ``}``), then a depth-matched scan. Returns the first dict parsed.
+    """
+    try:
+        obj = json.loads(text)
+        if isinstance(obj, dict):
+            return obj
+    except (json.JSONDecodeError, ValueError):
+        pass
+
+    first, last = text.find("{"), text.rfind("}")
+    if first != -1 and last > first:
+        try:
+            obj = json.loads(text[first : last + 1])
+            if isinstance(obj, dict):
+                return obj
+        except (json.JSONDecodeError, ValueError):
+            pass
+
+    start = text.find("{")
+    if start != -1:
+        depth = 0
+        for i in range(start, len(text)):
+            if text[i] == "{":
+                depth += 1
+            elif text[i] == "}":
+                depth -= 1
+                if depth == 0:
+                    try:
+                        obj = json.loads(text[start : i + 1])
+                        if isinstance(obj, dict):
+                            return obj
+                    except (json.JSONDecodeError, ValueError):
+                        pass
+                    break
+    return None
+
+
+# Accepted date/time formats beyond what Pydantic parses natively. Best-effort:
+# the model is asked for ISO dates, so this only rescues odd regional formats.
+_DATE_FORMATS = (
+    "%Y-%m-%d", "%Y/%m/%d", "%d/%m/%Y", "%d-%m-%Y", "%d.%m.%Y", "%m/%d/%Y",
+    "%d-%b-%Y", "%d %b %Y", "%d-%B-%Y", "%d %B %Y", "%B %d, %Y", "%b %d, %Y",
+)
+_TIME_FORMATS = ("%H:%M:%S", "%H:%M", "%I:%M %p", "%I:%M:%S %p")
+
+
+def _parse_flexible_date(value: object) -> date | None:
+    if value is None or isinstance(value, date):
+        return value  # type: ignore[return-value]
+    s = str(value).strip().strip("'\"")
+    if not s:
+        return None
+    for fmt in _DATE_FORMATS:
+        try:
+            return datetime.strptime(s, fmt).date()
+        except ValueError:
+            continue
+    try:
+        return date.fromisoformat(s[:10])
+    except ValueError:
+        return None
+
+
+def _parse_flexible_time(value: object) -> time | None:
+    if value is None or isinstance(value, time):
+        return value  # type: ignore[return-value]
+    s = str(value).strip().strip("'\"")
+    if not s:
+        return None
+    for fmt in _TIME_FORMATS:
+        try:
+            return datetime.strptime(s, fmt).time()
+        except ValueError:
+            continue
+    try:
+        return time.fromisoformat(s[:8])
+    except ValueError:
+        return None
+
+
+def _coerce_extraction_fields(data: dict) -> dict:
+    """Best-effort coercion of raw LLM fields into schema-compatible values."""
+    if isinstance(data.get("record_type"), str):
+        try:
+            from app.models.base import RecordType
+
+            data["record_type"] = RecordType(data["record_type"])
+        except (ValueError, KeyError):
+            data["record_type"] = None
+    for key in ("record_date", "next_review_date"):
+        if key in data and not isinstance(data[key], (date, type(None))):
+            data[key] = _parse_flexible_date(data[key])
+    if "record_time" in data and not isinstance(data["record_time"], (time, type(None))):
+        data["record_time"] = _parse_flexible_time(data["record_time"])
+    for key in ("prescriptions", "lab_tests"):
+        val = data.get(key)
+        if val is None:
+            continue
+        data[key] = [r for r in val if isinstance(r, dict)] if isinstance(val, list) else None
+    if data.get("eyeglass") is not None and not isinstance(data["eyeglass"], dict):
+        data["eyeglass"] = None
+    if isinstance(data.get("clinical_data"), str) and len(data["clinical_data"]) > 50000:
+        data["clinical_data"] = data["clinical_data"][:50000]
+    return data
+
+
+def _build_extracted_lenient(data: dict) -> "ExtractedFields":  # noqa: F821
+    """Construct ``ExtractedFields``, dropping only fields that can't validate.
+
+    Replaces the old all-or-nothing ``ExtractedFields(**data)`` so a single bad
+    value (an unparseable date, an unknown enum) no longer discards the entire
+    extraction — the remaining fields still come through.
+    """
+    from app.schemas.health_record import ExtractedFields
+
+    data = _coerce_extraction_fields(dict(data))
+    try:
+        return ExtractedFields(**data)
+    except Exception:
+        pass
+    kept: dict = {}
+    for key, value in data.items():
+        try:
+            ExtractedFields(**{key: value})  # validates this field in isolation
+            kept[key] = value
+        except Exception as exc:
+            logger.debug("Extraction: dropping unparseable field %s (%s)", key, exc)
+    try:
+        return ExtractedFields(**kept)
+    except Exception:
+        return ExtractedFields()
 
 
 def parse_extraction(raw_text: str | None, extracted_class: type) -> "ExtractedFields":  # noqa: F821
-    """Parse AI response text into ExtractedFields."""
-    from app.schemas.health_record import ExtractedFields
-
+    """Parse AI response text into ExtractedFields (robust to LLM noise)."""
     if not raw_text:
         logger.warning("Extraction: AI returned empty response")
+        from app.schemas.health_record import ExtractedFields
+
         return ExtractedFields()
 
-    # Guard: multi-page lab reports can produce large JSON.
-    # Vision models sometimes echo image data producing multi-MB responses.
+    # Guard: multi-page lab reports can produce large JSON; vision models
+    # sometimes echo image data producing multi-MB responses.
     MAX_EXTRACTION_CHARS = 32768
     if len(raw_text) > MAX_EXTRACTION_CHARS:
-        # Try to locate the JSON object early in the response
         early = raw_text[:MAX_EXTRACTION_CHARS]
         match = re.search(r"\{", early)
-        if match:
-            raw_text = early[match.start() :]
-        else:
-            raw_text = early
+        raw_text = early[match.start() :] if match else early
 
-    # Strip markdown code fences if present
-    cleaned = strip_markdown_fences(raw_text)
-
-    data: dict | None = None
-    try:
-        parsed = json.loads(cleaned)
-        if isinstance(parsed, dict):
-            data = parsed
-    except (json.JSONDecodeError, ValueError):
-        # Try to find the outermost JSON object by brace-matching
-        start = cleaned.find("{")
-        if start != -1:
-            depth = 0
-            for i in range(start, len(cleaned)):
-                if cleaned[i] == "{":
-                    depth += 1
-                elif cleaned[i] == "}":
-                    depth -= 1
-                    if depth == 0:
-                        try:
-                            parsed = json.loads(cleaned[start : i + 1])
-                            if isinstance(parsed, dict):
-                                data = parsed
-                        except (json.JSONDecodeError, ValueError):
-                            pass
-                        break
+    cleaned = strip_llm_noise(raw_text)
+    data = _parse_json_object(cleaned)
 
     if data is None:
         logger.warning(
             "Extraction: could not parse JSON from AI response (first 200 chars: %s)",
             raw_text[:200] if raw_text else "None",
         )
+        from app.schemas.health_record import ExtractedFields
+
         return ExtractedFields()
 
-    # Map record_type string to enum if present
-    if "record_type" in data and isinstance(data["record_type"], str):
-        try:
-            from app.models.base import RecordType
-
-            data["record_type"] = RecordType(data["record_type"])
-        except ValueError:
-            data["record_type"] = None
-
-    try:
-        return ExtractedFields(**data)
-    except Exception as exc:
-        logger.warning("Failed to parse extraction response: %s", exc)
-        return ExtractedFields()
+    return _build_extracted_lenient(data)
 
 
 async def call_vision_provider(

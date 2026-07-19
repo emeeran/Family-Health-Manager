@@ -73,6 +73,9 @@ def fake_ollama(monkeypatch):
     client = _FakeClient()
     monkeypatch.setattr(ollama, "get_ollama_client", _async_return(client))
     monkeypatch.setattr(ollama, "resolve_provider_value", _async_return("http://ollama:11434"))
+    # Local vision is opt-in (disabled by default); enable it here so the
+    # vision/ocr payloads are actually exercised.
+    monkeypatch.setattr(ollama.settings, "OLLAMA_VISION_MODEL", "llama3.2-vision")
     return client
 
 
@@ -111,3 +114,29 @@ async def test_vision_extraction_num_predict_capped(fake_ollama):
     """Vision extraction returns short JSON — num_predict was 4096, now 1024."""
     await ollama.call_ollama_vision("b64", "image/png", "prompt")
     assert fake_ollama.posted[-1]["options"]["num_predict"] == 1024
+
+
+async def test_structured_text_suppresses_thinking(fake_ollama):
+    """fmt='json' (extraction) appends /no_think + sets think=false for speed."""
+    await ollama.call_ollama_text("Extract the fields", fmt="json")
+    payload = fake_ollama.posted[-1]
+    assert payload["format"] == "json"
+    assert payload["think"] is False
+    assert payload["messages"][0]["content"].endswith("/no_think")
+
+
+async def test_plain_text_leaves_thinking_alone(fake_ollama):
+    """Non-structured text (general chat) must not touch thinking."""
+    await ollama.call_ollama_text("hi")
+    payload = fake_ollama.posted[-1]
+    assert "think" not in payload
+    assert "format" not in payload
+    assert not payload["messages"][0]["content"].endswith("/no_think")
+
+
+async def test_vision_without_model_is_skipped(monkeypatch, fake_ollama):
+    """No OLLAMA_VISION_MODEL → vision call returns None without hitting the API."""
+    monkeypatch.setattr(ollama.settings, "OLLAMA_VISION_MODEL", "")
+    assert await ollama.call_ollama_vision("b64", "image/png", "prompt") is None
+    assert await ollama.call_ollama_ocr("b64", "image/png") is None
+    assert fake_ollama.posted == []  # nothing sent

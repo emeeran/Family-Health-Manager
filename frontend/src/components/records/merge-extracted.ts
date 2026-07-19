@@ -13,6 +13,7 @@ import {
   validateLabTestRow,
 } from "./record-form-utils";
 import type { FormValues } from "./record-form-utils";
+import { getConfig, getTables } from "@/lib/record-type-configs";
 import type { TableRowDef } from "@/lib/record-type-configs";
 import type { ProviderResponse } from "@/lib/types/provider";
 import type { ExtractedFields } from "@/lib/types/health-record";
@@ -158,11 +159,32 @@ export function mergeExtractedFields(
       string
     >[];
     if (validRows.length > 0) {
-      setTableData((prev) => {
-        const labKey =
-          tables.find((t) => t.key === "tests" || t.key === "lab_results")?.key || "lab_results";
-        return { ...prev, [labKey]: [...(prev[labKey] || []), ...validRows] };
-      });
+      // Resolve the lab-table key from the form's CURRENT record_type (just set
+      // from extracted.record_type above), NOT ctx.tables — ctx.tables reflects
+      // the pre-merge record type, so a type switch (e.g. → lab_report) would
+      // otherwise land rows under a key nothing renders.
+      const currentType = getValues("record_type");
+      const isLabTable = (t: TableRowDef) => t.key === "tests" || t.key === "lab_results";
+      const labTable =
+        (currentType ? getTables(getConfig(currentType)).find(isLabTable) : undefined) ??
+        tables.find(isLabTable);
+      if (labTable) {
+        setTableData((prev) => ({
+          ...prev,
+          [labTable.key]: [...(prev[labTable.key] || []), ...validRows],
+        }));
+      } else {
+        // No lab table for this record type — surface as text so results are
+        // never silently dropped.
+        const summary = validRows.map((r) => Object.values(r).filter(Boolean).join(" ")).join("; ");
+        if (summary) {
+          const existing = getValues("clinical_data") || "";
+          setValue(
+            "clinical_data",
+            existing ? `${existing}\n\nLab results: ${summary}` : `Lab results: ${summary}`
+          );
+        }
+      }
       populated.add("lab_tests");
     }
   }

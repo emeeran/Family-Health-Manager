@@ -74,8 +74,16 @@ class Settings(BaseSettings):
     GROQ_API_KEY: str = ""
     OPENROUTER_API_KEY: str = ""
     OLLAMA_LOCAL_URL: str = "http://localhost:11434"
-    OLLAMA_MODEL: str = "qwen3"
-    OLLAMA_TEXT_MODEL: str = "qwen3"
+    # Default to the ``qwen3:4b`` tag (the actually-installed model). The bare
+    # ``qwen3`` alias resolves to ``qwen3:latest`` which is usually NOT pulled on
+    # this box → a 404 that silently broke the local fallback. Pin the tag.
+    OLLAMA_MODEL: str = "qwen3:4b"
+    OLLAMA_TEXT_MODEL: str = "qwen3:4b"
+    # Vision-capable model for local image/PDF OCR-via-LLM. Empty = local vision
+    # DISABLED (cloud handles vision; qwen3 is text-only). To enable offline
+    # document vision, ``ollama pull llama3.2-vision`` (or ``minicpm-v``) and set
+    # this. The provider gracefully skips (returns None) when unset or not pulled.
+    OLLAMA_VISION_MODEL: str = ""
     OLLAMA_TIMEOUT: int = 90  # seconds — per-call timeout for Ollama requests
     # How long Ollama keeps the model resident AFTER a call. Default is short
     # (resource-efficiency): the model unloads ~2 min after use, freeing ~3 GB
