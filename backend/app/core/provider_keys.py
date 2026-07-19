@@ -18,7 +18,9 @@ separate worker processes.
 from __future__ import annotations
 
 import logging
+import os
 import time
+from pathlib import Path
 
 from sqlalchemy import select
 
@@ -152,8 +154,31 @@ def invalidate_provider_cache(provider: str | None = None) -> None:
 
 
 async def is_provider_configured(provider: str) -> bool:
-    """True if the provider has a usable value (stored, or via the .env fallback)."""
-    return bool(await resolve_provider_value(provider))
+    """True if the provider has a usable value (stored, or via the .env fallback).
+
+    For Gemini, an Application Default Credentials file also counts as
+    configured (see :func:`gemini_adc_configured`).
+    """
+    if await resolve_provider_value(provider):
+        return True
+    if provider == "gemini" and gemini_adc_configured():
+        return True
+    return False
+
+
+def gemini_adc_file_path() -> str:
+    """Resolved ADC file path for Gemini.
+
+    Prefers the explicit ``GEMINI_ADC_FILE`` setting, then the standard
+    ``GOOGLE_APPLICATION_CREDENTIALS`` env var. Empty string when neither is set.
+    """
+    return get_settings().GEMINI_ADC_FILE or os.environ.get("GOOGLE_APPLICATION_CREDENTIALS", "")
+
+
+def gemini_adc_configured() -> bool:
+    """True if a readable Gemini ADC credentials file is configured."""
+    path = gemini_adc_file_path()
+    return bool(path) and Path(path).is_file()
 
 
 async def any_cloud_provider_configured() -> bool:

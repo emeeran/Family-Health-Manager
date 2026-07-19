@@ -141,6 +141,13 @@ class Settings(BaseSettings):
     OPENROUTER_VISION_MODEL: str = "google/gemma-4-31b-it:free"
     GEMINI_TEXT_MODEL: str = "gemini-2.5-flash"
     GEMINI_VISION_MODEL: str = "gemini-2.5-flash"
+    # Application Default Credentials for Gemini (alternative to the API key).
+    # Path to a gcloud user-credentials JSON (``gcloud auth application-default
+    # login``) or a service-account key. When set + readable, the Gemini
+    # provider authenticates with an OAuth Bearer token derived from it and
+    # ignores the API key; the API key remains the fallback. Leave empty to use
+    # the API-key path (default). Also honors GOOGLE_APPLICATION_CREDENTIALS.
+    GEMINI_ADC_FILE: str = ""
 
     # Storage
     STORAGE_PATH: str = "./data/attachments"
