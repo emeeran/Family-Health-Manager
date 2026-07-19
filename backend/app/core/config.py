@@ -77,9 +77,12 @@ class Settings(BaseSettings):
     OLLAMA_MODEL: str = "qwen3"
     OLLAMA_TEXT_MODEL: str = "qwen3"
     OLLAMA_TIMEOUT: int = 90  # seconds — per-call timeout for Ollama requests
-    # Keep the model resident in memory between calls so the local fallback
-    # doesn't re-pay the cold-load (~9s on CPU) on every extraction.
-    OLLAMA_KEEP_ALIVE: str = "30m"
+    # How long Ollama keeps the model resident AFTER a call. Default is short
+    # (resource-efficiency): the model unloads ~2 min after use, freeing ~3 GB
+    # of RAM — fine because cloud is primary and Ollama is only the rare
+    # fallback. Raise to e.g. "30m" if you run Ollama-first and want to skip the
+    # ~9 s cold-load on back-to-back calls.
+    OLLAMA_KEEP_ALIVE: str = "2m"
     # Per-cloud-provider failover cap (seconds) for document extraction: a
     # slow/dead cloud key is abandoned after this and the next provider is tried.
     EXTRACTION_PROVIDER_TIMEOUT: int = 15

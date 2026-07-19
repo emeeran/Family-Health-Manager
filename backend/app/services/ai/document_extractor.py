@@ -892,7 +892,7 @@ def _ocr_single_page(file_path: str, page_num: int) -> str:
 
         # PSM 6 = uniform block of text, better for medical documents
         result = subprocess.run(
-            ["tesseract", ocr_input, "stdout", "--psm", "6"],
+            ["tesseract", ocr_input, "stdout", "--psm", "6", "--dpi", "200"],
             capture_output=True,
             text=True,
             timeout=30,
@@ -902,7 +902,7 @@ def _ocr_single_page(file_path: str, page_num: int) -> str:
         # If PSM 6 returns nothing, try PSM 4 (variable text sizes)
         if not page_text:
             result = subprocess.run(
-                ["tesseract", ocr_input, "stdout", "--psm", "4"],
+                ["tesseract", ocr_input, "stdout", "--psm", "4", "--dpi", "200"],
                 capture_output=True,
                 text=True,
                 timeout=30,
