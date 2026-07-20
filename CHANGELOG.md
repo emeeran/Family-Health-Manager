@@ -7,6 +7,83 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+- **Document-processing speedup — Phase A–D.** Further pipeline improvements
+  targeting the vision-fallback path (the slowest remaining route for multi-page
+  scanned PDFs with poor OCR) and consistency fixes:
+  - **Parallel vision batches (A1):** vision extraction batches now run
+    concurrently on cloud (capped at `EXTRACTION_VISION_BATCH_CONCURRENCY`,
+    default 4) instead of sequentially; local Ollama stays sequential (it
+    serializes anyway). A 9-page scan with 3 batches runs ~3× faster on cloud.
+  - **Transcription overlap (A2):** the vision transcription task is kicked off
+    before the extraction batch loop and awaited after, overlapping the two
+    (mirrors the OCR path's existing overlap). Saves one full vision round-trip.
+  - **Parallel page rendering (A3):** pages for the vision fallback are rendered
+    in parallel (bounded by `OCR_CONCURRENCY`) instead of sequentially.
+  - **Bounded chunk concurrency for local (B1):** OCR chunk extraction is now
+    capped at 2 concurrent calls on local Ollama (was unbounded, inflating RAM
+    with zero throughput gain); cloud stays unbounded.
+  - **OCR render reuse (B2):** page renders from the OCR pass are reused by the
+    vision fallback (re-encoded to JPEG for ~5× smaller API payloads) instead of
+    re-rendering the same pages — eliminates double rendering on every scanned
+    PDF that escalates to vision. `extract_pdf_text` now returns
+    `(text, page_count)` from a single `fitz.open`, removing the separate
+    page-count validation open.
+  - **Transcription through the provider chain (C1):** `_format_ocr_transcription`
+    and `_transcribe_via_vision` now route through `_run_provider_chain` (respecting
+    `EXTRACTION_RACE_PROVIDERS` and per-provider timeouts) instead of custom racing
+    that fired every provider at once. The unused `_race_vision_entries` helper was
+    removed.
+  - **`call_ocr` timeout (C2):** OCR provider calls now respect
+    `EXTRACTION_PROVIDER_TIMEOUT` / `EXTRACTION_LOCAL_TIMEOUT` — a dead Gemini key
+    previously stalled indefinitely.
+  - **Prompt hash in cache key (D2):** the extraction cache key now includes a
+    hash of `prompts/extraction.md` content, so editing the prompt self-invalidates
+    stale cached extractions without manually bumping `EXTRACTION_CACHE_VERSION`
+    (bumped 4 → 5 to flush existing entries).
+  - **Conditional image preprocessing (D3):** PIL preprocessing (contrast boost /
+    threshold) is skipped for digitally-rendered PDF pages — it was designed for
+    handwritten/faded photos and can degrade clean digital text. Uploaded images
+    still get the full pipeline. Eval-gated: verify with the golden F1 harness.
+
+## [1.2.10] - 2026-07-20
+
+### Changed
+- **Document-processing performance overhaul.** Extraction is LLM-bound (app-side
+  overhead is ~0.1ms; the model call dominates by orders of magnitude), so the
+  work targets call count, provider reliability, concurrency, and perceived
+  latency rather than the Python pipeline:
+  - **Provider-health negative cache (A1):** a TTL-cached pre-flight probe prunes
+    confirmed-dead providers from the extraction chain before the sequential
+    failover pays the 15s dead-key tax on each. `/ai/status` shares the probe, so
+    opening the status panel warms it. No-op until a probe runs (existing
+    sequential behaviour preserved).
+  - **Opt-in provider racing (A2):** `EXTRACTION_RACE_PROVIDERS` (default off)
+    races healthy cloud providers; local Ollama stays the sequential last resort.
+  - **Fewer calls (A3/B2):** transcription-formatting now overlaps chunk
+    extraction; multi-page scanned PDFs send `EXTRACTION_VISION_BATCH_SIZE` (3)
+    page images per vision call (9 pages → 3 calls, was 9) with per-page fallback;
+    `EXTRACTION_PAGES_PER_CHUNK` 3 → 5. Transcription is likewise batched.
+  - **Local floor (B1/B3):** `OLLAMA_KEEP_ALIVE` 2m → 30m plus a background
+    startup model warmup so the first extraction isn't cold; batch fan-out is
+    provider-aware (local → 2, cloud → 8).
+  - **Fast-model infra (B4, eval-gated):** `OLLAMA_FAST_MODEL` overrides the
+    Ollama text-extraction entry only and is embedded in the cache fingerprint.
+  - **Cloud-first auto (C1):** new `primary_provider="auto"` default prefers
+    cloud when any key is configured, else local — a keyed household becomes
+    30–60× faster with no Settings change; an Ollama-only box is unaffected.
+  - **Cache (A5):** positive TTL 1d → 7d; no-data results are negative-cached
+    briefly (only when no providers were pruned, so a fixed key isn't hidden).
+  - **UX (D2/D4):** `/extract/stream` emits live per-stage progress
+    (`{stage:"progress", pct, detail}`) plus a provider-health line ("no cloud
+    keys — local CPU (slow)"); the upload UI surfaces it.
+  - One structured per-extraction log line: `provider … cache=hit/miss elapsed_ms`.
+
+### Fixed
+- Extraction prompt content and `num_ctx` intentionally **unchanged** — they're
+  load-bearing for the F1-0.99 accuracy baseline; trimming blind is deferred to
+  the eval harness.
+
 ## [1.2.9] - 2026-07-20
 
 ### Fixed

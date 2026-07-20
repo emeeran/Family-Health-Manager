@@ -20,7 +20,7 @@ class Settings(BaseSettings):
     # Application
     APP_ENV: str = "development"
     APP_NAME: str = "DAWNSTAR Family Health Keeper"
-    APP_VERSION: str = "1.2.5"
+    APP_VERSION: str = "1.2.10"
     DEBUG: bool = False
     # Root log level (DEBUG/INFO/WARNING/ERROR/CRITICAL). Default WARNING keeps
     # the journal quiet; raise it for diagnosis without a rebuild.
@@ -142,6 +142,14 @@ class Settings(BaseSettings):
     # scans that failed OCR (a 9-page scan drops from 9 calls to 3). 1 disables
     # multi-image (legacy one-call-per-page behaviour).
     EXTRACTION_VISION_BATCH_SIZE: int = 3
+    # Max concurrent vision batch calls on the scanned-PDF vision fallback
+    # (cloud path). Each batch is one multi-image API call; running them in
+    # parallel cuts multi-page wall-clock, but unbounded fan-out risks rate
+    # limits on providers like Groq/OpenRouter. 4 is a safe default that lets a
+    # 12-page scan (4 batches of 3) finish in one round-trip without tripping
+    # typical rate ceilings. Local Ollama is always sequential (it serializes
+    # one generation per model regardless).
+    EXTRACTION_VISION_BATCH_CONCURRENCY: int = 4
     # CPU-inference thread pinning. Ollama is CPU-only on this hardware (no
     # CUDA) and commonly defaults ``num_thread`` to *physical* cores, ignoring
     # SMT. Setting it to the logical core count (``os.cpu_count()``) uses the

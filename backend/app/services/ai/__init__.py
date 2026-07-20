@@ -6,6 +6,7 @@ Public API is identical to the original monolithic ai_service.py.
 import asyncio
 import json
 import logging
+import time
 from collections.abc import AsyncGenerator, Callable
 from datetime import date
 from uuid import UUID
@@ -24,10 +25,15 @@ logger = logging.getLogger(__name__)
 # fields, so a re-upload or duplicate file is served instantly instead of
 # re-running OCR + the LLM pass. Bump EXTRACTION_CACHE_VERSION to invalidate
 # every cached extraction whenever the prompt or extraction logic changes.
-EXTRACTION_CACHE_TTL = 86400  # seconds (1 day)
+EXTRACTION_CACHE_TTL = 604800  # seconds (7 days) — fingerprint already busts on model/prompt change
+# Short TTL for NEGATIVE caching (extraction produced no usable data). Skips
+# re-running the LLM on a re-uploaded non-medical file or a retry, but bounded
+# so a just-fixed provider key isn't hidden behind a stale "empty" entry.
+EXTRACTION_NEGATIVE_CACHE_TTL = 600  # seconds (10 minutes)
 # Bumped 2 → 3: think-tag stripping + lenient parsing + /no_think change the
 # extracted output, and previously-cached blank results must be discarded.
-EXTRACTION_CACHE_VERSION = "4"
+# Bumped 4 → 5: prompt hash added to cache key; old entries miss and re-extract.
+EXTRACTION_CACHE_VERSION = "5"
 
 _CLINICAL_SYSTEM_NOTE = (
     "You are a senior clinical reviewer AI, functioning as an attending physician "
@@ -550,7 +556,11 @@ class AIService:
     # ---- Document extraction ----
 
     async def extract_medical_data(
-        self, file_path: str, mime_type: str, content_hash: str | None = None
+        self,
+        file_path: str,
+        mime_type: str,
+        content_hash: str | None = None,
+        on_progress: Callable[[str, float], None] | None = None,
     ):
         """Extract structured medical data from a document file via vision AI.
 
@@ -560,25 +570,35 @@ class AIService:
         fingerprint invalidates stale entries when the user reorders providers,
         changes a model, or flips the primary group — otherwise a cache hit
         would silently return a result produced by a different provider.
+
+        ``on_progress(detail, pct)`` is invoked at stage transitions (OCR,
+        per-chunk, vision batch, transcription) so an SSE caller can stream
+        finer-grained progress to the UI. It must never raise — extraction
+        wraps each call.
         """
         from app.services.ai.document_extractor import (
+            EXTRACTION_PROMPT_HASH,
             ExtractionProviderPlan,
             ExtractionResult,
             extract_medical_data as _extract,
         )
         from app.core.cache import cache
 
+        started = time.monotonic()
         config = await self._get_provider_config()
         plan = ExtractionProviderPlan.from_config(config)
         # Drop providers a recent pre-flight health probe confirmed dead so the
         # sequential failover doesn't pay the 15s dead-key tax on each. No-op
         # (returns the same plan) when no probe has populated the cache.
-        plan = plan.prune_known_dead()
+        pruned_plan = plan.prune_known_dead()
+        providers_were_pruned = pruned_plan is not plan
+        plan = pruned_plan
 
+        cache_hit = False
         if content_hash:
             key = (
                 f"extraction:{content_hash}:{plan.cache_fingerprint()}"
-                f":{EXTRACTION_CACHE_VERSION}"
+                f":{EXTRACTION_CACHE_VERSION}:{EXTRACTION_PROMPT_HASH}"
             )
             try:
                 cached = await cache.get_async(key)
@@ -588,6 +608,7 @@ class AIService:
                 try:
                     from app.schemas.health_record import ExtractedFields
 
+                    cache_hit = True
                     return ExtractionResult(
                         extracted=ExtractedFields.model_validate_json(cached["extracted_json"]),
                         transcription=cached.get("transcription"),
@@ -596,27 +617,57 @@ class AIService:
                     logger.warning("Extraction cache parse failed — re-extracting: %s", exc)
 
         result = await _extract(
-            self.db, file_path, mime_type, self._last_provider_ref, plan=plan
+            self.db,
+            file_path,
+            mime_type,
+            self._last_provider_ref,
+            plan=plan,
+            on_progress=on_progress,
         )
 
-        # Cache only when extraction produced usable data and the hash is known.
-        if content_hash and result.extracted.has_any_data():
+        had_data = result.extracted.has_any_data()
+        # Cache when we have a content hash. Positive results use the long TTL.
+        # No-data results are negative-cached with a SHORT TTL — but ONLY when no
+        # providers were pruned: an empty result alongside a dead key may be a
+        # transient failure, and caching it would hide a just-fixed key.
+        if content_hash:
             key = (
                 f"extraction:{content_hash}:{plan.cache_fingerprint()}"
-                f":{EXTRACTION_CACHE_VERSION}"
+                f":{EXTRACTION_CACHE_VERSION}:{EXTRACTION_PROMPT_HASH}"
             )
             try:
-                await cache.set_async(
-                    key,
-                    {
-                        "extracted_json": result.extracted.model_dump_json(),
-                        "transcription": result.transcription,
-                    },
-                    ttl=EXTRACTION_CACHE_TTL,
-                )
+                if had_data:
+                    await cache.set_async(
+                        key,
+                        {
+                            "extracted_json": result.extracted.model_dump_json(),
+                            "transcription": result.transcription,
+                        },
+                        ttl=EXTRACTION_CACHE_TTL,
+                    )
+                elif not providers_were_pruned:
+                    await cache.set_async(
+                        key,
+                        {
+                            "extracted_json": result.extracted.model_dump_json(),
+                            "transcription": result.transcription,
+                            "negative": True,
+                        },
+                        ttl=EXTRACTION_NEGATIVE_CACHE_TTL,
+                    )
             except Exception:
                 pass  # non-fatal — caching failure must not break extraction
 
+        elapsed_ms = int((time.monotonic() - started) * 1000)
+        logger.info(
+            "extraction mime=%s provider=%s data=%s cache=%s pruned=%s elapsed_ms=%d",
+            mime_type,
+            self._last_provider_ref[0] or "-",
+            had_data,
+            "hit" if cache_hit else "miss",
+            providers_were_pruned,
+            elapsed_ms,
+        )
         return result
 
     async def generate_consultation_summary(self, extracted_data: dict) -> str:

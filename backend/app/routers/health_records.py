@@ -202,46 +202,64 @@ async def extract_from_document_stream(
         )
         yield sse({"stage": "extracting", "pct": 50, **(health_hint or {})})
 
+        # Drain a queue the extraction task pushes to: per-stage "progress"
+        # events (OCR / chunk / vision-batch / transcription) flow to the UI as
+        # they happen, and the terminal "done"/"error" closes the stream. A 15s
+        # timeout doubles as the SSE keepalive cadence (CPU medgemma can sit
+        # silent for minutes between stages).
+        queue: asyncio.Queue = asyncio.Queue()
+
         async def run_extract():
-            async with plaintext_path(staged_path, encrypted=True) as plain_path:
-                return await ai_service.extract_medical_data(
-                    str(plain_path), mime, content_hash=content_hash
-                )
+            try:
+                async with plaintext_path(staged_path, encrypted=True) as plain_path:
+                    result = await ai_service.extract_medical_data(
+                        str(plain_path),
+                        mime,
+                        content_hash=content_hash,
+                        on_progress=lambda detail, pct: queue.put_nowait(
+                            ("progress", detail, pct)
+                        ),
+                    )
+                await queue.put(("done", result, None))
+            except Exception as exc:  # noqa: BLE001 — surfaced as an SSE error event
+                await queue.put(("error", exc, None))
 
         task = asyncio.create_task(run_extract())
         try:
-            # Heartbeat while extraction runs: SSE comment lines (": ...") are
-            # ignored by the client parser but flush the connection, defeating
-            # idle timeouts on slow CPU-only models (e.g. local medgemma) that
-            # can take minutes between the "extracting" and "complete" events.
             while True:
-                done, _pending = await asyncio.wait({task}, timeout=15.0)
-                if task in done:
-                    break
-                # Stop work if the client went away so an abandoned tab doesn't
-                # hold the CPU-only Ollama worker hostage for minutes; the
-                # finally below cancels the extraction task.
-                if request is not None and await request.is_disconnected():
-                    logger.info("Client disconnected during extraction; cancelling")
-                    break
-                yield ": keepalive\n\n"
+                try:
+                    kind, payload, _pct = await asyncio.wait_for(queue.get(), timeout=15.0)
+                except asyncio.TimeoutError:
+                    # Stop work if the client went away so an abandoned tab
+                    # doesn't hold the CPU-only Ollama worker hostage for
+                    # minutes; the finally below cancels the extraction task.
+                    if request is not None and await request.is_disconnected():
+                        logger.info("Client disconnected during extraction; cancelling")
+                        break
+                    yield ": keepalive\n\n"
+                    continue
 
-            exc = task.exception()
-            if exc is not None:
-                raise exc
-            result = task.result()
-            extracted = result.extracted
-            yield sse(
-                {
-                    "stage": "complete",
-                    "staging_file_id": unique_filename,
-                    "original_file_name": original_name,
-                    "extracted": extracted.model_dump(mode="json"),
-                    "transcription": result.transcription,
-                    "confidence": extraction_confidence(extracted),
-                    "verification": None,
-                }
-            )
+                if kind == "progress":
+                    yield sse({"stage": "progress", "pct": _pct, "detail": payload})
+                elif kind == "done":
+                    result = payload
+                    extracted = result.extracted
+                    yield sse(
+                        {
+                            "stage": "complete",
+                            "staging_file_id": unique_filename,
+                            "original_file_name": original_name,
+                            "extracted": extracted.model_dump(mode="json"),
+                            "transcription": result.transcription,
+                            "confidence": extraction_confidence(extracted),
+                            "verification": None,
+                        }
+                    )
+                    break
+                else:  # error
+                    logger.error("Streamed AI extraction failed: %s", payload)
+                    yield sse({"stage": "error", "message": str(payload)})
+                    break
         except Exception as exc:
             logger.error("Streamed AI extraction failed: %s", exc)
             yield sse({"stage": "error", "message": str(exc)})

@@ -5,7 +5,7 @@ import { Card, CardContent } from "@/components/ui/card";
 import { Progress } from "@/components/ui/progress";
 import { Badge } from "@/components/ui/badge";
 import { batchExtractStream, checkFilenames, createRecord } from "@/lib/api/records";
-import { ALLOWED_MIME_TYPES, MAX_FILE_SIZE } from "@/lib/constants";
+import { MAX_FILE_SIZE, isAllowedUpload } from "@/lib/constants";
 import { chunkFilesForBatch } from "@/lib/batch-chunks";
 import {
   createBatchAccumulator,
@@ -38,15 +38,11 @@ interface BatchUploadQueueProps {
   initialFiles?: File[];
 }
 
-const ACCEPTED_EXTENSIONS = new Set([".pdf", ".jpg", ".jpeg", ".png"]);
 const STORAGE_KEY = (mid: string) => `batch_extraction_${mid}`;
 
 function isValidFile(file: File): string | null {
-  if (!ALLOWED_MIME_TYPES.includes(file.type as (typeof ALLOWED_MIME_TYPES)[number])) {
-    const ext = file.name.substring(file.name.lastIndexOf(".")).toLowerCase();
-    if (!ACCEPTED_EXTENSIONS.has(ext)) {
-      return `Invalid file type: ${file.name}`;
-    }
+  if (!isAllowedUpload(file)) {
+    return `Invalid file type: ${file.name}`;
   }
   if (file.size > MAX_FILE_SIZE) {
     return `File too large (>25MB): ${file.name}`;

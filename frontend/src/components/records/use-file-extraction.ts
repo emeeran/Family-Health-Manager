@@ -19,7 +19,7 @@ import {
   removeBatch,
   clearExtraction,
 } from "@/lib/extraction-store";
-import { ALLOWED_MIME_TYPES, MAX_FILE_SIZE } from "@/lib/constants";
+import { MAX_FILE_SIZE, isAllowedUpload } from "@/lib/constants";
 import type { RecordType } from "@/lib/types/enums";
 import type { ProviderResponse } from "@/lib/types/provider";
 import type { ExtractionResponse, ExtractedFields } from "@/lib/types/health-record";
@@ -300,6 +300,17 @@ export function useFileExtraction({
               detail: event.detail as string,
             });
           }
+        } else if (stage === "progress") {
+          // D2: per-stage detail from the backend (OCR / chunk / vision batch /
+          // transcription). Map the backend's 0-100 extraction pct into this
+          // file's slice of the overall multi-file progress.
+          const detail = (event.detail as string) || "";
+          const rawPct = typeof event.pct === "number" ? (event.pct as number) : undefined;
+          setProgress((prev) => ({
+            ...prev,
+            step: detail || prev.step,
+            pct: rawPct !== undefined ? basePct + Math.round(filePct * (rawPct / 100)) : prev.pct,
+          }));
         } else if (stage === "complete") {
           setProgress((prev) => ({
             ...prev,
@@ -332,7 +343,7 @@ export function useFileExtraction({
     if (!memberId || !fileInputRef.current?.files?.length) return;
     const files = Array.from(fileInputRef.current.files);
     for (const file of files) {
-      if (!ALLOWED_MIME_TYPES.includes(file.type as (typeof ALLOWED_MIME_TYPES)[number])) {
+      if (!isAllowedUpload(file)) {
         setExtractError(`Invalid file type: ${file.name}. Accepted: PDF, JPEG, PNG, WebP.`);
         return;
       }
@@ -347,7 +358,7 @@ export function useFileExtraction({
   async function handleFileDrop(files: File[]) {
     if (!memberId || !files.length) return;
     for (const file of files) {
-      if (!ALLOWED_MIME_TYPES.includes(file.type as (typeof ALLOWED_MIME_TYPES)[number])) {
+      if (!isAllowedUpload(file)) {
         setExtractError(`Invalid file type: ${file.name}. Accepted: PDF, JPEG, PNG, WebP.`);
         return;
       }

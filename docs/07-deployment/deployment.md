@@ -139,6 +139,44 @@ If you raise `--workers` in the unit file, **set `REDIS_URL`** — otherwise rat
 limiting and the insight cache use per-process in-memory state and diverge across
 workers.
 
+## Performance tuning (document extraction)
+
+Extraction is **LLM-bound**: app-side work is ~0.1 ms, the model call dominates by
+orders of magnitude (cloud ~1–2 s/doc, CPU Ollama ~1–2 min/doc). So the levers are
+*provider reliability*, *LLM-call count*, and *perceived latency* — not the Python
+pipeline. Relevant settings live in `/etc/health-manager/config.env` (edit, then
+`sudo systemctl restart health-manager`):
+
+| Setting | Default | What it does |
+|---------|---------|--------------|
+| provider `primary` | `auto` | Per-household (Settings UI). Cloud-first when any cloud key is set, else local. Adding a cloud key is the single biggest speedup (~30–60×). |
+| `OLLAMA_KEEP_ALIVE` | `30m` | Keeps the model resident between extractions so back-to-back jobs skip the ~9 s CPU cold-load. Costs ~3 GB RAM while alive. |
+| `OLLAMA_WARMUP_ON_STARTUP` | `true` | Loads the model once at boot so the *first* extraction isn't cold. |
+| `EXTRACTION_PROVIDER_TIMEOUT` | `15` | Seconds before a dead/slow **cloud** key is abandoned and the next provider tried. |
+| `EXTRACTION_LOCAL_TIMEOUT` | `300` | Wall-clock cap for the **local** Ollama path (bounds a stuck generation). |
+| `EXTRACTION_PAGES_PER_CHUNK` | `5` | OCR pages packed into one extraction call (larger = fewer calls on multi-page scans). |
+| `EXTRACTION_VISION_BATCH_SIZE` | `3` | Page images per multi-image vision call (a 9-page scan → 3 calls, was 9). |
+| `EXTRACTION_RACE_PROVIDERS` | `false` | Race healthy cloud providers in parallel. Off by default — the pre-flight probe already prunes dead keys. |
+| `OLLAMA_FAST_MODEL` | _empty_ | Faster/smaller model for clean-text extraction. **Eval-gated** — validate accuracy before enabling. |
+
+A few behaviours need no setting:
+
+- **Pre-flight provider probe.** Each extraction first probes providers in parallel
+  (60 s cache, shared with `/ai/status`) and prunes confirmed-dead ones, so a dead
+  key no longer costs 15 s of failover per provider.
+- **Extraction cache.** Results are cached by file hash + provider fingerprint for
+  7 days (positives) / 10 min (genuinely-empty negatives). Re-uploads and retries
+  of the same file are instant.
+- **Live progress.** `/extract/stream` emits `{stage:"progress", pct, detail}`
+  events (OCR / chunk / vision-batch / transcription) plus a provider-health line.
+
+**"Stuck at 45%" / slow extraction** is almost always provider-bound, not the app.
+Open **Settings → AI Status** (or `GET /api/v1/ai/status`): dead cloud keys (401 /
+402 / model-404) are the usual cause — fix or remove the key, or add a Groq key
+(free tier) for fast cloud extraction. The probe + log line
+`extraction … provider=… cache=hit/miss elapsed_ms=…` (`LOG_LEVEL=INFO`) confirm
+which provider served each extraction.
+
 ## Local development
 
 ```bash

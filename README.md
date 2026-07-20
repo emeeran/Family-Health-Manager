@@ -17,8 +17,10 @@ cloud AI provider.
 
 ## ✨ Features
 
-- **AI document extraction** — local-first via [Ollama](https://ollama.com)
-  (MedGemma) with optional cloud fallbacks (OpenAI, Gemini, Groq, OpenRouter).
+- **AI document extraction** — privacy-first via [Ollama](https://ollama.com)
+  (local, default), with automatic cloud failover (OpenAI, Gemini, Groq,
+  OpenRouter) when you add a key. Adding any cloud key makes extraction ~30–60×
+  faster (cloud ~1–2s/doc vs CPU Ollama ~1–2min) with no other config.
 - **Structured health records** — medications, vaccinations, lab results, vitals,
   and consultations, organised per family member.
 - **Smart reports & insights** — health scores, abnormal-value flags, drug
@@ -64,9 +66,10 @@ All settings are environment variables documented in
 | `SECRET_KEY` | JWT signing key (required). |
 | `ENCRYPTION_KEY` | Fernet key for files/2FA at rest (required in production). |
 | `HEALTH_CHECK_SECRET` | Protects `GET /health/detail` (required in production). |
-| `OLLAMA_MODEL` | Local AI model — must match `ollama list` (default `medgemma:4b`). |
+| `OLLAMA_MODEL` | Local AI model — must match `ollama list` (default `qwen3:4b`). |
 | `DATABASE_URL` | SQLite (dev) or PostgreSQL (prod). |
 | `APP_ENV=production` | Enables hardening: DEBUG off, secrets required. |
+| `EXTRACTION_*` / `OLLAMA_KEEP_ALIVE` | Extraction perf knobs (timeouts, multi-image batch size, model warmup). See [`docs/07-deployment/deployment.md`](docs/07-deployment/deployment.md) → *Performance tuning*. |
 
 ## 📦 Deployment
 

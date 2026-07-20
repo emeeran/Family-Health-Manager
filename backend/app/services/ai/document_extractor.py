@@ -6,6 +6,7 @@ import functools
 import json
 import logging
 import re
+from collections.abc import Callable
 from dataclasses import dataclass, field
 from datetime import date, datetime, time
 from pathlib import Path
@@ -52,6 +53,18 @@ from app.services.ai.providers.openrouter import (  # noqa: F401
 logger = logging.getLogger(__name__)
 
 settings = get_settings()
+
+
+def _emit_progress(
+    on_progress: Callable[[str, float], None] | None, detail: str, pct: float
+) -> None:
+    """Push a coarse stage update to an SSE caller. Must never raise."""
+    if on_progress is None:
+        return
+    try:
+        on_progress(detail, pct)
+    except Exception:  # noqa: BLE001 — progress is best-effort
+        logger.debug("on_progress callback raised", exc_info=True)
 
 
 async def _race_providers(
@@ -417,12 +430,28 @@ def _load_extraction_prompt() -> str:
 EXTRACTION_PROMPT = _load_extraction_prompt()
 
 
+def _prompt_hash() -> str:
+    """Stable short hash of the extraction prompt content.
+
+    Embedded in the extraction cache key so editing ``prompts/extraction.md``
+    self-invalidates stale cached extractions without needing to manually bump
+    ``EXTRACTION_CACHE_VERSION``.
+    """
+    import hashlib
+
+    return hashlib.md5(EXTRACTION_PROMPT.encode()).hexdigest()[:8]
+
+
+EXTRACTION_PROMPT_HASH = _prompt_hash()
+
+
 async def extract_medical_data(
     db: AsyncSession,
     file_path: str,
     mime_type: str,
     last_provider_ref: list,
     plan: ExtractionProviderPlan | None = None,
+    on_progress: Callable[[str, float], None] | None = None,
 ) -> ExtractionResult:
     """Extract structured medical data from a document file via vision AI.
 
@@ -432,6 +461,10 @@ async def extract_medical_data(
     ``plan`` is the config-driven provider order; when omitted the default
     provider config is used (preserving the original behaviour for direct
     callers such as tests).
+
+    ``on_progress(detail, pct)`` receives coarse stage updates (OCR, per-chunk,
+    per-vision-batch, transcription) so an SSE caller can stream finer-grained
+    progress than the static "extracting 50%".
     """
     from app.schemas.ai_provider_config import default_provider_config
     from app.schemas.health_record import ExtractedFields
@@ -440,11 +473,12 @@ async def extract_medical_data(
         plan = ExtractionProviderPlan.from_config(default_provider_config())
 
     if mime_type == "application/pdf":
-        pdf_text = extract_pdf_text(file_path)
+        pdf_text, page_count = extract_pdf_text(file_path)
         if pdf_text:
             logger.info(
                 "PDF has embedded text (%d chars) — using fast text extraction", len(pdf_text)
             )
+            _emit_progress(on_progress, "Extracting fields from embedded text", 35)
             # Extraction and transcription-formatting both consume only pdf_text —
             # run them concurrently to save an AI round-trip.
             if await _fast_cloud_text_available():
@@ -471,23 +505,20 @@ async def extract_medical_data(
         # Scanned/image PDF — OCR pages then use fast text extraction
         logger.info("PDF is scanned/image-based — attempting OCR + text extraction")
 
-        # Check if the PDF can even be opened
-        try:
-            import fitz
-
-            doc = fitz.open(file_path)
-            page_count = len(doc)
-            doc.close()
-            if page_count == 0:
-                logger.error("PDF has 0 pages — file may be corrupted or empty")
-                return ExtractionResult(extracted=ExtractedFields())
-            logger.info("PDF has %d pages", page_count)
-        except Exception as exc:
-            logger.error("Cannot open PDF: %s", exc)
+        # page_count came from extract_pdf_text's single fitz.open — no separate
+        # validation open needed. page_count is None only when the file can't be
+        # opened at all (extract_pdf_text caught the exception).
+        if page_count is None:
+            logger.error("Cannot open PDF — file may be corrupted")
             return ExtractionResult(extracted=ExtractedFields())
+        if page_count == 0:
+            logger.error("PDF has 0 pages — file may be corrupted or empty")
+            return ExtractionResult(extracted=ExtractedFields())
+        logger.info("PDF has %d pages", page_count)
 
         # Step 1: Render pages and OCR with tesseract (fast, local)
-        ocr_text = await ocr_pdf_pages(file_path, page_count)
+        _emit_progress(on_progress, f"Running OCR on {page_count} page(s)", 20)
+        ocr_text, page_renders = await ocr_pdf_pages(file_path, page_count)
         ocr_quality = _ocr_quality(ocr_text)
 
         if ocr_text and ocr_quality >= OCR_QUALITY_THRESHOLD:
@@ -519,12 +550,28 @@ async def extract_medical_data(
                 if cloud_available
                 else None
             )
-            # Process all chunks in parallel
+            # Process all chunks in parallel, emitting per-chunk progress as
+            # each completes so a multi-page scan shows live advancement.
+            # On cloud: unbounded (each chunk is an independent API call).
+            # On local Ollama: bounded to 2 — Ollama serializes one generation
+            # per model, so firing all chunks at once just inflates RAM with
+            # zero throughput gain (mirrors BATCH_EXTRACTION_CONCURRENCY_LOCAL).
+            n_chunks = len(page_chunks)
+            chunk_concurrency = n_chunks if cloud_available else min(2, n_chunks)
+            chunk_sem = asyncio.Semaphore(max(1, chunk_concurrency))
+
+            async def _extract_chunk(i: int, chunk: str) -> str | None:
+                async with chunk_sem:
+                    res = await call_text_extraction(chunk[:10000], last_provider_ref, plan)
+                    _emit_progress(
+                        on_progress,
+                        f"Extracting fields from page group {i + 1}/{n_chunks}",
+                        30 + int(30 * (i + 1) / max(1, n_chunks)),
+                    )
+                    return res
+
             chunk_results = await asyncio.gather(
-                *[
-                    call_text_extraction(chunk[:10000], last_provider_ref, plan)
-                    for chunk in page_chunks
-                ]
+                *[_extract_chunk(i, c) for i, c in enumerate(page_chunks)]
             )
             for raw_text in chunk_results:
                 chunk_result = parse_extraction(raw_text, ExtractedFields)
@@ -549,14 +596,38 @@ async def extract_medical_data(
             )
 
         # Step 2: Vision AI fallback (slow, requires working provider)
-        page_images: list[str] = []
-        page_num = 0
-        while True:
-            img_bytes = pdf_page_to_image(file_path, page_num=page_num)
-            if not img_bytes:
-                break
-            page_images.append(base64.b64encode(img_bytes).decode())
-            page_num += 1
+        # Reuse the page renders from OCR if available — the OCR path already
+        # rendered every page at 200 DPI PNG; re-rendering the same pages at
+        # 150 DPI JPEG (the old behaviour) was pure wasted CPU on every scanned
+        # PDF that escalated to vision. Falls back to rendering only when OCR
+        # didn't run (e.g. tesseract not installed) or produced no renders.
+        if page_renders:
+            # Re-encode the 200 DPI PNG renders to JPEG for compact API payloads
+            # (~5× smaller); PIL is already a dependency (used by preprocessing).
+            page_images = [
+                base64.b64encode(_png_to_jpeg(png)).decode() for png in page_renders
+            ]
+            vision_mime = "image/jpeg"
+            logger.info("Reusing %d OCR page renders for vision fallback", len(page_images))
+        else:
+            # No cached renders — render pages in parallel (bounded by
+            # OCR_CONCURRENCY). Each page open is independent and thread-safe.
+            _emit_progress(on_progress, f"Rendering {page_count} page(s)", 35)
+            render_sem = asyncio.Semaphore(OCR_CONCURRENCY)
+
+            async def _render_page_b64(pn: int) -> str | None:
+                async with render_sem:
+                    img_bytes = await asyncio.to_thread(pdf_page_to_image, file_path, pn)
+                    return base64.b64encode(img_bytes).decode() if img_bytes else None
+
+            page_images = [
+                img
+                for img in await asyncio.gather(
+                    *[_render_page_b64(p) for p in range(page_count)]
+                )
+                if img
+            ]
+            vision_mime = "image/jpeg"  # 150 DPI JPEG for compact API payload
 
         if not page_images:
             logger.error(
@@ -566,42 +637,92 @@ async def extract_medical_data(
 
         logger.info("Vision fallback: %d pages — extracting in parallel batches", len(page_images))
 
+        # Kick off transcription NOW so it overlaps the extraction batches
+        # (mirrors the OCR path's overlap of transcription-formatting with
+        # chunk extraction). On Ollama-only it serializes behind extraction
+        # anyway, so this is a no-op there.
+        transcription_task = asyncio.create_task(
+            _transcribe_via_vision(page_images, mime_type=vision_mime, plan=plan)
+        )
+
         # Pack k pages into ONE multi-image vision call per batch
         # (EXTRACTION_VISION_BATCH_SIZE, default 3) instead of one call per page.
         # On a 9-page scan that's 3 calls instead of 9 — the biggest local-mode
         # win for scanned PDFs whose OCR was too poor to use the text path. If a
         # provider doesn't support multi-image (returns nothing), the batch
         # transparently falls back to one-call-per-page so no page is lost.
+        #
+        # Batches run in parallel on cloud (bounded) and sequentially on local
+        # Ollama (it serializes one generation per model, so parallel batches
+        # would only inflate RAM with zero throughput gain).
         BATCH_SIZE = max(1, settings.EXTRACTION_VISION_BATCH_SIZE)
-        all_extracted = ExtractedFields()
-        for batch_start in range(0, len(page_images), BATCH_SIZE):
-            batch = page_images[batch_start : batch_start + BATCH_SIZE]
-            page_nums = list(range(batch_start + 1, batch_start + len(batch) + 1))
-            logger.info("Extracting pages %s via vision AI...", ", ".join(str(p) for p in page_nums))
+        n_batches = max(1, (len(page_images) + BATCH_SIZE - 1) // BATCH_SIZE)
+        batches = [
+            page_images[s : s + BATCH_SIZE]
+            for s in range(0, len(page_images), BATCH_SIZE)
+        ]
+        cloud_available = await _fast_cloud_text_available()
+        # Cloud: run batches concurrently, capped at EXTRACTION_VISION_BATCH_CONCURRENCY
+        # to avoid rate limits on providers like Groq/OpenRouter. Local: sequential
+        # — Ollama serializes one generation per model, so parallel just inflates RAM.
+        batch_concurrency = (
+            min(len(batches), settings.EXTRACTION_VISION_BATCH_CONCURRENCY)
+            if cloud_available
+            else 1
+        )
+        batch_sem = asyncio.Semaphore(max(1, batch_concurrency))
 
-            raw_texts: list[str | None] = []
-            if len(batch) > 1:
-                multi_raw = await call_vision_provider_from_b64_multi(
-                    batch, "image/jpeg", last_provider_ref, plan
-                )
-                if multi_raw:
-                    raw_texts = [multi_raw]
-            if not raw_texts:
-                # Single-page batch, or multi-image unsupported by every provider.
-                raw_texts = await asyncio.gather(
-                    *[
-                        call_vision_provider_from_b64(b64, "image/jpeg", last_provider_ref, plan)
-                        for b64 in batch
-                    ]
-                )
+        async def _extract_vision_batch(bi: int, batch: list[str]) -> list[str | None]:
+            page_nums = list(range(bi * BATCH_SIZE + 1, bi * BATCH_SIZE + len(batch) + 1))
+            logger.info("Extracting pages %s via vision AI...", ", ".join(str(p) for p in page_nums))
+            _emit_progress(
+                on_progress,
+                f"Vision extraction batch {bi + 1}/{n_batches} (pages {page_nums[0]}–{page_nums[-1]})",
+                40 + int(35 * (bi + 1) / n_batches),
+            )
+            async with batch_sem:
+                raw_texts: list[str | None] = []
+                if len(batch) > 1:
+                    multi_raw = await call_vision_provider_from_b64_multi(
+                        batch, vision_mime, last_provider_ref, plan
+                    )
+                    if multi_raw:
+                        raw_texts = [multi_raw]
+                if not raw_texts:
+                    # Single-page batch, or multi-image unsupported by every provider.
+                    raw_texts = await asyncio.gather(
+                        *[
+                            call_vision_provider_from_b64(b64, vision_mime, last_provider_ref, plan)
+                            for b64 in batch
+                        ]
+                    )
+                return raw_texts
+
+        # gather preserves submission order, so batch results merge in page order.
+        try:
+            batch_results = await asyncio.gather(
+                *[_extract_vision_batch(bi, batch) for bi, batch in enumerate(batches)]
+            )
+        except Exception:
+            # Batch loop failed — cancel the overlapping transcription task so
+            # it doesn't linger as an orphan.
+            transcription_task.cancel()
+            raise
+
+        all_extracted = ExtractedFields()
+        for raw_texts in batch_results:
             for raw_text in raw_texts:
                 page_result = parse_extraction(raw_text, ExtractedFields)
                 all_extracted = merge_extractions(all_extracted, page_result)
 
-        # Generate transcription for vision-only path
-        transcription = await _transcribe_via_vision(
-            page_images, mime_type="image/jpeg", plan=plan
-        )
+        # Transcription was kicked off before the batch loop — await it now.
+        _emit_progress(on_progress, "Building transcription", 85)
+        try:
+            transcription = await transcription_task
+        except Exception:
+            if not transcription_task.done():
+                transcription_task.cancel()
+            transcription = None
         return _heuristic_fallback(
             ExtractionResult(extracted=all_extracted, transcription=transcription),
             ocr_text,
@@ -613,6 +734,7 @@ async def extract_medical_data(
         # tesseract is a blocking subprocess (+ PIL preprocess) that would
         # otherwise freeze the event loop (measured ~0.7s stall per image),
         # starving the SSE heartbeat and all concurrent requests.
+        _emit_progress(on_progress, "Reading image", 20)
         ocr_text = await asyncio.to_thread(tesseract_image, file_path)
         if ocr_text and _ocr_quality(ocr_text) >= OCR_QUALITY_THRESHOLD:
             logger.info(
@@ -679,7 +801,9 @@ async def call_ocr(
 
     Tries OCR-capable providers (Gemini, then Ollama) in the configured plan
     order. Only Gemini and Ollama expose a dedicated OCR call; other providers
-    are skipped here.
+    are skipped here. Each call is capped at ``EXTRACTION_PROVIDER_TIMEOUT``
+    (cloud) or ``EXTRACTION_LOCAL_TIMEOUT`` (Ollama) so a dead/slow key fails
+    fast instead of stalling indefinitely — mirroring every other AI call path.
     """
     if plan is None:
         from app.schemas.ai_provider_config import default_provider_config
@@ -689,16 +813,36 @@ async def call_ocr(
     b64_data = base64.b64encode(file_bytes).decode()
 
     for item in plan.items:
-        if item.provider_id == "gemini":
-            result = await call_gemini_ocr(
-                b64_data,
-                mime_type,
-                model=item.model or None,
-                gemini_auth=plan.gemini_auth,
+        is_local = item.provider_id == "ollama"
+        timeout = (
+            settings.EXTRACTION_LOCAL_TIMEOUT
+            if is_local
+            else settings.EXTRACTION_PROVIDER_TIMEOUT
+        )
+        try:
+            if item.provider_id == "gemini":
+                result = await asyncio.wait_for(
+                    call_gemini_ocr(
+                        b64_data,
+                        mime_type,
+                        model=item.model or None,
+                        gemini_auth=plan.gemini_auth,
+                    ),
+                    timeout=timeout,
+                )
+            elif item.provider_id == "ollama":
+                result = await asyncio.wait_for(
+                    call_ollama_ocr(b64_data, mime_type), timeout=timeout
+                )
+            else:
+                continue
+        except asyncio.TimeoutError:
+            logger.warning(
+                "OCR provider %s timed out after %ds", item.provider_id, timeout
             )
-        elif item.provider_id == "ollama":
-            result = await call_ollama_ocr(b64_data, mime_type)
-        else:
+            continue
+        except Exception as exc:
+            logger.warning("OCR provider %s failed: %s", item.provider_id, exc)
             continue
         if result:
             return result
@@ -706,18 +850,25 @@ async def call_ocr(
     return None
 
 
-def extract_pdf_text(file_path: str) -> str | None:
-    """Extract text content from a PDF file using PyMuPDF."""
+def extract_pdf_text(file_path: str) -> tuple[str | None, int | None]:
+    """Extract text content from a PDF file using PyMuPDF.
+
+    Returns ``(text, page_count)`` — both derived from a single ``fitz.open``
+    so the caller doesn't need a second open just to count pages. ``text`` is
+    ``None`` for scanned/image PDFs (no embedded text); ``page_count`` is
+    ``None`` when the file can't be opened at all.
+    """
     try:
         import fitz  # PyMuPDF
 
         doc = fitz.open(file_path)
+        page_count = len(doc)
         text = "\n".join(page.get_text() for page in doc)
         doc.close()
-        return text.strip() or None
+        return (text.strip() or None), page_count
     except Exception as exc:
         logger.warning("PDF text extraction failed: %s", exc)
-        return None
+        return None, None
 
 
 # Month name → number, for parsing named-month dates ("02-Jun-2026", "5 June 2026").
@@ -1169,7 +1320,9 @@ def extraction_confidence(extracted: "ExtractedFields") -> str:  # noqa: F821
     return "low"
 
 
-async def ocr_pdf_pages(file_path: str, page_count: int) -> str | None:
+async def ocr_pdf_pages(
+    file_path: str, page_count: int
+) -> tuple[str | None, list[bytes]]:
     """OCR all pages of a scanned PDF using tesseract.
 
     Renders each page to an image, runs tesseract OCR, and combines the
@@ -1177,34 +1330,41 @@ async def ocr_pdf_pages(file_path: str, page_count: int) -> str | None:
     each runs in a worker thread so the blocking tesseract subprocess does
     not stall the event loop. Much faster and more reliable than vision AI
     for text-heavy scanned documents.
+
+    Returns ``(combined_text, page_renders)`` where ``page_renders`` is the
+    list of rendered PNG bytes (one per page, in order). The renders are
+    reused by the vision fallback so the same pages aren't re-rendered.
     """
     import shutil
 
     if not shutil.which("tesseract"):
         logger.info("Tesseract not installed — skipping OCR")
-        return None
+        return None, []
 
     semaphore = asyncio.Semaphore(OCR_CONCURRENCY)
 
-    async def _bounded(page_num: int) -> str:
+    async def _bounded(page_num: int) -> tuple[str, bytes | None]:
         async with semaphore:
             return await asyncio.to_thread(_ocr_single_page, file_path, page_num)
 
     # gather preserves order, so page markers stay correctly numbered
     results = await asyncio.gather(*[_bounded(p) for p in range(page_count)])
 
-    all_text = [f"--- Page {i + 1} ---\n{txt}" for i, txt in enumerate(results) if txt]
+    all_text = [f"--- Page {i + 1} ---\n{txt}" for i, (txt, _) in enumerate(results) if txt]
     combined = "\n\n".join(all_text).strip()
-    return combined or None
+    renders = [png for _, png in results if png]
+    return combined or None, renders
 
 
-def _ocr_single_page(file_path: str, page_num: int) -> str:
+def _ocr_single_page(file_path: str, page_num: int) -> tuple[str, bytes | None]:
     """Render and OCR a single PDF page with tesseract (blocking worker).
 
     Opens the PDF independently per call, so it is safe to run concurrently
-    from multiple threads. Returns the page text, or "" on failure/empty so
-    the caller can omit the page marker. All temp files are cleaned up in
-    the finally block regardless of outcome.
+    from multiple threads. Returns ``(page_text, png_bytes)`` — the text may
+    be "" on failure/empty so the caller can omit the page marker; ``png_bytes``
+    is the rendered page image (200 DPI PNG) reused by the vision fallback to
+    avoid a redundant re-render. All temp files are cleaned up in the finally
+    block regardless of outcome.
     """
     import os
     import subprocess
@@ -1227,8 +1387,11 @@ def _ocr_single_page(file_path: str, page_num: int) -> str:
             tmp.write(img_bytes)
             tmp_path = tmp.name
 
-        # Preprocess for better handwriting OCR
-        enhanced_path = _preprocess_image_for_ocr(tmp_path)
+        # PDF pages are digitally rendered — skip PIL preprocessing (contrast
+        # boost / threshold) which is designed for handwritten/faded photos and
+        # can degrade clean digital text. Uploaded images (tesseract_image)
+        # still get the full preprocessing pipeline.
+        enhanced_path = _preprocess_image_for_ocr(tmp_path, preprocess=False)
         ocr_input = enhanced_path or tmp_path
 
         # PSM 6 = uniform block of text, better for medical documents
@@ -1250,10 +1413,10 @@ def _ocr_single_page(file_path: str, page_num: int) -> str:
             )
             page_text = result.stdout.strip()
 
-        return page_text
+        return page_text, img_bytes
     except Exception as exc:
         logger.warning("OCR failed for page %d: %s", page_num + 1, exc)
-        return ""
+        return "", None
     finally:
         if tmp_path:
             try:
@@ -1316,15 +1479,22 @@ def tesseract_image(file_path: str) -> str | None:
                 pass
 
 
-def _preprocess_image_for_ocr(file_path: str) -> str | None:
+def _preprocess_image_for_ocr(file_path: str, preprocess: bool = True) -> str | None:
     """Enhance image for better OCR accuracy on handwritten medical documents.
 
     Applies grayscale conversion, contrast enhancement, and adaptive
     thresholding — particularly helpful for handwritten text on
     prescription pads and clinical notes.
 
-    Returns path to a temporary enhanced image, or None if PIL unavailable.
+    ``preprocess=False`` skips the PIL pipeline and returns ``None`` so the
+    caller uses the original image as-is — used for digitally-rendered PDF
+    pages where the pipeline can degrade clean text.
+
+    Returns path to a temporary enhanced image, or None if PIL unavailable or
+    preprocessing was skipped.
     """
+    if not preprocess:
+        return None
     try:
         from PIL import Image, ImageEnhance, ImageFilter
     except ImportError:
@@ -1361,6 +1531,28 @@ def _preprocess_image_for_ocr(file_path: str) -> str | None:
     except Exception as exc:
         logger.debug("Image preprocessing failed: %s", exc)
         return None
+
+
+def _png_to_jpeg(png_bytes: bytes, quality: int = 85) -> bytes:
+    """Re-encode PNG bytes to JPEG for compact vision API payloads.
+
+    OCR renders pages at 200 DPI PNG (~1.5 MB each); vision AI APIs accept JPEG
+    at 150 DPI (~300 KB) just as well, so re-encoding cuts payload size ~5×
+    before sending. Falls back to the original PNG on any PIL error so a
+    conversion failure never strands a page.
+    """
+    try:
+        import io
+
+        from PIL import Image
+
+        img = Image.open(io.BytesIO(png_bytes))
+        buf = io.BytesIO()
+        img.save(buf, format="JPEG", quality=quality)
+        return buf.getvalue()
+    except Exception as exc:
+        logger.debug("PNG→JPEG re-encode failed, using original PNG: %s", exc)
+        return png_bytes
 
 
 def pdf_page_to_image(file_path: str, page_num: int = 0) -> bytes | None:
@@ -1440,41 +1632,53 @@ async def _transcribe_via_vision(
 ) -> str | None:
     """Generate a raw text transcription via vision AI when no OCR text is available.
 
-    Races the configured vision providers in parallel for each image (first
-    non-empty result wins). Returns concatenated text from all images, or None
-    if all providers fail.
+    Batches page images (``EXTRACTION_VISION_BATCH_SIZE``) into ONE multi-image
+    vision call per batch using the multi-image entries + the transcription
+    prompt — collapsing N per-page transcription calls into N/batch (a 9-page
+    scan drops from 9 to 3 transcription calls). Falls back to one-call-per-page
+    when a provider doesn't support multi-image. Returns concatenated text, or
+    None if all providers fail.
+
+    Runs through the same provider chain as extraction (respecting
+    ``EXTRACTION_RACE_PROVIDERS`` and per-provider timeouts) instead of custom
+    racing, so the sequential-by-default config doesn't waste API calls firing
+    every provider at once. Uses a local provider ref — transcription overlaps
+    extraction and must not clobber its provider record.
     """
     if plan is None:
         from app.schemas.ai_provider_config import default_provider_config
 
         plan = ExtractionProviderPlan.from_config(default_provider_config())
+    if not b64_images:
+        return None
+
+    multi_entries = plan.vision_multi_entries()
+    single_entries = plan.vision_entries()
+    batch_size = max(1, settings.EXTRACTION_VISION_BATCH_SIZE)
+    transcribe_ref: list[str] = [""]  # local — don't clobber extraction's ref
+
     parts: list[str] = []
-    for b64 in b64_images:
-        providers = plan.vision_entries()
-
-        async def _try(entry: _ProviderEntry):
-            try:
-                result = await entry.fn(b64, mime_type, TRANSCRIPTION_PROMPT)
-                if result:
-                    return result
-            except Exception as exc:
-                logger.debug("Transcription provider %s failed: %s", entry.label, exc)
-            return None
-
-        tasks = [asyncio.create_task(_try(entry)) for entry in providers]
-        winner = None
-        for coro in asyncio.as_completed(tasks):
-            result = await coro
-            if result is not None:
-                winner = result
-                break
-        for t in tasks:
-            if not t.done():
-                t.cancel()
-        await asyncio.gather(*tasks, return_exceptions=True)
-
-        if winner:
-            parts.append(winner)
+    for start in range(0, len(b64_images), batch_size):
+        batch = b64_images[start : start + batch_size]
+        text: str | None = None
+        if len(batch) > 1:
+            async def invoke_multi(fn, batch=batch):
+                return await fn(batch, mime_type, TRANSCRIPTION_PROMPT)
+            text = await _run_provider_chain(
+                multi_entries, invoke_multi, transcribe_ref, kind="Transcription"
+            )
+        if text is None:
+            # Single-image batch, or every multi-image provider returned nothing.
+            for b64 in batch:
+                async def invoke_single(fn, b64=b64):
+                    return await fn(b64, mime_type, TRANSCRIPTION_PROMPT)
+                winner = await _run_provider_chain(
+                    single_entries, invoke_single, transcribe_ref, kind="Transcription"
+                )
+                if winner:
+                    parts.append(winner)
+        else:
+            parts.append(text)
 
     return "\n\n--- Page ---\n".join(parts) if parts else None
 
@@ -1529,8 +1733,11 @@ async def _format_ocr_transcription(
     """Format raw OCR text into a clean, structured medical transcription.
 
     Uses a lightweight text-only AI call to clean up tesseract/cloud OCR output.
-    Races the configured text providers in parallel; falls back to returning the
-    raw text if all fail.
+    Runs through the same provider chain as extraction (respecting
+    ``EXTRACTION_RACE_PROVIDERS`` and per-provider timeouts); falls back to
+    returning the raw text if all fail. Uses a local provider ref so the
+    cosmetic formatting call doesn't clobber the extraction provider record
+    (they run concurrently via ``asyncio.gather``).
     """
     if not raw_text or len(raw_text.strip()) < 20:
         return raw_text
@@ -1540,31 +1747,15 @@ async def _format_ocr_transcription(
         plan = ExtractionProviderPlan.from_config(default_provider_config())
 
     prompt = f"{FORMAT_TRANSCRIPTION_PROMPT}{raw_text[:15000]}"
-
     providers = plan.text_entries()
 
-    async def _try(entry: _ProviderEntry):
-        try:
-            result = await entry.fn(prompt)
-            if result:
-                return result
-        except Exception as exc:
-            logger.debug("Format transcription provider %s failed: %s", entry.label, exc)
-        return None
+    async def invoke(fn):
+        return await fn(prompt)
 
-    tasks = [asyncio.create_task(_try(entry)) for entry in providers]
-    winner = None
-    for coro in asyncio.as_completed(tasks):
-        result = await coro
-        if result is not None:
-            winner = result
-            break
-    for t in tasks:
-        if not t.done():
-            t.cancel()
-    await asyncio.gather(*tasks, return_exceptions=True)
-
-    return winner or raw_text
+    # Local ref — don't clobber the extraction's last_provider_ref (concurrent).
+    format_ref: list[str] = [""]
+    result = await _run_provider_chain(providers, invoke, format_ref, kind="Format")
+    return result or raw_text
 
 
 async def call_text_extraction(

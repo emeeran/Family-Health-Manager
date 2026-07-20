@@ -8,6 +8,8 @@ Covers:
 * B2 — multi-image vision callables + configurable pages-per-chunk.
 * B4 — OLLAMA_FAST_MODEL overrides the Ollama text entry and is in the fingerprint.
 * D2/D4 — _provider_health_hint summarises a probe for the upload UI.
+* A5 — longer cache TTL + conservative negative caching.
+* D2 — per-stage on_progress streaming + transcription multi-image batching.
 
 All provider functions are mocked — no network.
 """
@@ -297,3 +299,179 @@ def test_health_hint_none_when_no_probe():
 
     assert _provider_health_hint({}, _hint_cfg("groq")) is None
     assert _provider_health_hint(None, _hint_cfg("groq")) is None  # type: ignore[arg-type]
+
+
+# ---- A5: negative caching ----
+
+
+async def _afalse(*_a, **_k):
+    return False
+
+
+async def _atrue(*_a, **_k):
+    return True
+
+
+def _install_fake_cache(monkeypatch, store: dict):
+    async def fake_get(key):
+        return store.get(key)
+
+    async def fake_set(key, val, ttl=None):
+        store[key] = val
+
+    monkeypatch.setattr("app.core.cache.cache.get_async", fake_get)
+    monkeypatch.setattr("app.core.cache.cache.set_async", fake_set)
+
+
+async def test_no_data_result_is_negative_cached_when_not_pruned(monkeypatch):
+    """A genuine empty result (no dead keys) is cached briefly → re-extract skips the LLM."""
+    from app.services.ai import AIService
+    from app.services.ai.document_extractor import ExtractionResult
+    from app.schemas.health_record import ExtractedFields
+
+    ph.clear()
+    monkeypatch.setattr("app.core.provider_keys.any_cloud_provider_configured", _afalse)
+    store: dict = {}
+    _install_fake_cache(monkeypatch, store)
+
+    calls = {"n": 0}
+
+    async def fake_extract(db, fp, mt, ref, plan=None, on_progress=None):
+        calls["n"] += 1
+        return ExtractionResult(extracted=ExtractedFields())  # no usable data
+
+    monkeypatch.setattr(
+        "app.services.ai.document_extractor.extract_medical_data", fake_extract
+    )
+
+    svc = AIService(db=None)
+    await svc.extract_medical_data("x.pdf", "application/pdf", content_hash="h1")
+    assert calls["n"] == 1
+    # Second call: served from the negative cache — no re-extraction.
+    await svc.extract_medical_data("x.pdf", "application/pdf", content_hash="h1")
+    assert calls["n"] == 1
+    assert store, "negative result was cached"
+
+
+async def test_no_data_result_NOT_cached_when_providers_were_pruned(monkeypatch):
+    """An empty result alongside a pruned (dead) key is transient → not cached."""
+    from app.services.ai import AIService
+    from app.services.ai.document_extractor import ExtractionResult
+    from app.schemas.health_record import ExtractedFields
+
+    # groq confirmed dead → pruned from the default chain → providers_were_pruned=True.
+    ph.clear()
+    ph._state["result"] = {"groq": False}
+    ph._state["expires_at"] = time.monotonic() + 60
+    monkeypatch.setattr("app.core.provider_keys.any_cloud_provider_configured", _afalse)
+    store: dict = {}
+    _install_fake_cache(monkeypatch, store)
+
+    calls = {"n": 0}
+
+    async def fake_extract(db, fp, mt, ref, plan=None, on_progress=None):
+        calls["n"] += 1
+        return ExtractionResult(extracted=ExtractedFields())
+
+    monkeypatch.setattr(
+        "app.services.ai.document_extractor.extract_medical_data", fake_extract
+    )
+
+    svc = AIService(db=None)
+    await svc.extract_medical_data("x.pdf", "application/pdf", content_hash="h1")
+    await svc.extract_medical_data("x.pdf", "application/pdf", content_hash="h1")
+    assert calls["n"] == 2  # re-extracted — the empty result was NOT cached
+    assert not store
+
+
+async def test_positive_result_cached_with_long_ttl(monkeypatch):
+    from app.services.ai import AIService
+    from app.services.ai.document_extractor import ExtractionResult
+    from app.schemas.health_record import ExtractedFields
+
+    ph.clear()
+    monkeypatch.setattr("app.core.provider_keys.any_cloud_provider_configured", _afalse)
+    store: dict = {}
+    captured_ttl = {}
+    async def fake_get(key): return store.get(key)
+    async def fake_set(key, val, ttl=None):
+        store[key] = val
+        captured_ttl["v"] = ttl
+    monkeypatch.setattr("app.core.cache.cache.get_async", fake_get)
+    monkeypatch.setattr("app.core.cache.cache.set_async", fake_set)
+
+    fields = ExtractedFields(record_type="lab_report")
+
+    async def fake_extract(db, fp, mt, ref, plan=None, on_progress=None):
+        return ExtractionResult(extracted=fields)
+
+    monkeypatch.setattr(
+        "app.services.ai.document_extractor.extract_medical_data", fake_extract
+    )
+
+    svc = AIService(db=None)
+    await svc.extract_medical_data("x.pdf", "application/pdf", content_hash="h1")
+    assert captured_ttl["v"] == 604800  # 7 days
+
+
+async def test_on_progress_forwarded_to_extractor(monkeypatch):
+    """AIService threads on_progress down to the extractor."""
+    from app.services.ai import AIService
+    from app.services.ai.document_extractor import ExtractionResult
+    from app.schemas.health_record import ExtractedFields
+
+    ph.clear()
+    monkeypatch.setattr("app.core.provider_keys.any_cloud_provider_configured", _afalse)
+    received: list[tuple[str, float]] = []
+
+    async def fake_extract(db, fp, mt, ref, plan=None, on_progress=None):
+        if on_progress:
+            on_progress("stage A", 10.0)
+            on_progress("stage B", 90.0)
+        return ExtractionResult(extracted=ExtractedFields())
+
+    monkeypatch.setattr(
+        "app.services.ai.document_extractor.extract_medical_data", fake_extract
+    )
+
+    svc = AIService(db=None)
+    await svc.extract_medical_data(
+        "x.pdf", "application/pdf", on_progress=lambda d, p: received.append((d, p))
+    )
+    assert received == [("stage A", 10.0), ("stage B", 90.0)]
+
+
+# ---- transcription multi-image batching (D2 / call-count win) ----
+
+
+async def test_transcribe_via_vision_batches_with_multi_image(monkeypatch):
+    """4 images / batch=3 → one multi call (3 imgs) + one single call (1 img)."""
+    monkeypatch.setattr(dex.settings, "EXTRACTION_VISION_BATCH_SIZE", 3)
+
+    multi_calls: list[int] = []
+    single_calls: list[str] = []
+
+    async def multi_fn(images, mime, prompt, **_kw):
+        multi_calls.append(len(images))
+        return f"multi[{len(images)}]"
+
+    async def single_fn(b64, mime, prompt, **_kw):
+        single_calls.append(b64)
+        return "single"
+
+    plan = ExtractionProviderPlan.from_config(
+        AIProviderConfig(
+            providers=[ProviderConfigItem(id="groq", enabled=True, model="")],
+            primary_provider="cloud",  # type: ignore[arg-type]
+        )
+    )
+    with (
+        patch.object(dex, "call_groq_vision_multi", multi_fn),
+        patch.object(dex, "call_groq_vision", single_fn),
+    ):
+        out = await dex._transcribe_via_vision(
+            ["p1", "p2", "p3", "p4"], "image/jpeg", plan=plan
+        )
+    assert multi_calls == [3]  # first batch of 3 sent as one multi-image call
+    assert single_calls == ["p4"]  # trailing single-page batch
+    assert out is not None and "multi[3]" in out and "single" in out

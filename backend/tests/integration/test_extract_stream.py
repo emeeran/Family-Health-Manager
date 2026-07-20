@@ -51,7 +51,7 @@ def _data_events(resp_lines):
 async def test_extract_stream_emits_secured_then_complete(auth_client, monkeypatch):
     """Upload is acked instantly (secured); the full result follows (complete)."""
 
-    async def fake_extract(self, file_path, mime_type, content_hash=None):
+    async def fake_extract(self, file_path, mime_type, content_hash=None, on_progress=None):
         return ExtractionResult(
             extracted=ExtractedFields(
                 record_type=RecordType.DOCTOR_VISIT,
@@ -95,7 +95,7 @@ async def test_extract_stream_emits_secured_then_complete(auth_client, monkeypat
 async def test_extract_stream_surfaces_extraction_error(auth_client, monkeypatch):
     """An extraction failure becomes an error event, not a dead stream."""
 
-    async def fake_extract(self, file_path, mime_type, content_hash=None):
+    async def fake_extract(self, file_path, mime_type, content_hash=None, on_progress=None):
         raise RuntimeError("model down")
 
     monkeypatch.setattr(AIService, "extract_medical_data", fake_extract)

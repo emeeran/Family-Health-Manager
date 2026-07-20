@@ -34,6 +34,28 @@ export const ALLOWED_MIME_TYPES = [
   "image/png",
   "image/webp",
 ] as const;
+// Extensions used as a fallback when the browser can't sniff a MIME type.
+export const ALLOWED_EXTENSIONS = [".pdf", ".jpg", ".jpeg", ".png", ".webp"] as const;
+
+/**
+ * True if *file* is an accepted upload.
+ *
+ * Drag-and-drop from an OS file manager (notably Nautilus on Linux) frequently
+ * reports an empty ``file.type`` — especially for PDFs — so a MIME-only check
+ * rejects valid dragged files as "Invalid file type" while the click-to-select
+ * picker (which always sets the type) works. Accept by MIME first, then fall
+ * back to the extension.
+ */
+export function isAllowedUpload(file: File): boolean {
+  if ((ALLOWED_MIME_TYPES as readonly string[]).includes(file.type)) return true;
+  // A non-empty MIME the browser sniffed but we don't accept is genuinely invalid.
+  if (file.type) return false;
+  // Empty MIME (common for files drag-and-dropped from an OS file manager) —
+  // fall back to the extension so a valid dragged PDF/image isn't rejected.
+  const dot = file.name.lastIndexOf(".");
+  if (dot < 0) return false;
+  return (ALLOWED_EXTENSIONS as readonly string[]).includes(file.name.slice(dot).toLowerCase());
+}
 
 export const RECORD_TYPE_LABELS: Record<RecordType, string> = {
   doctor_visit: "Doctor Visit",
