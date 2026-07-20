@@ -140,3 +140,19 @@ async def test_vision_without_model_is_skipped(monkeypatch, fake_ollama):
     assert await ollama.call_ollama_vision("b64", "image/png", "prompt") is None
     assert await ollama.call_ollama_ocr("b64", "image/png") is None
     assert fake_ollama.posted == []  # nothing sent
+
+
+async def test_vision_multi_sends_all_images_in_one_call(fake_ollama):
+    """Multi-image vision packs every page into one ``images`` list (B2)."""
+    await ollama.call_ollama_vision_multi(
+        ["imgA", "imgB", "imgC"], "image/png", "prompt", fmt="json"
+    )
+    payload = fake_ollama.posted[-1]
+    assert payload["messages"][0]["images"] == ["imgA", "imgB", "imgC"]
+    assert payload["format"] == "json"  # grammar-constrained like single vision
+    assert payload["options"]["num_predict"] == 1024
+
+
+async def test_vision_multi_empty_list_returns_none(fake_ollama):
+    assert await ollama.call_ollama_vision_multi([], "image/png", "prompt") is None
+    assert fake_ollama.posted == []

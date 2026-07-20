@@ -8,12 +8,16 @@ export interface AIProviderConfig {
   providers: ProviderConfigItem[];
   /** Which provider group is tried first; the other is automatic fallback. */
   primary_provider: "cloud" | "local";
+  /** Gemini auth preference: auto (ADC if configured else API key), adc, api_key. */
+  gemini_auth: "auto" | "adc" | "api_key";
 }
 
 export interface AIProviderConfigResponse {
   config: AIProviderConfig;
   available_models: Record<string, string[]>;
   provider_labels: Record<string, string>;
+  /** True when the server has a usable Gemini ADC file + Vertex project. */
+  adc_available: boolean;
 }
 
 export interface FetchedModelsResponse {

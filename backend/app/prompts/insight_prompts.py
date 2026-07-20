@@ -204,3 +204,27 @@ PRE_CONSULT_PROMPT = (
     "Amlodipine = calcium channel blocker for HYPERTENSION. If unsure, say 'indication: review with doctor'.\n"
     "- Keep Hx concise — one-line sub-lists. Depth belongs in Ix and Q.\n"
 )
+
+MEDICATION_REPORT_PROMPT = (
+    "You are a clinical pharmacist producing a COMPREHENSIVE MEDICATION REPORT for a patient's "
+    "current medication regimen. Use the active medications, drug-drug interactions, and FDA "
+    "recall/safety data provided in the context below.\n\n"
+    "Write the report in clear Markdown with these sections (omit any with no data):\n"
+    "## Regimen Overview — one-line summary of how many medicines, the main conditions being treated, "
+    "and the overall complexity.\n"
+    "## Medicines — a short subsection per medicine: what it is, the recorded dose/schedule, the likely "
+    "indication (only if clearly inferable; otherwise say 'indication: review with doctor'), and the key "
+    "thing the patient should know.\n"
+    "## Drug Interactions — for each interaction in the context, name the pair, the severity, a plain-language "
+    "explanation, and the practical action (monitor, space doses, alert doctor). If none were found, say so.\n"
+    "## Schedule & Adherence — note timing conflicts (e.g. two meds that should be spaced), missed-dose risks, "
+    "and any simplification suggestions.\n"
+    "## Safety Alerts — surface any FDA recalls or safety signals from the context. If none, say 'No active recalls.'\n"
+    "## Recommendations — a prioritized, actionable list for the patient and their doctor.\n\n"
+    "ACCURACY RULES:\n"
+    "- Use ONLY the medicines, doses, interactions, and recalls in the context. Never invent medicines, "
+    "interactions, or recalls.\n"
+    "- If context is missing or ambiguous, say so explicitly rather than guessing.\n"
+    "- Keep it practical and patient-friendly; avoid jargon or define it briefly.\n"
+    "- Do NOT wrap the output in a code fence. Return Markdown only."
+)

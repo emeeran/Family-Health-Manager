@@ -68,6 +68,15 @@ export function useFileExtraction({
   });
   const [_extractedFields, setExtractedFieldsLocal] = useState<Set<string>>(new Set());
   const [transcription, setTranscription] = useState<string | null>(null);
+  // D4: provider-health snapshot from the extraction pre-flight probe, so the
+  // upload UI can show "3/5 providers ready" or warn when only local CPU is
+  // available (the real cause of "stuck at 45%" — dead cloud keys).
+  const [providerHealth, setProviderHealth] = useState<{
+    ready: number;
+    total: number;
+    cloudReady: boolean;
+    detail: string;
+  } | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const pendingExtractedFields = useRef<Record<string, string> | null>(null);
 
@@ -275,6 +284,22 @@ export function useFileExtraction({
             substeps: SUBSTEPS,
             done: [...allDone, "Uploading file..."],
           });
+        } else if (stage === "extracting") {
+          // D2: the backend's pre-flight probe rides provider-health detail on
+          // this event. Surface it so a slow local extraction is explained
+          // ("no cloud keys — local CPU") instead of looking stuck at 50%.
+          if (
+            typeof event.providers_ready === "number" &&
+            typeof event.providers_total === "number" &&
+            typeof event.detail === "string"
+          ) {
+            setProviderHealth({
+              ready: event.providers_ready as number,
+              total: event.providers_total as number,
+              cloudReady: Boolean(event.cloud_ready),
+              detail: event.detail as string,
+            });
+          }
         } else if (stage === "complete") {
           setProgress((prev) => ({
             ...prev,
@@ -442,6 +467,7 @@ export function useFileExtraction({
     setProgress({ step: "", pct: 0, substeps: [], done: [] });
     setExtractedFieldsLocal(new Set());
     setTranscription(null);
+    setProviderHealth(null);
     pendingExtractedFields.current = null;
     if (memberId) {
       sessionStorage.removeItem(`extraction_${memberId}`);
@@ -470,5 +496,6 @@ export function useFileExtraction({
     pendingExtractedFields,
     transcription,
     setTranscription,
+    providerHealth,
   };
 }

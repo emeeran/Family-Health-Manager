@@ -36,7 +36,7 @@ async def test_ollama_available_when_reachable_and_model_installed(auth_client, 
 
     monkeypatch.setattr("app.services.ai.providers.ollama.call_ollama_text", _no_generate)
     # Neutralise cloud providers so the test is hermetic.
-    monkeypatch.setattr("app.routers.ai.is_provider_configured", lambda p: _ret(False))
+    monkeypatch.setattr("app.core.provider_keys.is_provider_configured", lambda p: _ret(False))
 
     resp = await auth_client.get(STATUS_PATH)
     assert resp.status_code == 200
@@ -55,7 +55,7 @@ async def test_ollama_unavailable_when_model_not_installed(auth_client, monkeypa
         "app.core.ollama_service.ollama_status",
         lambda model, url: _ret((True, False)),
     )
-    monkeypatch.setattr("app.routers.ai.is_provider_configured", lambda p: _ret(False))
+    monkeypatch.setattr("app.core.provider_keys.is_provider_configured", lambda p: _ret(False))
 
     resp = await auth_client.get(STATUS_PATH)
     ollama = await _ollama_provider(resp.json()["providers"])
@@ -72,7 +72,7 @@ async def test_ollama_unavailable_when_server_unreachable(auth_client, monkeypat
         "app.core.ollama_service.ollama_status",
         lambda model, url: _ret((False, False)),
     )
-    monkeypatch.setattr("app.routers.ai.is_provider_configured", lambda p: _ret(False))
+    monkeypatch.setattr("app.core.provider_keys.is_provider_configured", lambda p: _ret(False))
 
     resp = await auth_client.get(STATUS_PATH)
     ollama = await _ollama_provider(resp.json()["providers"])

@@ -84,6 +84,37 @@ async def ensure_model_pulled(model: str, url: str | None = None) -> bool:
         return False
 
 
+async def warmup_model(model: str, url: str | None = None) -> bool:
+    """Run one throwaway generation so *model* is resident in memory.
+
+    Ollama loads a model on first use and keeps it for ``OLLAMA_KEEP_ALIVE``
+    afterwards. On CPU-only inference that first load is ~9-20 s of prompt-eval;
+    doing it once at startup (background, non-blocking) means the first real
+    extraction doesn't pay the cold-load penalty. Returns True on success. A
+    failure is non-fatal — extraction will still cold-load on demand.
+    """
+    base_url = url or _settings.OLLAMA_LOCAL_URL
+    try:
+        async with httpx.AsyncClient(timeout=120) as client:
+            resp = await client.post(
+                f"{base_url}/api/generate",
+                json={
+                    "model": model,
+                    "prompt": "ok",
+                    "stream": False,
+                    "keep_alive": _settings.OLLAMA_KEEP_ALIVE,
+                },
+            )
+            if resp.status_code == 200:
+                logger.info("Ollama model '%s' warmed up (resident in memory)", model)
+                return True
+            logger.debug("Ollama warmup for '%s' returned %s", model, resp.status_code)
+            return False
+    except Exception as exc:
+        logger.debug("Ollama warmup for '%s' skipped: %s", model, exc)
+        return False
+
+
 async def start_ollama() -> bool:
     """Start Ollama server as a background process.
 

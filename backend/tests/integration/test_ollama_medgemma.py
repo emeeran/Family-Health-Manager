@@ -151,6 +151,13 @@ async def test_ai_service_ollama_text_provider():
         patch("app.services.ai_service.settings", test_settings),
         patch("app.services.ai.providers.ollama.settings", test_settings),
         patch("app.core.config.get_settings", return_value=test_settings),
+        # Force local-first: with cloud keys/ADC present in the dev env, the new
+        # 'auto' default would otherwise resolve cloud-first and short-circuit
+        # on Gemini before reaching Ollama — defeating these tests' failover intent.
+        patch(
+            "app.core.provider_keys.any_cloud_provider_configured",
+            AsyncMock(return_value=False),
+        ),
     ):
         try:
             result = await ai_service._call_ollama_text("Say 'hello' in one word.")
@@ -208,6 +215,13 @@ async def test_ai_service_full_failover_with_ollama():
         patch("app.services.ai_service.settings", test_settings),
         patch("app.services.ai.providers.ollama.settings", test_settings),
         patch("app.core.config.get_settings", return_value=test_settings),
+        # Force local-first: with cloud keys/ADC present in the dev env, the new
+        # 'auto' default would otherwise resolve cloud-first and short-circuit
+        # on Gemini before reaching Ollama — defeating these tests' failover intent.
+        patch(
+            "app.core.provider_keys.any_cloud_provider_configured",
+            AsyncMock(return_value=False),
+        ),
     ):
         try:
             result, provider = await ai_service._call_ai(

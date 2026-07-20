@@ -24,6 +24,12 @@ ATTACH_DIR="$DATA_DIR/attachments"
 # value (production) still defaults to the real unit name. (DATA_DIR/APP_USER use
 # :- because an empty value would be invalid for them.)
 APP_SVC="${APP_SVC-health-manager.service}"
+# Caddy fronts the app (serves the SPA + proxies /api to the backend). Its unit
+# has `Requires=health-manager.service`, so stopping the backend cascades and
+# stops Caddy too — but starting the backend does NOT start Caddy back. A restore
+# must therefore manage Caddy explicitly, or it leaves the site unreachable
+# ("Network error" / can't log in) after a successful DB swap.
+CADDY_SVC="${CADDY_SVC-health-manager-caddy.service}"
 APP_USER="${APP_USER:-health-manager}"
 FLAG="$DATA_DIR/.restore-request"
 RESULT="$DATA_DIR/.restore-result"
@@ -49,12 +55,16 @@ write_result() {
 
 stop_app() {
     [ -z "$APP_SVC" ] && return 0
+    # Stop Caddy first (it proxies to the backend); stopping the backend alone
+    # would cascade-stop Caddy via Requires= anyway.
+    [ -n "$CADDY_SVC" ] && systemctl stop "$CADDY_SVC" 2>/dev/null || true
     systemctl stop "$APP_SVC" 2>/dev/null || true
 }
 
 restart_app() {
     [ -z "$APP_SVC" ] && return 0
     systemctl restart "$APP_SVC" 2>/dev/null || true
+    [ -n "$CADDY_SVC" ] && systemctl restart "$CADDY_SVC" 2>/dev/null || true
 }
 
 start_app() {
@@ -63,6 +73,11 @@ start_app() {
     # marker is written). Tests pass APP_SVC="" to skip service control entirely.
     [ -z "$APP_SVC" ] && return 0
     systemctl start "$APP_SVC"
+    # Caddy Requires the backend, so stopping the backend during the restore
+    # stopped Caddy too; starting the backend doesn't restart it. Bring it back
+    # so the site is reachable again (best-effort — a Caddy failure must not mask
+    # a successful restore).
+    [ -n "$CADDY_SVC" ] && systemctl start "$CADDY_SVC" 2>/dev/null || true
 }
 
 # ── Read + strictly re-validate the requested archive name ───────────────────
@@ -87,16 +102,26 @@ if [ ! -f "$archive_path" ]; then
 fi
 
 # Must be a readable tar.gz containing a SQLite snapshot (pg dumps unsupported here).
-if ! tar -tzf "$archive_path" >/dev/null 2>&1; then
+# List members to a temp file rather than piping `tar -tzf | grep`: under
+# `set -o pipefail`, a large archive (100MB+) decompresses slowly, and if grep
+# finishes before tar has drained the whole stream tar takes a SIGPIPE on stdout
+# — pipefail then turns that into a spurious pipeline failure and a false "no
+# health.db". Listing to a file first is reliable and also lets us check
+# readability + contents from a single tar pass.
+member_list="$(mktemp)"
+if ! tar -tzf "$archive_path" >"$member_list" 2>/dev/null; then
+    rm -f "$member_list"
     write_result "error" "$archive" "reason" "not a readable tar.gz"
     rm -f "$FLAG"
     exit 1
 fi
-if ! tar -tzf "$archive_path" | grep -qx "health.db"; then
+if ! grep -qx "health.db" "$member_list"; then
+    rm -f "$member_list"
     write_result "error" "$archive" "reason" "no health.db (PostgreSQL unsupported)"
     rm -f "$FLAG"
     exit 1
 fi
+rm -f "$member_list"
 
 # ── Stop the app so the DB is quiescent before we touch it ───────────────────
 stop_app

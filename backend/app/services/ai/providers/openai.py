@@ -53,14 +53,16 @@ async def call_openai_text(prompt: str, model: str | None = None) -> str | None:
     return None
 
 
-async def call_openai_vision(b64_data: str, mime_type: str, extraction_prompt: str) -> str | None:
+async def call_openai_vision(
+    b64_data: str, mime_type: str, extraction_prompt: str, model: str | None = None
+) -> str | None:
     """Call OpenAI API for vision extraction."""
     api_key = await resolve_provider_api_key("openai")
     if not api_key:
         return None
     url = "https://api.openai.com/v1/chat/completions"
     payload = {
-        "model": PRIMARY_MODEL,
+        "model": model or PRIMARY_MODEL,
         "messages": [
             {
                 "role": "user",
@@ -81,6 +83,42 @@ async def call_openai_vision(b64_data: str, mime_type: str, extraction_prompt: s
         "Authorization": f"Bearer {api_key}",
         "Content-Type": "application/json",
     }
+    client = await get_cloud_client()
+    resp = await client.post(url, json=payload, headers=headers)
+    resp.raise_for_status()
+    data = resp.json()
+    return data["choices"][0]["message"]["content"]
+
+
+async def call_openai_vision_multi(
+    b64_images: list[str],
+    mime_type: str,
+    extraction_prompt: str,
+    model: str | None = None,
+) -> str | None:
+    """Call OpenAI vision with several page images in one request.
+
+    Packs k images into one ``content`` array so a k-page batch is ONE call
+    instead of k. Returns ``None`` for an empty list. Note OpenAI applies per-
+    request image limits by tier; very large batches should be split upstream.
+    """
+    if not b64_images:
+        return None
+    api_key = await resolve_provider_api_key("openai")
+    if not api_key:
+        return None
+    url = "https://api.openai.com/v1/chat/completions"
+    content: list = [{"type": "text", "text": extraction_prompt}]
+    for b64 in b64_images:
+        content.append(
+            {"type": "image_url", "image_url": {"url": f"data:{mime_type};base64,{b64}"}}
+        )
+    payload = {
+        "model": model or PRIMARY_MODEL,
+        "messages": [{"role": "user", "content": content}],
+        "temperature": 0.1,
+    }
+    headers = {"Authorization": f"Bearer {api_key}", "Content-Type": "application/json"}
     client = await get_cloud_client()
     resp = await client.post(url, json=payload, headers=headers)
     resp.raise_for_status()

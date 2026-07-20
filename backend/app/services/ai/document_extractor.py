@@ -6,41 +6,133 @@ import functools
 import json
 import logging
 import re
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from datetime import date, datetime, time
 from pathlib import Path
+from typing import Any
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.config import get_settings
 from app.core.provider_keys import any_cloud_provider_configured
-from app.services.ai.providers.gemini import call_gemini_text, call_gemini_vision, call_gemini_ocr
-from app.services.ai.providers.openai import call_openai_text, call_openai_vision
-from app.services.ai.providers.groq import call_groq_text, call_groq_vision
-from app.services.ai.providers.openrouter import call_openrouter_text, call_openrouter_vision
-from app.services.ai.providers.ollama import call_ollama_text, call_ollama_vision, call_ollama_ocr
+
+# Provider callables are imported into module scope so the config-driven plan
+# can resolve them by name via ``globals()`` (which also keeps
+# ``patch.object(dex, "call_groq_text", ...)`` effective in tests). The text/
+# vision entry points are dispatched dynamically, hence the F401 noqa markers;
+# the ``*_ocr`` entry points are called directly.
+from app.services.ai.providers.gemini import (  # noqa: F401
+    call_gemini_ocr,
+    call_gemini_text,
+    call_gemini_vision,
+    call_gemini_vision_multi,
+)
+from app.services.ai.providers.groq import (  # noqa: F401
+    call_groq_text,
+    call_groq_vision,
+    call_groq_vision_multi,
+)
+from app.services.ai.providers.ollama import (  # noqa: F401
+    call_ollama_ocr,
+    call_ollama_text,
+    call_ollama_vision,
+    call_ollama_vision_multi,
+)
+from app.services.ai.providers.openai import (  # noqa: F401
+    call_openai_text,
+    call_openai_vision,
+    call_openai_vision_multi,
+)
+from app.services.ai.providers.openrouter import (  # noqa: F401
+    call_openrouter_text,
+    call_openrouter_vision,
+    call_openrouter_vision_multi,
+)
 
 logger = logging.getLogger(__name__)
 
 settings = get_settings()
 
 
-async def _run_provider_chain(providers, invoke, last_provider_ref: list, kind: str) -> str | None:
+async def _race_providers(
+    entries: "list[_ProviderEntry]", invoke, kind: str
+) -> tuple[str | None, str | None]:
+    """Race cloud provider entries; return ``(result, label)`` of first non-empty.
+
+    Every entry is fired at once; the first non-empty result wins and the rest
+    are cancelled. Failures/timeouts/empty returns simply don't win — the race
+    keeps waiting for another entry. Returns ``(None, None)`` when no entry
+    produced a non-empty result. Used only when ``EXTRACTION_RACE_PROVIDERS`` is
+    on; the local Ollama entry is never raced (see :func:`_run_provider_chain`).
+    """
+    timeout = settings.EXTRACTION_PROVIDER_TIMEOUT
+
+    async def _one(entry: "_ProviderEntry") -> tuple[str, str] | None:
+        try:
+            res = await asyncio.wait_for(invoke(entry.fn), timeout=timeout)
+        except asyncio.TimeoutError:
+            logger.warning("%s provider %s timed out after %ds in race", kind, entry.label, timeout)
+            return None
+        except Exception as exc:
+            logger.warning("%s provider %s failed in race: %s", kind, entry.label, exc)
+            return None
+        return (res, entry.label) if res else None
+
+    tasks = [asyncio.create_task(_one(e)) for e in entries]
+    winner: tuple[str, str] | None = None
+    try:
+        for coro in asyncio.as_completed(tasks):
+            res = await coro
+            if res is not None:
+                winner = res
+                break
+    finally:
+        for t in tasks:
+            if not t.done():
+                t.cancel()
+        await asyncio.gather(*tasks, return_exceptions=True)
+    if winner:
+        logger.info("%s extraction succeeded via %s (race)", kind, winner[1])
+    return (winner[0], winner[1]) if winner else (None, None)
+
+
+async def _run_provider_chain(
+    providers: "list[_ProviderEntry]", invoke, last_provider_ref: list, kind: str
+) -> str | None:
     """Try providers in priority order; first non-empty result wins.
 
-    Each entry in ``providers`` is ``(callable, label, is_local)``. Cloud
-    providers are capped at ``settings.EXTRACTION_PROVIDER_TIMEOUT`` so a slow or
-    dead key fails fast and the next provider is tried; the local Ollama entry
-    (``is_local=True``) gets a larger but still bounded cap
-    (``settings.EXTRACTION_LOCAL_TIMEOUT``) — as the last-resort fallback you
-    want it to actually finish, but a stuck thinking-model generation must not be
-    allowed to pin the CPU indefinitely.
+    Each entry in ``providers`` is a :class:`_ProviderEntry` (callable + label +
+    ``is_local``). Cloud providers are capped at
+    ``settings.EXTRACTION_PROVIDER_TIMEOUT`` so a slow or dead key fails fast and
+    the next provider is tried; the local Ollama entry (``is_local=True``) gets a
+    larger but still bounded cap (``settings.EXTRACTION_LOCAL_TIMEOUT``) — as the
+    last-resort fallback you want it to actually finish, but a stuck
+    thinking-model generation must not be allowed to pin the CPU indefinitely.
 
     ``invoke(fn)`` calls the provider with the arguments appropriate to its kind
     (text takes a prompt; vision takes b64 + mime + prompt) and returns its text
     or ``None``.
+
+    When ``settings.EXTRACTION_RACE_PROVIDERS`` is on and ≥2 cloud entries are
+    present, the cloud entries are raced in parallel (fastest live key wins) and
+    the local entry is then tried sequentially only if every cloud entry failed
+    — racing local Ollama would pin the CPU on a generation we then cancel. Off
+    by default; the pre-flight health probe already removes the dead-key tax.
     """
-    for fn, label, is_local in providers:
+    if getattr(settings, "EXTRACTION_RACE_PROVIDERS", False):
+        cloud = [e for e in providers if not e.is_local]
+        local = [e for e in providers if e.is_local]
+        if len(cloud) >= 2:
+            result, label = await _race_providers(cloud, invoke, kind)
+            if result:
+                last_provider_ref[0] = label  # type: ignore[assignment]
+                return result
+            # Every cloud entry failed/empty — fall through to local (sequential).
+            # If there's no local entry, ``providers`` is empty → returns None.
+            providers = local
+
+    for entry in providers:
+        fn, label, is_local = entry.fn, entry.label, entry.is_local
         timeout = (
             settings.EXTRACTION_LOCAL_TIMEOUT
             if is_local
@@ -89,81 +181,263 @@ class ExtractionResult:
     transcription: str | None = None
 
 
-EXTRACTION_PROMPT = """You are a medical document data extraction assistant. Analyze the provided medical document image/PDF and extract structured data.
+# provider_id → callable for each modality. Used to map the config-driven
+# provider plan to concrete text/vision calls, so extraction honors the same
+# order/models as chat & insights.
+# provider_id → name of the text/vision callable in this module's namespace.
+# Stored as strings (not references) so the plan resolves the (possibly
+# monkeypatched) callable fresh at build time via ``globals()`` — keeping
+# ``patch.object(dex, "call_groq_text", ...)`` effective in tests.
+_PROVIDER_TEXT: dict[str, str] = {
+    "groq": "call_groq_text",
+    "openrouter": "call_openrouter_text",
+    "gemini": "call_gemini_text",
+    "openai": "call_openai_text",
+    "ollama": "call_ollama_text",
+}
+_PROVIDER_VISION: dict[str, str] = {
+    "groq": "call_groq_vision",
+    "openrouter": "call_openrouter_vision",
+    "gemini": "call_gemini_vision",
+    "openai": "call_openai_vision",
+    "ollama": "call_ollama_vision",
+}
+# Multi-image variants (one call for several pages). Same provider set; the
+# registry maps to the ``*_multi`` callables. Providers that don't support
+# multi-image return None, and the caller falls back to single-image per page.
+_PROVIDER_VISION_MULTI: dict[str, str] = {
+    "groq": "call_groq_vision_multi",
+    "openrouter": "call_openrouter_vision_multi",
+    "gemini": "call_gemini_vision_multi",
+    "openai": "call_openai_vision_multi",
+    "ollama": "call_ollama_vision_multi",
+}
+# Display labels for logs / last_provider_ref (capitalized, matching the
+# historical chain labels so existing log scrapers and tests are unaffected).
+_PROVIDER_LABEL: dict[str, str] = {
+    "groq": "Groq",
+    "openrouter": "OpenRouter",
+    "gemini": "Gemini",
+    "openai": "OpenAI",
+    "ollama": "Ollama",
+}
 
-IMPORTANT INSTRUCTIONS:
-1. Return ONLY valid JSON -- no markdown, no explanation, no code fences.
-2. If a field is not found, set it to null — EXCEPT record_type: ALWAYS determine record_type from the document content (never return null for it). ALWAYS attempt record_date from the document header/date line, even when other fields are uncertain. Prefer your best-effort reading over leaving a field null; mark a soft guess with "(?)".
-3. Dates must be in YYYY-MM-DD format. Times in HH:MM format.
-4. HANDWRITING: This document may contain handwritten notes, especially prescriptions. Carefully transcribe ALL handwritten text. Handwritten medicine names, dosages, and instructions are common — read them character by character if needed. If handwriting is partially legible, provide your best reading and mark uncertain entries with "(?)" in the note field. NEVER skip handwritten prescriptions — they are often the most important part of the record.
-5. For record_type, use exactly one of these values:
-   "doctor_visit" (consultation notes, prescriptions from a visit),
-   "lab_report" (lab test results, blood work, diagnostic reports),
-   "rx_eyeglass" (eyeglass prescriptions, vision test results),
-   "blood_glucose" (glucose readings, diabetes monitoring),
-   "misc_record" (anything that doesn't fit the above categories)
-6. provider_name is the doctor/clinic/hospital name.
-7. If the document contains prescriptions/medications (printed OR handwritten), extract each medicine as a separate object in the "prescriptions" array with: type (Tab/Cap/Inj/Syp/Cream/Drops/Other), medicine (name), dosage (e.g. "1-1-1"), duration (e.g. "30 days"), timing (before_food/after_food/with_food/empty_stomach/bedtime/sos/stat), note.
-   CRITICAL for handwritten prescriptions:
-   - Transcribe the medicine name exactly as written, even if misspelled.
-   - Common abbreviations: BD (twice daily), TDS/TID (three times daily), OD (once daily), HS (bedtime), PRN (as needed), SOS (if needed), STAT (immediately).
-   - If a handwritten medicine name is ambiguous, include your best guess and add "(?)" in the note.
-   - Look for prescription patterns: medicine names are often followed by dosage numbers, then frequency abbreviations.
-8. If the document contains lab test results, extract each test as a separate object in the "lab_tests" array with: test_name, result (numeric or text value WITHOUT units), units (e.g. "mg/dL", "IU/L", "%"), ref_value (reference range WITH units), note.
-   CRITICAL for lab_tests:
-   - Separate the numeric/text result from units into distinct fields.
-   - ref_value: Use the reference range printed on the document if available. If NOT printed, provide the standard reference range from established medical guidelines (e.g. WHO, ADA, standard lab medicine references). Always include units.
-   - note: Write a brief clinical comment on the result status. Examples: "Normal", "Elevated - above target", "Low - monitor", "Critical high", "Borderline", "Well controlled". Keep it under 10 words.
-9. If the document is an eyeglass prescription, extract vision data into the "eyeglass" object.
-10. existing_conditions: Extract ONLY conditions the document EXPLICITLY labels as pre-existing, chronic, or past medical history (e.g. a "PMH", "Known case of", or "History of" section). Do NOT infer these from the current visit's diagnosis. Comma-separated, uppercase, or null if none are explicitly stated.
-11. chief_complaint: The main reason for the visit / chief complaint (e.g. "Fever for 3 days", "Routine follow-up for T2DM"). Extract exactly as stated, including from handwritten notes.
-12. investigations: Any tests or investigations ordered, recommended, or mentioned (e.g. "CBC, HbA1c, Lipid profile, ECG"). Comma-separated.
-13. clinical_data: A CONCISE summary (under 150 words) of any handwritten notes, advice, or instructions that don't fit other fields. Do NOT copy the document verbatim — summarize. Preserve original meaning.
-14. VITALS: If the document records any vital signs or measurements, extract them. weight = numeric kg, height = numeric cm, blood_pressure = "systolic/diastolic" string e.g. "120/80" (mmHg), heart_rate = numeric bpm, temperature = numeric °F. Set a field to null if that vital is not present. Do not invent values.
 
-Return this exact JSON structure:
-{
-  "record_type": "doctor_visit" or null,
-  "record_date": "2024-01-15" or null,
-  "record_time": "10:30" or null,
-  "clinical_data": "concise (<150 word) summary of other notes/advice" or null,
-  "diagnosis": "extracted diagnosis" or null,
-  "existing_conditions": "T2DM, HYPERTENSION, DEPRESSION" or null,
-  "chief_complaint": "Fever for 3 days" or null,
-  "investigations": "CBC, HbA1c, Lipid profile" or null,
-  "provider_name": "Dr. Smith, City Hospital" or null,
-  "next_review_date": "2024-06-15" or null,
-  "prescriptions": [
-    {"type": "Tab", "medicine": "Syndopa 110", "dosage": "1-1-1", "duration": "30 days", "timing": "before_food", "note": ""}
-  ] or null,
-  "lab_tests": [
-    {"test_name": "HbA1c", "result": "8.9", "units": "%", "ref_value": "< 6.0 % (ADA guideline)", "note": "Elevated - above target"},
-    {"test_name": "Fasting Glucose", "result": "142", "units": "mg/dL", "ref_value": "70-100 mg/dL", "note": "High - diabetic range"},
-    {"test_name": "Total Cholesterol", "result": "195", "units": "mg/dL", "ref_value": "< 200 mg/dL", "note": "Borderline high"},
-    {"test_name": "HDL Cholesterol", "result": "55", "units": "mg/dL", "ref_value": "> 40 mg/dL (men)", "note": "Normal"}
-  ] or null,
-  "eyeglass": {
-    "re_sph": "+2.50", "re_cyl": "-0.50", "re_axs": "140", "re_va": "6/6",
-    "le_sph": "+1.25", "le_cyl": "-0.75", "le_axs": "090", "le_va": "6/6",
-    "add_power": "+2.50", "pd": "32/32"
-  } or null,
-  "weight": 72.5 or null,
-  "height": 170 or null,
-  "blood_pressure": "120/80" or null,
-  "heart_rate": 76 or null,
-  "temperature": 98.6 or null
-}"""
+@dataclass
+class _PlanItem:
+    provider_id: str
+    model: str
+    is_local: bool
+
+
+@dataclass
+class _ProviderEntry:
+    """One resolved, ordered provider call for a modality.
+
+    ``fn`` is a partial already bound with the provider's model + Gemini auth
+    choice (and Ollama JSON grammar when requested), so the caller only supplies
+    the prompt (text) or ``(b64, mime, prompt)`` (vision).
+    """
+
+    fn: Any
+    label: str
+    is_local: bool
+
+
+@dataclass
+class ExtractionProviderPlan:
+    """Config-driven, ordered provider plan for one extraction request.
+
+    Built once from the household ``AIProviderConfig`` (or the default config)
+    and threaded through every AI call in the pipeline so document extraction
+    honors the same provider order, primary group, per-provider model, and
+    Gemini auth choice as chat/insights.
+    """
+
+    items: list[_PlanItem] = field(default_factory=list)
+    gemini_auth: str = "auto"
+    # Optional faster Ollama model applied to the TEXT-extraction entries only
+    # (see OLLAMA_FAST_MODEL). Vision entries are untouched. Included in the
+    # cache fingerprint so toggling it self-invalidates cached extractions.
+    fast_text_model: str = ""
+
+    @classmethod
+    def from_config(cls, config: Any) -> "ExtractionProviderPlan":
+        """Build a plan from an ``AIProviderConfig`` (enabled providers only).
+
+        Falls back to the default order if every provider is disabled, so a
+        misconfigured household can't fully disable extraction.
+        """
+        from app.schemas.ai_provider_config import default_provider_config, ordered_providers
+
+        def _to_items(cfg: Any) -> list[_PlanItem]:
+            return [
+                _PlanItem(provider_id=p.id, model=p.model, is_local=(p.id == "ollama"))
+                for p in ordered_providers(cfg)
+                if p.enabled
+            ]
+
+        items = _to_items(config)
+        if not items:
+            items = _to_items(default_provider_config())
+        return cls(
+            items=items,
+            gemini_auth=getattr(config, "gemini_auth", "auto"),
+            fast_text_model=settings.OLLAMA_FAST_MODEL,
+        )
+
+    def cache_fingerprint(self) -> str:
+        """Stable short hash of the ordered providers + Gemini auth + fast model.
+
+        Embedded in the extraction cache key so reordering providers, changing a
+        model, flipping the primary group, or enabling the fast text model
+        invalidates stale cached results that a different provider/model produced.
+        """
+        import hashlib
+
+        raw = "|".join(f"{it.provider_id}:{it.model or ''}" for it in self.items)
+        raw += f"|auth={self.gemini_auth}"
+        if self.fast_text_model:
+            raw += f"|fast={self.fast_text_model}"
+        return hashlib.md5(raw.encode()).hexdigest()[:10]
+
+    def prune_known_dead(self) -> "ExtractionProviderPlan":
+        """Return a copy with providers a recent health probe confirmed dead removed.
+
+        Consults the negative cache in :mod:`provider_health` (populated by the
+        pre-flight probe at the start of the extract endpoints, or by /ai/status).
+        When the cache is empty (no probe run yet, or expired) NOTHING is pruned
+        and ``self`` is returned unchanged — preserving the full chain and the
+        behaviour every unit test expects.
+
+        Never returns an empty plan: if every provider were confirmed dead the
+        first item is kept so extraction still *attempts* something rather than
+        silently returning empty (a half-second probe stale window shouldn't
+        strand a document; the chain's own timeouts will surface the failure).
+        """
+        from app.services.ai.provider_health import known_dead_providers
+
+        dead = known_dead_providers()
+        if not dead:
+            return self
+        kept = [it for it in self.items if it.provider_id not in dead]
+        if not kept:
+            return self  # never empty the chain
+        if len(kept) == len(self.items):
+            return self
+        logger.info(
+            "Pruned %d confirmed-dead provider(s) from extraction chain: %s",
+            len(self.items) - len(kept),
+            sorted(dead & {it.provider_id for it in self.items}),
+        )
+        return ExtractionProviderPlan(items=kept, gemini_auth=self.gemini_auth)
+
+    def _entry(
+        self, item: _PlanItem, kind: str, json_grammar: bool
+    ) -> _ProviderEntry | None:
+        if kind == "text":
+            table = _PROVIDER_TEXT
+        elif kind == "vision_multi":
+            table = _PROVIDER_VISION_MULTI
+        else:
+            table = _PROVIDER_VISION
+        fn_name = table.get(item.provider_id)
+        if not fn_name:
+            return None
+        # Resolve via globals() so tests that patch ``dex.call_<p>_text`` are
+        # honoured (a module-level dict of captured refs would bypass the patch).
+        fn = globals().get(fn_name)
+        if fn is None:
+            return None
+        kwargs: dict[str, Any] = {}
+        # Fast text model: when configured, the Ollama TEXT-extraction entry
+        # uses it instead of the plan's Ollama model (clean-text path speedup).
+        # Scoped to text — vision/multi entries keep the plan model so an image
+        # is never fed to a text-only fast model.
+        effective_model = item.model
+        if (
+            kind == "text"
+            and item.provider_id == "ollama"
+            and self.fast_text_model
+        ):
+            effective_model = self.fast_text_model
+        if effective_model:
+            kwargs["model"] = effective_model
+        if item.provider_id == "gemini":
+            kwargs["gemini_auth"] = self.gemini_auth
+        if item.provider_id == "ollama" and json_grammar:
+            kwargs["fmt"] = "json"
+        bound = functools.partial(fn, **kwargs) if kwargs else fn
+        label = f"{_PROVIDER_LABEL[item.provider_id]} {kind}"
+        return _ProviderEntry(fn=bound, label=label, is_local=item.is_local)
+
+    def text_entries(self, *, json_grammar: bool = False) -> list[_ProviderEntry]:
+        entries = [self._entry(it, "text", json_grammar) for it in self.items]
+        return [e for e in entries if e is not None]
+
+    def vision_entries(self, *, json_grammar: bool = False) -> list[_ProviderEntry]:
+        entries = [self._entry(it, "vision", json_grammar) for it in self.items]
+        return [e for e in entries if e is not None]
+
+    def vision_multi_entries(self, *, json_grammar: bool = False) -> list[_ProviderEntry]:
+        """Multi-image vision entries (one call covers several pages).
+
+        Same providers/order as :meth:`vision_entries` but resolved to the
+        ``*_multi`` callables. Used to collapse per-page vision calls into one
+        per batch on the scanned-PDF vision fallback.
+        """
+        entries = [self._entry(it, "vision_multi", json_grammar) for it in self.items]
+        return [e for e in entries if e is not None]
+
+
+def _load_extraction_prompt() -> str:
+    """Load the extraction prompt from ``prompts/extraction.md`` (repo root).
+
+    Externalised so prompt tuning can happen without code changes, mirroring
+    ``consultation_summary.md`` / ``transcription_report.md``. Falls back to a
+    minimal directive if the file is absent so extraction still runs.
+    """
+    prompt_path = (
+        Path(__file__).resolve().parent.parent.parent.parent.parent
+        / "prompts"
+        / "extraction.md"
+    )
+    try:
+        return prompt_path.read_text().strip()
+    except FileNotFoundError:
+        logger.warning("extraction.md not found at %s; using fallback prompt", prompt_path)
+        return (
+            "You are a medical document data extraction assistant. Extract "
+            "record_type, record_date, provider_name, diagnosis, prescriptions, "
+            "lab_tests, vitals and other structured fields. Return ONLY valid "
+            "JSON with null for missing fields; always set record_type."
+        )
+
+
+EXTRACTION_PROMPT = _load_extraction_prompt()
 
 
 async def extract_medical_data(
-    db: AsyncSession, file_path: str, mime_type: str, last_provider_ref: list
+    db: AsyncSession,
+    file_path: str,
+    mime_type: str,
+    last_provider_ref: list,
+    plan: ExtractionProviderPlan | None = None,
 ) -> ExtractionResult:
     """Extract structured medical data from a document file via vision AI.
 
     Returns an ExtractionResult containing both structured fields and the
     raw OCR/text transcription (when available).
+
+    ``plan`` is the config-driven provider order; when omitted the default
+    provider config is used (preserving the original behaviour for direct
+    callers such as tests).
     """
+    from app.schemas.ai_provider_config import default_provider_config
     from app.schemas.health_record import ExtractedFields
+
+    if plan is None:
+        plan = ExtractionProviderPlan.from_config(default_provider_config())
 
     if mime_type == "application/pdf":
         pdf_text = extract_pdf_text(file_path)
@@ -175,13 +449,13 @@ async def extract_medical_data(
             # run them concurrently to save an AI round-trip.
             if await _fast_cloud_text_available():
                 raw_text, formatted = await asyncio.gather(
-                    call_text_extraction(pdf_text, last_provider_ref),
-                    _format_ocr_transcription(pdf_text, last_provider_ref),
+                    call_text_extraction(pdf_text, last_provider_ref, plan),
+                    _format_ocr_transcription(pdf_text, last_provider_ref, plan),
                 )
             else:
                 # Ollama-only: skip the cosmetic transcription call (it would
                 # serialize behind extraction on the single-threaded server).
-                raw_text = await call_text_extraction(pdf_text, last_provider_ref)
+                raw_text = await call_text_extraction(pdf_text, last_provider_ref, plan)
                 formatted = pdf_text
             result = parse_extraction(raw_text, ExtractedFields)
             if not result.has_any_data():
@@ -223,23 +497,49 @@ async def extract_medical_data(
                 ocr_quality,
                 page_count,
             )
-            # Chunk OCR text by page markers to keep prompts small for local models
-            page_chunks = chunk_ocr_text(ocr_text, pages_per_chunk=3)
+            # Chunk OCR text by page markers to keep prompts small for local
+            # models. Pages-per-chunk is configurable (default 5) — larger
+            # chunks mean fewer LLM calls on multi-page scans (N/5 vs the old
+            # N/3), the big local-mode win for scanned PDFs. Each call is still
+            # capped at 10k chars so a dense chunk can't balloon the prompt.
+            page_chunks = chunk_ocr_text(
+                ocr_text, pages_per_chunk=settings.EXTRACTION_PAGES_PER_CHUNK
+            )
             all_extracted = ExtractedFields()
+            # Overlap the cosmetic transcription-formatting call with the chunk
+            # extractions so it doesn't add a sequential round-trip after them
+            # (previously it ran after the gather, roughly doubling cloud OCR
+            # latency). On Ollama-only there's no cloud formatting call, so this
+            # stays a no-op there.
+            cloud_available = await _fast_cloud_text_available()
+            format_task = (
+                asyncio.create_task(
+                    _format_ocr_transcription(ocr_text, last_provider_ref, plan)
+                )
+                if cloud_available
+                else None
+            )
             # Process all chunks in parallel
             chunk_results = await asyncio.gather(
-                *[call_text_extraction(chunk[:10000], last_provider_ref) for chunk in page_chunks]
+                *[
+                    call_text_extraction(chunk[:10000], last_provider_ref, plan)
+                    for chunk in page_chunks
+                ]
             )
             for raw_text in chunk_results:
                 chunk_result = parse_extraction(raw_text, ExtractedFields)
                 all_extracted = merge_extractions(all_extracted, chunk_result)
             if all_extracted.has_any_data():
-                formatted = (
-                    await _format_ocr_transcription(ocr_text, last_provider_ref)
-                    if await _fast_cloud_text_available()
-                    else ocr_text
-                )
+                if format_task is not None:
+                    try:
+                        formatted = await format_task
+                    except Exception:
+                        formatted = ocr_text
+                else:
+                    formatted = ocr_text
                 return ExtractionResult(extracted=all_extracted, transcription=formatted)
+            if format_task is not None and not format_task.done():
+                format_task.cancel()
             logger.warning(
                 "OCR text extraction returned no usable fields — falling back to vision AI"
             )
@@ -266,24 +566,42 @@ async def extract_medical_data(
 
         logger.info("Vision fallback: %d pages — extracting in parallel batches", len(page_images))
 
-        BATCH_SIZE = 3
+        # Pack k pages into ONE multi-image vision call per batch
+        # (EXTRACTION_VISION_BATCH_SIZE, default 3) instead of one call per page.
+        # On a 9-page scan that's 3 calls instead of 9 — the biggest local-mode
+        # win for scanned PDFs whose OCR was too poor to use the text path. If a
+        # provider doesn't support multi-image (returns nothing), the batch
+        # transparently falls back to one-call-per-page so no page is lost.
+        BATCH_SIZE = max(1, settings.EXTRACTION_VISION_BATCH_SIZE)
         all_extracted = ExtractedFields()
         for batch_start in range(0, len(page_images), BATCH_SIZE):
             batch = page_images[batch_start : batch_start + BATCH_SIZE]
             page_nums = list(range(batch_start + 1, batch_start + len(batch) + 1))
-            logger.info(
-                "Extracting pages %s via vision AI...", ", ".join(str(p) for p in page_nums)
-            )
-            tasks = [
-                call_vision_provider_from_b64(b64, "image/jpeg", last_provider_ref) for b64 in batch
-            ]
-            results = await asyncio.gather(*tasks)
-            for raw_text in results:
+            logger.info("Extracting pages %s via vision AI...", ", ".join(str(p) for p in page_nums))
+
+            raw_texts: list[str | None] = []
+            if len(batch) > 1:
+                multi_raw = await call_vision_provider_from_b64_multi(
+                    batch, "image/jpeg", last_provider_ref, plan
+                )
+                if multi_raw:
+                    raw_texts = [multi_raw]
+            if not raw_texts:
+                # Single-page batch, or multi-image unsupported by every provider.
+                raw_texts = await asyncio.gather(
+                    *[
+                        call_vision_provider_from_b64(b64, "image/jpeg", last_provider_ref, plan)
+                        for b64 in batch
+                    ]
+                )
+            for raw_text in raw_texts:
                 page_result = parse_extraction(raw_text, ExtractedFields)
                 all_extracted = merge_extractions(all_extracted, page_result)
 
         # Generate transcription for vision-only path
-        transcription = await _transcribe_via_vision(page_images, mime_type="image/jpeg")
+        transcription = await _transcribe_via_vision(
+            page_images, mime_type="image/jpeg", plan=plan
+        )
         return _heuristic_fallback(
             ExtractionResult(extracted=all_extracted, transcription=transcription),
             ocr_text,
@@ -302,11 +620,11 @@ async def extract_medical_data(
             )
             if await _fast_cloud_text_available():
                 raw_text, formatted = await asyncio.gather(
-                    call_text_extraction(ocr_text, last_provider_ref),
-                    _format_ocr_transcription(ocr_text, last_provider_ref),
+                    call_text_extraction(ocr_text, last_provider_ref, plan),
+                    _format_ocr_transcription(ocr_text, last_provider_ref, plan),
                 )
             else:
-                raw_text = await call_text_extraction(ocr_text, last_provider_ref)
+                raw_text = await call_text_extraction(ocr_text, last_provider_ref, plan)
                 formatted = ocr_text
             return _heuristic_fallback(
                 ExtractionResult(
@@ -318,15 +636,15 @@ async def extract_medical_data(
             )
 
         # Tesseract produced nothing usable — try cloud AI OCR
-        ocr_text = await call_ocr(file_path, mime_type)
+        ocr_text = await call_ocr(file_path, mime_type, plan)
         if ocr_text and _ocr_quality(ocr_text) >= OCR_QUALITY_THRESHOLD:
             if await _fast_cloud_text_available():
                 raw_text, formatted = await asyncio.gather(
-                    call_text_extraction(ocr_text, last_provider_ref),
-                    _format_ocr_transcription(ocr_text, last_provider_ref),
+                    call_text_extraction(ocr_text, last_provider_ref, plan),
+                    _format_ocr_transcription(ocr_text, last_provider_ref, plan),
                 )
             else:
-                raw_text = await call_text_extraction(ocr_text, last_provider_ref)
+                raw_text = await call_text_extraction(ocr_text, last_provider_ref, plan)
                 formatted = ocr_text
             return _heuristic_fallback(
                 ExtractionResult(
@@ -342,9 +660,11 @@ async def extract_medical_data(
     file_bytes = Path(file_path).read_bytes()
     b64_data = base64.b64encode(file_bytes).decode()
     extraction_task = asyncio.create_task(
-        call_vision_provider(file_path, mime_type, last_provider_ref)
+        call_vision_provider(file_path, mime_type, last_provider_ref, plan)
     )
-    transcription_task = asyncio.create_task(_transcribe_via_vision([b64_data], mime_type))
+    transcription_task = asyncio.create_task(
+        _transcribe_via_vision([b64_data], mime_type, plan=plan)
+    )
     raw_text, transcription = await asyncio.gather(extraction_task, transcription_task)
     return ExtractionResult(
         extracted=parse_extraction(raw_text, ExtractedFields),
@@ -352,20 +672,36 @@ async def extract_medical_data(
     )
 
 
-async def call_ocr(file_path: str, mime_type: str) -> str | None:
-    """Use vision AI to OCR an image to text. Prefers Google Gemini."""
+async def call_ocr(
+    file_path: str, mime_type: str, plan: ExtractionProviderPlan | None = None
+) -> str | None:
+    """Use vision AI to OCR an image to text.
+
+    Tries OCR-capable providers (Gemini, then Ollama) in the configured plan
+    order. Only Gemini and Ollama expose a dedicated OCR call; other providers
+    are skipped here.
+    """
+    if plan is None:
+        from app.schemas.ai_provider_config import default_provider_config
+
+        plan = ExtractionProviderPlan.from_config(default_provider_config())
     file_bytes = Path(file_path).read_bytes()
     b64_data = base64.b64encode(file_bytes).decode()
 
-    # Try Gemini first
-    result = await call_gemini_ocr(b64_data, mime_type)
-    if result:
-        return result
-
-    # Fallback to Ollama (local vision)
-    result = await call_ollama_ocr(b64_data, mime_type)
-    if result:
-        return result
+    for item in plan.items:
+        if item.provider_id == "gemini":
+            result = await call_gemini_ocr(
+                b64_data,
+                mime_type,
+                model=item.model or None,
+                gemini_auth=plan.gemini_auth,
+            )
+        elif item.provider_id == "ollama":
+            result = await call_ollama_ocr(b64_data, mime_type)
+        else:
+            continue
+        if result:
+            return result
 
     return None
 
@@ -1099,30 +1435,33 @@ If a section is not present in the document, omit it entirely. Do NOT include em
 Return ONLY the formatted transcription text. No JSON, no explanations."""
 
 
-async def _transcribe_via_vision(b64_images: list[str], mime_type: str) -> str | None:
+async def _transcribe_via_vision(
+    b64_images: list[str], mime_type: str, plan: ExtractionProviderPlan | None = None
+) -> str | None:
     """Generate a raw text transcription via vision AI when no OCR text is available.
 
-    Races Gemini/OpenRouter/Groq in parallel for each image.
-    Returns concatenated text from all images, or None if all providers fail.
+    Races the configured vision providers in parallel for each image (first
+    non-empty result wins). Returns concatenated text from all images, or None
+    if all providers fail.
     """
+    if plan is None:
+        from app.schemas.ai_provider_config import default_provider_config
+
+        plan = ExtractionProviderPlan.from_config(default_provider_config())
     parts: list[str] = []
     for b64 in b64_images:
-        providers = [
-            (call_gemini_vision, "Gemini"),
-            (call_openrouter_vision, "OpenRouter"),
-            (call_groq_vision, "Groq"),
-        ]
+        providers = plan.vision_entries()
 
-        async def _try(fn, name):
+        async def _try(entry: _ProviderEntry):
             try:
-                result = await fn(b64, mime_type, TRANSCRIPTION_PROMPT)
+                result = await entry.fn(b64, mime_type, TRANSCRIPTION_PROMPT)
                 if result:
                     return result
             except Exception as exc:
-                logger.debug("Transcription provider %s failed: %s", name, exc)
+                logger.debug("Transcription provider %s failed: %s", entry.label, exc)
             return None
 
-        tasks = [asyncio.create_task(_try(fn, name)) for fn, name in providers]
+        tasks = [asyncio.create_task(_try(entry)) for entry in providers]
         winner = None
         for coro in asyncio.as_completed(tasks):
             result = await coro
@@ -1184,34 +1523,36 @@ Raw OCR text:
 """
 
 
-async def _format_ocr_transcription(raw_text: str, last_provider_ref: list) -> str | None:
+async def _format_ocr_transcription(
+    raw_text: str, last_provider_ref: list, plan: ExtractionProviderPlan | None = None
+) -> str | None:
     """Format raw OCR text into a clean, structured medical transcription.
 
     Uses a lightweight text-only AI call to clean up tesseract/cloud OCR output.
-    Falls back to returning the raw text if formatting fails.
+    Races the configured text providers in parallel; falls back to returning the
+    raw text if all fail.
     """
     if not raw_text or len(raw_text.strip()) < 20:
         return raw_text
+    if plan is None:
+        from app.schemas.ai_provider_config import default_provider_config
+
+        plan = ExtractionProviderPlan.from_config(default_provider_config())
 
     prompt = f"{FORMAT_TRANSCRIPTION_PROMPT}{raw_text[:15000]}"
 
-    providers = [
-        (call_openrouter_text, "OpenRouter"),
-        (call_gemini_text, "Gemini"),
-        (call_groq_text, "Groq"),
-        (call_ollama_text, "Ollama"),
-    ]
+    providers = plan.text_entries()
 
-    async def _try(fn, name):
+    async def _try(entry: _ProviderEntry):
         try:
-            result = await fn(prompt)
+            result = await entry.fn(prompt)
             if result:
                 return result
         except Exception as exc:
-            logger.debug("Format transcription provider %s failed: %s", name, exc)
+            logger.debug("Format transcription provider %s failed: %s", entry.label, exc)
         return None
 
-    tasks = [asyncio.create_task(_try(fn, name)) for fn, name in providers]
+    tasks = [asyncio.create_task(_try(entry)) for entry in providers]
     winner = None
     for coro in asyncio.as_completed(tasks):
         result = await coro
@@ -1226,26 +1567,25 @@ async def _format_ocr_transcription(raw_text: str, last_provider_ref: list) -> s
     return winner or raw_text
 
 
-async def call_text_extraction(pdf_text: str, last_provider_ref: list) -> str | None:
+async def call_text_extraction(
+    pdf_text: str, last_provider_ref: list, plan: ExtractionProviderPlan | None = None
+) -> str | None:
     """Send extracted PDF text to an AI model for structured extraction.
 
-    Tries providers in priority order — Groq → OpenRouter → Gemini → OpenAI →
-    local Ollama. First non-empty result wins; cloud providers fail fast (capped
-    timeout) so a dead/slow key doesn't stall the chain, and Ollama is the
-    last-resort fallback. ``last_provider_ref`` is a mutable [str] recording the
-    winning provider.
+    Tries the configured providers in priority order (primary group first);
+    first non-empty result wins. Cloud providers fail fast (capped timeout) so a
+    dead/slow key doesn't stall the chain, and Ollama is the bounded last-resort
+    fallback. ``last_provider_ref`` is a mutable [str] recording the winning
+    provider. Ollama is grammar-constrained to JSON to halve generation length
+    and guarantee parseable output on the slow CPU-only path.
     """
+    if plan is None:
+        from app.schemas.ai_provider_config import default_provider_config
+
+        plan = ExtractionProviderPlan.from_config(default_provider_config())
     prompt = f"{EXTRACTION_PROMPT}\n\nDocument Content:\n{pdf_text[:30000]}"
 
-    providers = [
-        (call_groq_text, "Groq text", False),
-        (call_openrouter_text, "OpenRouter text", False),
-        (call_gemini_text, "Gemini text", False),
-        (call_openai_text, "OpenAI text", False),
-        # Grammar-constrain Ollama to JSON — halves generation length and
-        # guarantees parseable output on the slow CPU-only path.
-        (functools.partial(call_ollama_text, fmt="json"), "Ollama text", True),
-    ]
+    providers = plan.text_entries(json_grammar=True)
 
     async def invoke(fn):
         return await fn(prompt)
@@ -1500,35 +1840,73 @@ def parse_extraction(raw_text: str | None, extracted_class: type) -> "ExtractedF
 
 
 async def call_vision_provider(
-    file_path: str, mime_type: str, last_provider_ref: list
+    file_path: str,
+    mime_type: str,
+    last_provider_ref: list,
+    plan: ExtractionProviderPlan | None = None,
 ) -> str | None:
     """Send document to vision-capable AI provider with failover."""
     file_bytes = Path(file_path).read_bytes()
     b64_data = base64.b64encode(file_bytes).decode()
-    return await call_vision_provider_from_b64(b64_data, mime_type, last_provider_ref)
+    return await call_vision_provider_from_b64(b64_data, mime_type, last_provider_ref, plan)
 
 
 async def call_vision_provider_from_b64(
-    b64_data: str, mime_type: str, last_provider_ref: list
+    b64_data: str,
+    mime_type: str,
+    last_provider_ref: list,
+    plan: ExtractionProviderPlan | None = None,
 ) -> str | None:
     """Send base64-encoded data to vision-capable AI providers in priority order.
 
-    Groq → OpenRouter → Gemini → OpenAI → local Ollama. First non-empty result
-    wins; cloud providers fail fast (capped timeout), Ollama is the last-resort
-    fallback. Responses are truncated to keep prompts bounded.
+    Uses the configured provider order (primary group first); first non-empty
+    result wins. Cloud providers fail fast (capped timeout), Ollama is the
+    bounded last-resort fallback. Responses are truncated to keep prompts
+    bounded. Ollama is grammar-constrained to JSON for parseable output.
     """
+    if plan is None:
+        from app.schemas.ai_provider_config import default_provider_config
+
+        plan = ExtractionProviderPlan.from_config(default_provider_config())
     MAX_RESPONSE_CHARS = 4096
 
-    providers = [
-        (call_groq_vision, "Groq vision", False),
-        (call_openrouter_vision, "OpenRouter vision", False),
-        (call_gemini_vision, "Gemini vision", False),
-        (call_openai_vision, "OpenAI vision", False),
-        (functools.partial(call_ollama_vision, fmt="json"), "Ollama vision", True),
-    ]
+    providers = plan.vision_entries(json_grammar=True)
 
     async def invoke(fn):
         result = await fn(b64_data, mime_type, EXTRACTION_PROMPT)
+        if result and len(result) > MAX_RESPONSE_CHARS:
+            return result[:MAX_RESPONSE_CHARS]
+        return result
+
+    return await _run_provider_chain(providers, invoke, last_provider_ref, kind="Vision")
+
+
+async def call_vision_provider_from_b64_multi(
+    b64_images: list[str],
+    mime_type: str,
+    last_provider_ref: list,
+    plan: ExtractionProviderPlan | None = None,
+) -> str | None:
+    """Send several page images in ONE vision call per provider (multi-page scan).
+
+    Mirrors :func:`call_vision_provider_from_b64` but uses the ``*_multi``
+    provider callables so a k-page batch is one call per provider (raced/
+    failed-over via the chain) instead of k. Returns ``None`` when no provider
+    produced a result — callers should then fall back to per-page single-image
+    calls so an unsupported multi-image model never strands a page.
+    """
+    if not b64_images:
+        return None
+    if plan is None:
+        from app.schemas.ai_provider_config import default_provider_config
+
+        plan = ExtractionProviderPlan.from_config(default_provider_config())
+    MAX_RESPONSE_CHARS = 4096
+
+    providers = plan.vision_multi_entries(json_grammar=True)
+
+    async def invoke(fn):
+        result = await fn(b64_images, mime_type, EXTRACTION_PROMPT)
         if result and len(result) > MAX_RESPONSE_CHARS:
             return result[:MAX_RESPONSE_CHARS]
         return result

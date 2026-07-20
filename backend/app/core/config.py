@@ -79,18 +79,35 @@ class Settings(BaseSettings):
     # this box → a 404 that silently broke the local fallback. Pin the tag.
     OLLAMA_MODEL: str = "qwen3:4b"
     OLLAMA_TEXT_MODEL: str = "qwen3:4b"
+    # Optional faster/smaller model for clean-text extraction (text path only —
+    # embedded-text PDFs and good-OCR images). When set, the Ollama text-
+    # extraction entry uses this instead of OLLAMA_TEXT_MODEL, cutting CPU
+    # prompt-eval + generation time on the common easy case; vision/hard cases
+    # still use OLLAMA_VISION_MODEL / OLLAMA_TEXT_MODEL. Empty (default) = no
+    # change. EVAL-GATED: validate accuracy with ``tests/extraction/`` (golden
+    # F1) against your chosen fast model before enabling in prod, and bump
+    # EXTRACTION_CACHE_VERSION isn't needed — the fingerprint already includes
+    # this model so the cache self-invalidates.
+    OLLAMA_FAST_MODEL: str = ""
     # Vision-capable model for local image/PDF OCR-via-LLM. Empty = local vision
     # DISABLED (cloud handles vision; qwen3 is text-only). To enable offline
     # document vision, ``ollama pull llama3.2-vision`` (or ``minicpm-v``) and set
     # this. The provider gracefully skips (returns None) when unset or not pulled.
     OLLAMA_VISION_MODEL: str = ""
     OLLAMA_TIMEOUT: int = 90  # seconds — per-call timeout for Ollama requests
-    # How long Ollama keeps the model resident AFTER a call. Default is short
-    # (resource-efficiency): the model unloads ~2 min after use, freeing ~3 GB
-    # of RAM — fine because cloud is primary and Ollama is only the rare
-    # fallback. Raise to e.g. "30m" if you run Ollama-first and want to skip the
-    # ~9 s cold-load on back-to-back calls.
-    OLLAMA_KEEP_ALIVE: str = "2m"
+    # How long Ollama keeps the model resident AFTER a call. Default keeps the
+    # model warm for 30 min so back-to-back family extractions skip the ~9 s+
+    # CPU cold-load each time (the previous 2 m default unloaded it between
+    # typical uses). Costs ~3 GB of resident RAM while alive — acceptable on a
+    # dedicated family box; set "2m" again on memory-constrained hosts. The
+    # startup warmup (OLLAMA_WARMUP_ON_STARTUP) loads it once at boot so the
+    # FIRST extraction isn't cold either.
+    OLLAMA_KEEP_ALIVE: str = "30m"
+    # Fire one throwaway generation per configured Ollama model at startup so the
+    # model is resident in memory before the first user extraction. Runs as a
+    # non-blocking background task (it doesn't delay app readiness). Disable if
+    # you don't want the ~9-20 s of CPU at boot.
+    OLLAMA_WARMUP_ON_STARTUP: bool = True
     # Per-cloud-provider failover cap (seconds) for document extraction: a
     # slow/dead cloud key is abandoned after this and the next provider is tried.
     EXTRACTION_PROVIDER_TIMEOUT: int = 15
@@ -102,6 +119,29 @@ class Settings(BaseSettings):
     # tokens on a 4 B model) yet bounds the runaway. If it ever fires, the
     # extraction fails gracefully instead of hanging the UI at 45 % forever.
     EXTRACTION_LOCAL_TIMEOUT: int = 300
+    # Race the cloud providers in parallel (first non-empty result wins) instead
+    # of strict sequential failover. OFF by default: sequential first-success
+    # wastes no API calls and is tolerant of rate limits, and the dead-key tax
+    # is already removed by the pre-flight health probe (provider_health). Turn
+    # ON only when you have several healthy cloud keys and want minimum-latency
+    # extraction at the cost of a few wasted calls on providers that lose the
+    # race. The local Ollama entry is never raced (that would pin the CPU on a
+    # cancelled generation); it stays the sequential last resort.
+    EXTRACTION_RACE_PROVIDERS: bool = False
+    # Pages of OCR text packed into one extraction call on the scanned-PDF text
+    # path. Larger = fewer LLM calls (N/pages_per_chunk) at the cost of a bigger
+    # prompt per call (each is still capped at 10k chars). 5 is a good default
+    # for typical 1-6 page medical docs — a 5-page scan becomes ONE call instead
+    # of two. The local CPU path benefits most (Ollama serializes, so each call
+    # saved is ~60-120s).
+    EXTRACTION_PAGES_PER_CHUNK: int = 5
+    # How many page images to send in ONE multi-image vision call on the
+    # scanned-PDF vision fallback. Cloud vision models (Gemini/GPT/Groq) accept
+    # multiple images per request; packing k pages into one call turns N
+    # per-page calls into N/k calls — the biggest local-mode win for multi-page
+    # scans that failed OCR (a 9-page scan drops from 9 calls to 3). 1 disables
+    # multi-image (legacy one-call-per-page behaviour).
+    EXTRACTION_VISION_BATCH_SIZE: int = 3
     # CPU-inference thread pinning. Ollama is CPU-only on this hardware (no
     # CUDA) and commonly defaults ``num_thread`` to *physical* cores, ignoring
     # SMT. Setting it to the logical core count (``os.cpu_count()``) uses the

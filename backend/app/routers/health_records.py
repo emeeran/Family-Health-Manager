@@ -51,10 +51,51 @@ from app.models.record import HealthRecord
 router = APIRouter(prefix="/members/{member_id}/records", tags=["Health Records"])
 logger = logging.getLogger(__name__)
 
-# Max concurrent extractions within a batch upload. Bounds fan-out to the AI
-# providers while removing the old fixed batch-of-3 barrier so a fast file no
-# longer waits on a slow one sharing its chunk.
+# Max concurrent extractions within a batch upload (cloud providers). Bounds
+# fan-out to the AI providers while removing the old fixed batch-of-3 barrier so
+# a fast file no longer waits on a slow one sharing its chunk.
 BATCH_EXTRACTION_CONCURRENCY = 8
+# Ollama serializes one generation per model, so fanning out many concurrent
+# local extractions just inflates RAM with zero throughput gain (they queue
+# behind one another). Cap local-mode batch fan-out low; cloud keeps the full 8.
+BATCH_EXTRACTION_CONCURRENCY_LOCAL = 2
+
+
+def _provider_health_hint(probe_result: dict, config) -> dict | None:
+    """Summarise a provider probe into a UI-facing hint (D2/D4).
+
+    Returns ``{providers_ready, providers_total, cloud_ready, detail}`` so the
+    upload progress can show e.g. "3/5 providers ready" or warn "no cloud keys —
+    using local CPU (slow)". ``detail`` is a short human string; ``None`` fields
+    are omitted. Returns ``None`` when the probe has no entries.
+    """
+    if not isinstance(probe_result, dict) or not probe_result:
+        return None
+    cloud_ids = {"groq", "openrouter", "gemini", "openai"}
+    # Only count providers the household actually has enabled, so "0/5" doesn't
+    # mislead when only ollama is configured.
+    enabled = {p.id for p in config.providers if p.enabled}
+    relevant = {pid: alive for pid, alive in probe_result.items() if pid in enabled}
+    if not relevant:
+        return None
+    ready = sum(1 for alive in relevant.values() if alive)
+    total = len(relevant)
+    cloud_ready = any(
+        alive for pid, alive in relevant.items() if pid in cloud_ids
+    )
+    local_ready = bool(relevant.get("ollama"))
+    if cloud_ready:
+        detail = f"{ready}/{total} providers ready"
+    elif local_ready:
+        detail = "No cloud keys detected — using local CPU (slow, ~1-2 min/doc)"
+    else:
+        detail = "No providers ready — check API keys in Settings"
+    return {
+        "providers_ready": ready,
+        "providers_total": total,
+        "cloud_ready": cloud_ready,
+        "detail": detail,
+    }
 
 
 @router.post("/extract", response_model=ExtractionResponse)
@@ -132,6 +173,21 @@ async def extract_from_document_stream(
     mime = file.content_type or "application/octet-stream"
     original_name = file.filename
 
+    # Pre-flight: warm the provider-health cache so confirmed-dead keys are
+    # pruned from the chain and extraction doesn't pay the 15s dead-key tax.
+    # TTL-cached, so repeated uploads reuse one probe. Non-fatal on error. The
+    # result is also surfaced to the UI as a "progress" event so the user can
+    # see WHY a slow extraction is slow (e.g. all cloud keys dead -> local CPU).
+    health_hint = None
+    try:
+        from app.services.ai.provider_health import probe_providers
+
+        probe_cfg = await ai_service._get_provider_config()
+        probe_result = await probe_providers(probe_cfg)
+        health_hint = _provider_health_hint(probe_result, probe_cfg)
+    except Exception:  # noqa: BLE01
+        logger.debug("Pre-flight provider probe skipped", exc_info=True)
+
     async def event_stream():
         def sse(payload: dict) -> str:
             return f"data: {json.dumps(payload, default=str)}\n\n"
@@ -144,7 +200,7 @@ async def extract_from_document_stream(
                 "content_hash": content_hash,
             }
         )
-        yield sse({"stage": "extracting", "pct": 50})
+        yield sse({"stage": "extracting", "pct": 50, **(health_hint or {})})
 
         async def run_extract():
             async with plaintext_path(staged_path, encrypted=True) as plain_path:
@@ -355,6 +411,23 @@ async def extract_batch_stream(
 
     total = len(files)
 
+    # Pre-flight: probe every provider once (parallel, TTL-cached) so the whole
+    # batch benefits from a pruned chain. Each file's extraction then skips
+    # confirmed-dead keys instead of waiting 15s per dead provider per file.
+    # The resolved primary also picks the batch fan-out: Ollama serializes, so
+    # local-mode batches run ~2-wide (more would only inflate RAM); cloud keeps 8.
+    batch_concurrency = BATCH_EXTRACTION_CONCURRENCY
+    try:
+        from app.services.ai.provider_health import probe_providers
+
+        probe_ai = AIService(db, household_id=household.id)
+        cfg = await probe_ai._get_provider_config()
+        await probe_providers(cfg)
+        if cfg.primary_provider == "local":
+            batch_concurrency = BATCH_EXTRACTION_CONCURRENCY_LOCAL
+    except Exception:  # noqa: BLE001
+        logger.debug("Pre-flight batch provider probe skipped", exc_info=True)
+
     async def event_stream():
         def sse(payload: dict) -> str:
             return f"data: {json.dumps(payload, default=str)}\n\n"
@@ -362,7 +435,7 @@ async def extract_batch_stream(
         yield sse({"stage": "start", "total": total})
 
         queue: asyncio.Queue[tuple[int, BatchExtractionItemSchema]] = asyncio.Queue()
-        sem = asyncio.Semaphore(BATCH_EXTRACTION_CONCURRENCY)
+        sem = asyncio.Semaphore(batch_concurrency)
 
         async def producer(index: int, file: UploadFile) -> None:
             # Contract: always enqueue exactly one item, even on failure, so the

@@ -454,12 +454,17 @@ function AIProvidersTab() {
       .finally(() => setConfigLoading(false));
   }, []);
 
-  async function saveConfig(providers: ProviderConfigItem[], primaryProvider?: "cloud" | "local") {
+  async function saveConfig(
+    providers: ProviderConfigItem[],
+    primaryProvider?: "cloud" | "local",
+    geminiAuth?: "auto" | "adc" | "api_key"
+  ) {
     if (!config) return;
     const primary_provider = primaryProvider ?? config.config.primary_provider;
+    const gemini_auth = geminiAuth ?? config.config.gemini_auth ?? "auto";
     setSaving(true);
     try {
-      const result = await updateAIProviderConfig({ providers, primary_provider });
+      const result = await updateAIProviderConfig({ providers, primary_provider, gemini_auth });
       setConfig(result);
     } catch {
       toast.error("Failed to save provider config");
@@ -541,6 +546,12 @@ function AIProvidersTab() {
     saveConfig(config.config.providers, primaryProvider);
   }
 
+  function handleGeminiAuthChange(auth: "auto" | "adc" | "api_key") {
+    if (!config) return;
+    setConfig({ ...config, config: { ...config.config, gemini_auth: auth } });
+    saveConfig(config.config.providers, undefined, auth);
+  }
+
   if (configLoading) {
     return (
       <div className="space-y-4 pt-2">
@@ -593,6 +604,38 @@ function AIProvidersTab() {
             </button>
           ))}
         </div>
+      </div>
+
+      {/* Gemini authentication — ADC (Vertex) vs API Key vs Auto */}
+      <div className="flex items-center justify-between gap-3 rounded-lg border border-border p-3">
+        <div className="min-w-0">
+          <h3 className="text-sm font-medium">Gemini authentication</h3>
+          <p className="mt-0.5 text-xs text-muted-foreground">
+            How Gemini authenticates. ADC routes through Vertex AI using server credentials.
+            {!config.adc_available && (
+              <span className="text-amber-600 dark:text-amber-400">
+                {" "}
+                · ADC is not configured on this server (no credentials file or Vertex project), so
+                it will fall back to the API key.
+              </span>
+            )}
+          </p>
+        </div>
+        <Select
+          value={config.config.gemini_auth ?? "auto"}
+          onValueChange={(v) => handleGeminiAuthChange(v as "auto" | "adc" | "api_key")}
+        >
+          <SelectTrigger className="h-8 w-[150px] text-xs">
+            <SelectValue />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="auto">Auto</SelectItem>
+            <SelectItem value="adc" disabled={!config.adc_available}>
+              ADC (Vertex)
+            </SelectItem>
+            <SelectItem value="api_key">API Key</SelectItem>
+          </SelectContent>
+        </Select>
       </div>
 
       {/* Section A: Provider Configuration */}

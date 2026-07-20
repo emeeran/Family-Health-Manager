@@ -30,6 +30,7 @@ from app.routers import (
     member_insights,
     member_preconsultation,
     member_smart_report,
+    member_medication_report,
     member_drug_interactions,
     member_drug_info,
     member_resources,
@@ -131,6 +132,21 @@ async def lifespan(app: FastAPI):
     ollama_ok = await ensure_ollama_ready()
     if ollama_ok:
         logger.info("Ollama ready — primary AI provider: %s", settings.OLLAMA_MODEL)
+        # Warm the model into memory as a background task so the first user
+        # extraction doesn't pay the ~9-20s CPU cold-load. Non-blocking: app
+        # readiness is unaffected, and a failure just means the first real
+        # extraction cold-loads on demand.
+        if settings.OLLAMA_WARMUP_ON_STARTUP:
+            import asyncio as _asyncio
+
+            from app.core.ollama_service import warmup_model
+
+            async def _warmup_all():
+                for mdl in {settings.OLLAMA_MODEL, settings.OLLAMA_TEXT_MODEL}:
+                    if mdl:
+                        await warmup_model(mdl)
+
+            _asyncio.create_task(_warmup_all())
     else:
         logger.warning("Ollama not available — will fall back to cloud providers if configured")
 
@@ -378,6 +394,7 @@ app.include_router(member_history.router, prefix="/api/v1")
 app.include_router(member_insights.router, prefix="/api/v1")
 app.include_router(member_preconsultation.router, prefix="/api/v1")
 app.include_router(member_smart_report.router, prefix="/api/v1")
+app.include_router(member_medication_report.router, prefix="/api/v1")
 app.include_router(member_drug_interactions.router, prefix="/api/v1")
 app.include_router(member_drug_info.router, prefix="/api/v1")
 app.include_router(member_resources.router, prefix="/api/v1")

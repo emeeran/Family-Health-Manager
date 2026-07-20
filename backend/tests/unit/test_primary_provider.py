@@ -20,8 +20,13 @@ def _cfg(primary: str) -> AIProviderConfig:
     )
 
 
-def test_default_primary_provider_is_local():
-    assert default_provider_config().primary_provider == "local"
+def test_default_primary_provider_is_auto():
+    """New configs default to 'auto' (cloud-first when a key exists, else local).
+
+    See C1: a freshly-keyed household becomes cloud-first (30-60x faster) with
+    no manual Settings change; an Ollama-only box stays local-first.
+    """
+    assert default_provider_config().primary_provider == "auto"
 
 
 def test_primary_provider_accepts_cloud():

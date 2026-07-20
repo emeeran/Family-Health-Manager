@@ -145,6 +145,7 @@ export function RecordForm({
     refreshRecentBatches,
     transcription,
     setTranscription,
+    providerHealth,
   } = extraction;
 
   const [isDragOver, setIsDragOver] = useState(false);
@@ -264,6 +265,18 @@ export function RecordForm({
                   style={{ width: `${progress.pct}%` }}
                 />
               </div>
+              {providerHealth && (
+                <div
+                  className={`flex items-center gap-1.5 text-xs ${providerHealth.cloudReady ? "text-muted-foreground" : "text-amber-600 dark:text-amber-400"}`}
+                >
+                  {providerHealth.cloudReady ? (
+                    <CheckCircle2 className="h-3.5 w-3.5 shrink-0" />
+                  ) : (
+                    <Loader2 className="h-3.5 w-3.5 shrink-0" />
+                  )}
+                  <span>{providerHealth.detail}</span>
+                </div>
+              )}
               {progress.substeps.length > 0 && (
                 <div className="space-y-1 pt-1">
                   {progress.substeps.map((sub, idx) => {

@@ -137,6 +137,56 @@ async def test_vision_sends_inline_data(monkeypatch):
     # test above; here we confirm the vision call shape is accepted end-to-end.
 
 
+# ── gemini_auth override (Auto / ADC / API Key) ────────────────────────────
+
+
+async def test_api_key_auth_skips_adc_even_when_configured(adc_file):
+    # ADC is available, but the user explicitly chose API Key -> Gen Lang path.
+    client = _FakeClient()
+    with (
+        patch.object(gemini, "_adc_access_token", return_value="BearerTok"),
+        patch.object(gemini, "resolve_provider_api_key", _async("AIzaFAKEKEY")),
+        patch.object(gemini, "get_cloud_client", _async(client)),
+        patch.object(gemini, "retry_with_backoff", _passthrough),
+    ):
+        await gemini.call_gemini_text("hello", gemini_auth="api_key")
+    sent = client.last
+    assert "generativelanguage.googleapis.com" in sent["url"]
+    assert sent["headers"].get("x-goog-api-key") == "AIzaFAKEKEY"
+    assert "Authorization" not in sent["headers"]
+
+
+async def test_adc_auth_forces_vertex_when_available(adc_file):
+    client = _FakeClient()
+    with (
+        patch.object(gemini, "_adc_access_token", return_value="BearerTok"),
+        patch.object(gemini, "get_cloud_client", _async(client)),
+        patch.object(gemini, "retry_with_backoff", _passthrough),
+    ):
+        await gemini.call_gemini_text("hello", gemini_auth="adc")
+    sent = client.last
+    assert "aiplatform.googleapis.com" in sent["url"]
+    assert sent["headers"]["Authorization"] == "Bearer BearerTok"
+
+
+async def test_adc_auth_falls_back_to_key_when_not_configured(monkeypatch):
+    # User chose ADC but no ADC is configured -> must not hard-fail; fall back.
+    monkeypatch.setattr(gemini.settings, "GEMINI_ADC_FILE", "")
+    monkeypatch.delenv("GOOGLE_APPLICATION_CREDENTIALS", raising=False)
+    gemini._adc_cache["token"] = None
+
+    client = _FakeClient()
+    with (
+        patch.object(gemini, "resolve_provider_api_key", _async("AIzaFAKEKEY")),
+        patch.object(gemini, "get_cloud_client", _async(client)),
+        patch.object(gemini, "retry_with_backoff", _passthrough),
+    ):
+        await gemini.call_gemini_text("hello", gemini_auth="adc")
+    sent = client.last
+    assert "generativelanguage.googleapis.com" in sent["url"]
+    assert sent["headers"].get("x-goog-api-key") == "AIzaFAKEKEY"
+
+
 # ── _adc_access_token (refresh + cache) ─────────────────────────────────────
 
 

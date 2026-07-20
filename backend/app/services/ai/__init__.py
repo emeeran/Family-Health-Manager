@@ -15,7 +15,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.config import get_settings
 from app.models.base import AIInsight, Message, MessageRole
-from app.schemas.ai_provider_config import AIProviderConfig, ProviderConfigItem
+from app.schemas.ai_provider_config import AIProviderConfig, ProviderConfigItem, ordered_providers
 
 settings = get_settings()
 logger = logging.getLogger(__name__)
@@ -27,7 +27,7 @@ logger = logging.getLogger(__name__)
 EXTRACTION_CACHE_TTL = 86400  # seconds (1 day)
 # Bumped 2 → 3: think-tag stripping + lenient parsing + /no_think change the
 # extracted output, and previously-cached blank results must be discarded.
-EXTRACTION_CACHE_VERSION = "3"
+EXTRACTION_CACHE_VERSION = "4"
 
 _CLINICAL_SYSTEM_NOTE = (
     "You are a senior clinical reviewer AI, functioning as an attending physician "
@@ -554,19 +554,32 @@ class AIService:
     ):
         """Extract structured medical data from a document file via vision AI.
 
-        When *content_hash* is supplied, results are cached by content + version
-        so re-uploads or duplicate files are extracted instantly instead of
-        re-running OCR + the LLM pass. The version tag invalidates stale entries
-        when the prompt or extraction logic changes.
+        When *content_hash* is supplied, results are cached by content + the
+        provider plan + version so re-uploads or duplicate files are extracted
+        instantly instead of re-running OCR + the LLM pass. The provider-plan
+        fingerprint invalidates stale entries when the user reorders providers,
+        changes a model, or flips the primary group — otherwise a cache hit
+        would silently return a result produced by a different provider.
         """
         from app.services.ai.document_extractor import (
+            ExtractionProviderPlan,
             ExtractionResult,
             extract_medical_data as _extract,
         )
         from app.core.cache import cache
 
+        config = await self._get_provider_config()
+        plan = ExtractionProviderPlan.from_config(config)
+        # Drop providers a recent pre-flight health probe confirmed dead so the
+        # sequential failover doesn't pay the 15s dead-key tax on each. No-op
+        # (returns the same plan) when no probe has populated the cache.
+        plan = plan.prune_known_dead()
+
         if content_hash:
-            key = f"extraction:{content_hash}:{settings.OLLAMA_MODEL}:{EXTRACTION_CACHE_VERSION}"
+            key = (
+                f"extraction:{content_hash}:{plan.cache_fingerprint()}"
+                f":{EXTRACTION_CACHE_VERSION}"
+            )
             try:
                 cached = await cache.get_async(key)
             except Exception:
@@ -582,11 +595,16 @@ class AIService:
                 except Exception as exc:
                     logger.warning("Extraction cache parse failed — re-extracting: %s", exc)
 
-        result = await _extract(self.db, file_path, mime_type, self._last_provider_ref)
+        result = await _extract(
+            self.db, file_path, mime_type, self._last_provider_ref, plan=plan
+        )
 
         # Cache only when extraction produced usable data and the hash is known.
         if content_hash and result.extracted.has_any_data():
-            key = f"extraction:{content_hash}:{settings.OLLAMA_MODEL}:{EXTRACTION_CACHE_VERSION}"
+            key = (
+                f"extraction:{content_hash}:{plan.cache_fingerprint()}"
+                f":{EXTRACTION_CACHE_VERSION}"
+            )
             try:
                 await cache.set_async(
                     key,
@@ -1057,6 +1075,21 @@ class AIService:
             from app.schemas.ai_provider_config import default_provider_config
 
             self._provider_config = default_provider_config()
+
+        # Resolve "auto" primary to a concrete group now that we (async) can
+        # check whether any cloud key is configured. Baked onto the cached
+        # config so every downstream caller (extraction + chat/insights) and the
+        # extraction cache fingerprint see the resolved order — a freshly-keyed
+        # household thus becomes cloud-first with no manual Settings change.
+        primary = self._provider_config.primary_provider
+        if primary == "auto":
+            from app.schemas.ai_provider_config import resolve_primary_provider
+
+            resolved = await resolve_primary_provider(self._provider_config)
+            if resolved != primary:
+                self._provider_config = self._provider_config.model_copy(
+                    update={"primary_provider": resolved}
+                )
         return self._provider_config
 
     def _get_provider_fn(self, provider_id: str):
@@ -1070,14 +1103,11 @@ class AIService:
     def _ordered_providers(config: AIProviderConfig) -> list[ProviderConfigItem]:
         """Order providers so the primary group (local or cloud) is tried first.
 
-        ``primary_provider`` selects the group; within each group the original
-        array order is preserved so manual reordering still applies.
+        Delegates to :func:`ordered_providers` (single source of truth shared
+        with document extraction) so chat/insights and extraction can never
+        apply different ordering.
         """
-        local = [p for p in config.providers if p.id == "ollama"]
-        cloud = [p for p in config.providers if p.id != "ollama"]
-        if config.primary_provider == "cloud":
-            return cloud + local
-        return local + cloud
+        return ordered_providers(config)
 
     # ---- Internal AI call routing ----
 

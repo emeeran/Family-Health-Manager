@@ -27,7 +27,7 @@ async def test_extract_caches_by_content_hash(monkeypatch, clean_extraction_cach
         transcription="raw transcription",
     )
 
-    async def fake_extract(db, file_path, mime, ref):
+    async def fake_extract(db, file_path, mime, ref, plan=None):
         calls["n"] += 1
         return expected
 
@@ -49,7 +49,7 @@ async def test_extract_uncached_when_no_content_hash(monkeypatch, clean_extracti
     """Without a hash there is no cache key — every call re-extracts."""
     calls = {"n": 0}
 
-    async def fake_extract(db, file_path, mime, ref):
+    async def fake_extract(db, file_path, mime, ref, plan=None):
         calls["n"] += 1
         return ExtractionResult(extracted=ExtractedFields(diagnosis="x"))
 
@@ -65,7 +65,7 @@ async def test_cache_version_invalidates(monkeypatch, clean_extraction_cache):
     """A new version key misses the old cache, forcing a fresh extraction."""
     calls = {"n": 0}
 
-    async def fake_extract(db, file_path, mime, ref):
+    async def fake_extract(db, file_path, mime, ref, plan=None):
         calls["n"] += 1
         return ExtractionResult(extracted=ExtractedFields(diagnosis="x"))
 

@@ -80,6 +80,7 @@ def _run_restore(data_dir: Path, env_path: str) -> subprocess.CompletedProcess:
         "PATH": env_path,
         "DATA_DIR": str(data_dir),
         "APP_SVC": "",  # skip service control
+        "CADDY_SVC": "",  # skip Caddy service control too
         "APP_USER": _current_user(),
     }
     return subprocess.run(
@@ -166,3 +167,141 @@ def test_restore_rejects_invalid_archive_name(tmp_path, systemctl_guard):
     assert result_json["status"] == "error"
     # Current DB untouched.
     assert _read_marker(data_dir / "health.db") == "CURRENT"
+
+
+def test_restore_restarts_caddy_after_backend(tmp_path):
+    """The restore must restart Caddy too. The Caddy unit has
+    `Requires=health-manager.service`, so stopping the backend during a restore
+    also stops Caddy — but starting the backend does NOT start Caddy back.
+    Without an explicit `systemctl start health-manager-caddy.service` the site
+    is left unreachable after a successful DB swap (can't log in)."""
+    data_dir = tmp_path / "data"
+    (data_dir / "attachments").mkdir(parents=True)
+    _make_db(data_dir / "health.db", "CURRENT")
+    backups = data_dir / "backups"
+    backups.mkdir()
+    archive_name = "backup_20260101_120000.tar.gz"
+    _build_archive(backups / archive_name, "ARCHIVED")
+    (data_dir / ".restore-request").write_text(archive_name)
+
+    # Recording fake systemctl (APP_SVC + CADDY_SVC default to the real names).
+    fake_bin = tmp_path / "fakebin"
+    fake_bin.mkdir()
+    log = tmp_path / "systemctl.log"
+    (fake_bin / "systemctl").write_text(f'#!/bin/bash\necho "systemctl $*" >> "{log}"\nexit 0\n')
+    (fake_bin / "systemctl").chmod(0o755)
+    env = {
+        **os.environ,
+        "PATH": f"{fake_bin}:{os.environ.get('PATH', '')}",
+        "DATA_DIR": str(data_dir),
+        "APP_USER": _current_user(),
+    }
+    result = subprocess.run(["bash", str(RESTORE_SCRIPT)], env=env, capture_output=True, text=True)
+    assert result.returncode == 0, f"restore failed:\nSTDOUT:{result.stdout}\nSTDERR:{result.stderr}"
+
+    calls = log.read_text() if log.exists() else ""
+    assert "start health-manager-caddy.service" in calls, (
+        f"restore did not start Caddy (site would be unreachable):\n{calls}"
+    )
+    assert "start health-manager.service" in calls  # backend too, of course
+    # And it was stopped during the swap (the whole point).
+    assert "stop health-manager-caddy.service" in calls
+
+
+def test_restore_handles_large_archive(tmp_path, systemctl_guard):
+    """A large archive (big incompressible attachments → slow ``tar -tzf``) must
+    still restore. Under ``set -o pipefail`` the old ``tar -tzf | grep -qx``
+    check failed spuriously on such archives — tar took SIGPIPE on stdout once
+    grep was done, and pipefail turned that into a false "no health.db", breaking
+    every restore of a real (multi-100MB) backup. The temp-file validation fixes
+    it; this guards the regression (~30MB reliably reproduces the old failure)."""
+    data_dir = tmp_path / "data"
+    (data_dir / "attachments").mkdir(parents=True)
+    _make_db(data_dir / "health.db", "CURRENT")
+    backups = data_dir / "backups"
+    backups.mkdir()
+    archive_name = "backup_20260101_120000.tar.gz"
+
+    with tempfile.TemporaryDirectory() as staging:
+        _make_db(Path(staging) / "health.db", "ARCHIVED")
+        att = Path(staging) / "attachments"
+        att.mkdir()
+        for i in range(6):
+            (att / f"big_{i}.bin").write_bytes(os.urandom(5_000_000))  # ~30MB total
+        with tarfile.open(backups / archive_name, "w:gz") as tar:
+            tar.add(Path(staging) / "health.db", arcname="health.db")
+            tar.add(att, arcname="attachments")
+    (data_dir / ".restore-request").write_text(archive_name)
+
+    env_path, systemctl_log = systemctl_guard
+    result = _run_restore(data_dir, env_path)
+    assert result.returncode == 0, f"restore failed:\nSTDOUT:{result.stdout}\nSTDERR:{result.stderr}"
+    _assert_no_systemctl(systemctl_log)
+    assert _read_marker(data_dir / "health.db") == "ARCHIVED"
+    result_json = json.loads((data_dir / ".restore-result").read_text())
+    assert result_json["status"] == "ok"
+
+
+def test_app_archive_then_script_restore_round_trip(tmp_path, monkeypatch, systemctl_guard):
+    """End-to-end through the real code paths: the APP builds a backup archive
+    and writes the restore flag (``create_backup_archive`` + ``trigger_restore``),
+    then the SCRIPT restores from it.
+
+    Ties the app side — ``_resolve_data_dir`` → ``BACKUP_DIR`` →
+    ``restore_request_path`` — to the script's ``$DATA_DIR``. Before the
+    ``BACKUP_DIR`` anchoring fix these pointed at different places, so the flag
+    the app wrote was never the flag the script (or the systemd path-unit) read.
+    """
+    from types import SimpleNamespace
+
+    import app.core.jobs as jobs
+
+    data_dir = tmp_path / "data"
+    (data_dir / "attachments").mkdir(parents=True)
+    db_file = data_dir / "health.db"
+    _make_db(db_file, "CURRENT")
+    (data_dir / "attachments" / "f.txt").write_text("encrypted-bytes")
+
+    # Point the app at this data dir the way prod config does (absolute DB path),
+    # and recompute BACKUP_DIR from it so trigger_restore targets the right place.
+    monkeypatch.setattr(
+        jobs,
+        "settings",
+        SimpleNamespace(
+            DATABASE_URL=f"sqlite+aiosqlite:///{db_file}",
+            STORAGE_PATH=str(data_dir / "attachments"),
+        ),
+    )
+    monkeypatch.setattr(jobs, "BACKUP_DIR", jobs._resolve_data_dir() / "backups")
+
+    # 1. App builds a real archive snapshotting the CURRENT db.
+    archive = jobs.create_backup_archive()
+    assert archive is not None and archive.exists()
+    archive_name = archive.name
+
+    # 2. Simulate post-backup changes to the live db.
+    conn = sqlite3.connect(db_file)
+    conn.execute("DELETE FROM restore_marker")
+    conn.execute("INSERT INTO restore_marker VALUES (?)", ("MODIFIED",))
+    conn.commit()
+    conn.close()
+    assert _read_marker(db_file) == "MODIFIED"
+
+    # 3. App writes the restore flag — and it lands exactly where the script reads.
+    jobs.trigger_restore(archive_name)
+    flag = data_dir / ".restore-request"
+    assert flag.read_text() == archive_name
+
+    # 4. Run the privileged restore script (no systemd).
+    env_path, systemctl_log = systemctl_guard
+    result = _run_restore(data_dir, env_path)
+    assert result.returncode == 0, f"restore failed:\nSTDOUT:{result.stdout}\nSTDERR:{result.stderr}"
+    _assert_no_systemctl(systemctl_log)
+
+    # 5. DB reverted to the archived snapshot; result ok; safety backup present.
+    assert _read_marker(db_file) == "CURRENT"
+    result_json = json.loads((data_dir / ".restore-result").read_text())
+    assert result_json["status"] == "ok"
+    assert (data_dir / "backups" / result_json["pre_restore_backup"]).exists()
+    # Flag consumed.
+    assert not (data_dir / ".restore-request").exists()

@@ -22,9 +22,21 @@ import {
   getMemberDashboard,
 } from "@/lib/api/members";
 import { toast } from "sonner";
-import { Plus, Loader2, Pencil, Trash2, Download, Pill, Search, GripVertical } from "lucide-react";
+import {
+  Plus,
+  Loader2,
+  Pencil,
+  Trash2,
+  Download,
+  Pill,
+  Search,
+  GripVertical,
+  FileText,
+} from "lucide-react";
 import type { ActiveMedication } from "@/lib/types/member";
 import { MED_TYPE_OPTIONS, TIMING_OPTIONS as RX_TIMING_OPTIONS } from "@/lib/record-type-configs";
+import { MedicationDetailFlyout } from "./medication-detail-flyout";
+import { MedicationReportDialog } from "./medication-report-dialog";
 
 interface ActiveMedicationsTableProps {
   memberId: string;
@@ -243,6 +255,7 @@ export const ActiveMedicationsTable = memo(function ActiveMedicationsTable({
   const [loading, setLoading] = useState(false);
   const [searchQuery, setSearchQuery] = useState("");
   const [dragOverIdx, setDragOverIdx] = useState<number | null>(null);
+  const [reportOpen, setReportOpen] = useState(false);
   const dragIdxRef = useRef<number | null>(null);
 
   const refresh = useCallback(async () => {
@@ -479,6 +492,15 @@ export const ActiveMedicationsTable = memo(function ActiveMedicationsTable({
                   variant="outline"
                   size="sm"
                   className="h-7 text-xs px-2.5"
+                  onClick={() => setReportOpen(true)}
+                >
+                  <FileText className="h-3 w-3 mr-1" />
+                  Report
+                </Button>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  className="h-7 text-xs px-2.5"
                   onClick={exportPDF}
                 >
                   <Download className="h-3 w-3 mr-1" />
@@ -701,6 +723,7 @@ export const ActiveMedicationsTable = memo(function ActiveMedicationsTable({
                           </td>
                           <td className="py-0.5 text-right">
                             <div className="flex items-center justify-end gap-px opacity-0 group-hover:opacity-100 transition-opacity">
+                              <MedicationDetailFlyout memberId={memberId} med={med} />
                               <button
                                 className="inline-flex items-center justify-center h-5 w-5 rounded text-muted-foreground hover:text-blue-600 hover:bg-blue-50 transition-colors"
                                 onClick={() => setEditingIdx(idx)}
@@ -754,6 +777,8 @@ export const ActiveMedicationsTable = memo(function ActiveMedicationsTable({
         description={`Remove ${selectedKeys.size} selected medication${selectedKeys.size > 1 ? "s" : ""} from active prescriptions? This cannot be undone.`}
         onConfirm={handleBulkDelete}
       />
+
+      <MedicationReportDialog memberId={memberId} open={reportOpen} onOpenChange={setReportOpen} />
     </>
   );
 });

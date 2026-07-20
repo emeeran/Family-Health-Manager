@@ -18,32 +18,46 @@ def test_prompt_for_mode_selects_correct_prompt():
 @pytest.mark.asyncio
 async def test_call_ollama_insight_forwards_num_predict_for_brief():
     """Brief mode must thread a lower num_predict cap down to the Ollama call."""
-    svc = AIService(db=None)
-    captured: dict = {}
+    from unittest.mock import AsyncMock, patch
 
-    async def fake_chat(model: str, prompt: str, num_predict: int = 4096) -> str:
-        captured["num_predict"] = num_predict
-        return "generated report"
+    # Force local-first so _call_ollama_insight exercises the faked _ollama_chat
+    # instead of resolving 'auto'→cloud (which would make a real cloud call).
+    with patch(
+        "app.core.provider_keys.any_cloud_provider_configured",
+        AsyncMock(return_value=False),
+    ):
+        svc = AIService(db=None)
+        captured: dict = {}
 
-    svc._ollama_chat = fake_chat  # type: ignore[method-assign]
+        async def fake_chat(model: str, prompt: str, num_predict: int = 4096) -> str:
+            captured["num_predict"] = num_predict
+            return "generated report"
 
-    await svc._call_ollama_insight("prompt", "ctx", num_predict=1400)
+        svc._ollama_chat = fake_chat  # type: ignore[method-assign]
+
+        await svc._call_ollama_insight("prompt", "ctx", num_predict=1400)
     assert captured["num_predict"] == 1400
 
 
 @pytest.mark.asyncio
 async def test_call_ollama_insight_default_num_predict_is_full():
-    svc = AIService(db=None)
-    captured: dict = {}
+    from unittest.mock import AsyncMock, patch
 
-    async def fake_chat(model: str, prompt: str, num_predict: int = 4096) -> str:
-        captured["num_predict"] = num_predict
-        return "generated report"
+    with patch(
+        "app.core.provider_keys.any_cloud_provider_configured",
+        AsyncMock(return_value=False),
+    ):
+        svc = AIService(db=None)
+        captured: dict = {}
 
-    svc._ollama_chat = fake_chat  # type: ignore[method-assign]
+        async def fake_chat(model: str, prompt: str, num_predict: int = 4096) -> str:
+            captured["num_predict"] = num_predict
+            return "generated report"
 
-    # No num_predict → comprehensive default (4096).
-    await svc._call_ollama_insight("prompt", "ctx")
+        svc._ollama_chat = fake_chat  # type: ignore[method-assign]
+
+        # No num_predict → comprehensive default (4096).
+        await svc._call_ollama_insight("prompt", "ctx")
     assert captured["num_predict"] == 4096
 
 

@@ -30,8 +30,21 @@ from app.schemas.health_record import HealthRecordResponse
 from app.models.base import Household, FamilyMember, User
 from app.models.record import HealthRecord
 from app.core.cache import cache
+from app.core.provider_keys import gemini_adc_configured
 
 logger = logging.getLogger(__name__)
+
+
+def _adc_available() -> bool:
+    """True when Gemini ADC is usable on this server (creds file + Vertex project).
+
+    Drives the frontend's ability to select the "ADC" auth option for Gemini.
+    ``get_settings`` is imported locally because this module already defines a
+    route handler of the same name.
+    """
+    from app.core.config import get_settings
+
+    return gemini_adc_configured() and bool(get_settings().VERTEX_PROJECT)
 
 router = APIRouter(prefix="/household", tags=["Household"])
 
@@ -121,6 +134,7 @@ async def get_ai_provider_config(
         config=settings.ai_providers,
         available_models=AVAILABLE_MODELS,
         provider_labels=PROVIDER_LABELS,
+        adc_available=_adc_available(),
     )
 
 
@@ -143,6 +157,7 @@ async def update_ai_provider_config(
         config=request,
         available_models=AVAILABLE_MODELS,
         provider_labels=PROVIDER_LABELS,
+        adc_available=_adc_available(),
     )
 
 

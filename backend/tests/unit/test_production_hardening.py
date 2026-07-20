@@ -142,6 +142,43 @@ def _seed_db(path) -> None:
     con.close()
 
 
+def test_backup_dir_anchored_to_database_dir_not_cwd(monkeypatch, tmp_path):
+    """BACKUP_DIR must resolve to the live DB's directory (the restore script's
+    ``DATA_DIR``), not a CWD-relative ``data/backups``. The latter lands under
+    ``/opt/health-manager/backend/data`` in production — read-only under systemd
+    hardening, and not where ``restore-archive.sh`` or the path-unit looks, so
+    backups fail to write and restores never trigger."""
+    db_dir = tmp_path / "var" / "lib" / "health-manager" / "data"
+    db_dir.mkdir(parents=True)
+    db_file = db_dir / "health.db"
+    db_file.write_bytes(b"")
+    monkeypatch.setattr(
+        jobs,
+        "settings",
+        SimpleNamespace(
+            DATABASE_URL=f"sqlite+aiosqlite:///{db_file}",
+            STORAGE_PATH=str(tmp_path / "attachments"),
+        ),
+    )
+    assert jobs._resolve_data_dir() == db_file.resolve().parent
+    assert (jobs._resolve_data_dir() / "backups") == db_file.resolve().parent / "backups"
+
+
+def test_backup_dir_falls_back_to_storage_for_postgres(monkeypatch, tmp_path):
+    """With no DB file path (PostgreSQL), anchor to the attachment store's dir."""
+    storage = tmp_path / "var" / "lib" / "health-manager" / "data" / "attachments"
+    storage.mkdir(parents=True)
+    monkeypatch.setattr(
+        jobs,
+        "settings",
+        SimpleNamespace(
+            DATABASE_URL="postgresql+asyncpg://u:p@localhost/hm",
+            STORAGE_PATH=str(storage),
+        ),
+    )
+    assert jobs._resolve_data_dir() == storage.resolve().parent
+
+
 def test_create_backup_archive_contains_db_and_originals(tmp_path, monkeypatch):
     src_db = tmp_path / "health.db"
     _seed_db(src_db)

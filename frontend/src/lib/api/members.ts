@@ -300,3 +300,10 @@ export function getLatestPreConsultationNote(memberId: string) {
     `/members/${memberId}/pre-consultation-note/latest`
   );
 }
+
+/** Latest persisted comprehensive Medication Report (null if none yet). */
+export function getLatestMedicationReport(memberId: string) {
+  return apiRequest<{ report: GeneratedInsight | null }>(
+    `/members/${memberId}/medication-report/latest`
+  );
+}

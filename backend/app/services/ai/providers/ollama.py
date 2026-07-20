@@ -221,24 +221,30 @@ async def ollama_chat_stream(
 
 
 async def call_ollama_vision(
-    b64_data: str, mime_type: str, extraction_prompt: str, fmt: str | None = None
+    b64_data: str,
+    mime_type: str,
+    extraction_prompt: str,
+    fmt: str | None = None,
+    model: str | None = None,
 ) -> str | None:
     """Call local Ollama API for vision extraction.
 
-    Uses the configured vision model (``OLLAMA_VISION_MODEL``); returns ``None``
-    (skipped) when no vision model is set or it isn't pulled, so the provider
-    chain falls through cleanly instead of feeding an image to a text-only model
-    (the old behaviour with text-only ``qwen3``). ``fmt`` enables
-    grammar-constrained output (e.g. ``"json"``) for extraction.
+    Uses the configured vision model (``OLLAMA_VISION_MODEL``, or ``model`` when
+    passed in from the provider plan); returns ``None`` (skipped) when no vision
+    model is set or it isn't pulled, so the provider chain falls through cleanly
+    instead of feeding an image to a text-only model (the old behaviour with
+    text-only ``qwen3``). ``fmt`` enables grammar-constrained output (e.g.
+    ``"json"``) for extraction.
     """
     base_url = await resolve_provider_value("ollama")
-    if not base_url or not settings.OLLAMA_VISION_MODEL:
+    vision_model = model or settings.OLLAMA_VISION_MODEL
+    if not base_url or not vision_model:
         return None
     if fmt:
         extraction_prompt = f"{extraction_prompt}\n/no_think"
     url = f"{base_url}/api/chat"
     payload = {
-        "model": settings.OLLAMA_VISION_MODEL,
+        "model": vision_model,
         "messages": [
             {
                 "role": "user",
@@ -265,6 +271,52 @@ async def call_ollama_vision(
         return data.get("message", {}).get("content")
     except (httpx.TimeoutException, httpx.ConnectError, httpx.HTTPStatusError):
         # HTTPStatusError covers "model not found" (vision model not pulled).
+        return None
+
+
+async def call_ollama_vision_multi(
+    b64_images: list[str],
+    mime_type: str,
+    extraction_prompt: str,
+    fmt: str | None = None,
+    model: str | None = None,
+) -> str | None:
+    """Call local Ollama vision with several page images in one request.
+
+    Ollama's chat ``images`` field is a list, so multiple pages can be sent in a
+    single generation. Requires a configured vision model (returns ``None``
+    otherwise). Note Ollama serializes one generation per model, so a single
+    multi-image call still beats k separate calls (k-1 fewer queue waits).
+    """
+    if not b64_images:
+        return None
+    base_url = await resolve_provider_value("ollama")
+    vision_model = model or settings.OLLAMA_VISION_MODEL
+    if not base_url or not vision_model:
+        return None
+    if fmt:
+        extraction_prompt = f"{extraction_prompt}\n/no_think"
+    url = f"{base_url}/api/chat"
+    payload = {
+        "model": vision_model,
+        "messages": [{"role": "user", "content": extraction_prompt, "images": b64_images}],
+        "stream": False,
+        "options": _ollama_options(num_ctx=8192, num_predict=1024, temperature=0.2),
+        "keep_alive": settings.OLLAMA_KEEP_ALIVE,
+    }
+    if fmt:
+        payload["format"] = fmt
+        payload["think"] = False
+    try:
+        client = await get_ollama_client()
+        # Multi-image prompts are larger; let the adaptive timeout grow with it.
+        resp = await client.post(
+            url, json=payload, timeout=_ollama_timeout(len(extraction_prompt))
+        )
+        resp.raise_for_status()
+        data = resp.json()
+        return data.get("message", {}).get("content")
+    except (httpx.TimeoutException, httpx.ConnectError, httpx.HTTPStatusError):
         return None
 
 

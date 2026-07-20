@@ -430,7 +430,31 @@ async def run_backup_now() -> dict | None:
 
 # ── backup helpers (sync — run in a worker thread) ───────────────────────────
 
-BACKUP_DIR = Path("data/backups")
+
+def _resolve_data_dir() -> Path:
+    """On-disk data root: the directory holding the SQLite DB, falling back to
+    the attachment-store's parent for PostgreSQL.
+
+    Anchored to the DB location (not the process CWD) so the backup archives and
+    the restore request/result markers land alongside the live ``health.db`` —
+    i.e. the exact ``DATA_DIR`` the privileged ``restore-archive.sh`` swaps and
+    the ``health-manager-restore.path`` unit watches (``/var/lib/health-manager/
+    data`` in production). A CWD-relative ``data/backups`` would instead resolve
+    under ``/opt/health-manager/backend/data/`` under systemd, which is read-only
+    (``ProtectSystem=strict``) and is *not* where the restore unit looks — so
+    backups would fail to write and restores would never trigger.
+    """
+    db_url = settings.DATABASE_URL
+    if "sqlite" in db_url and "///" in db_url:
+        # Mirrors _snapshot_sqlite's parsing: the path follows the first '///'.
+        db_path = db_url.split("///", 1)[-1]
+        if db_path:  # non-empty file path (not in-memory sqlite://)
+            return Path(db_path).resolve().parent
+    # PostgreSQL (no DB file) or in-memory sqlite: anchor to the attachment store.
+    return Path(settings.STORAGE_PATH).resolve().parent
+
+
+BACKUP_DIR = _resolve_data_dir() / "backups"
 
 # Restore pipeline: the app (running as the unprivileged ``health-manager`` user)
 # cannot restart its own systemd service, so a restore is delegated to the root

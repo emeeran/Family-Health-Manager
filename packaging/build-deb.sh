@@ -69,6 +69,13 @@ cp "${PROJECT_ROOT}/backend/alembic.ini" "${STAGING}/opt/health-manager/backend/
 cp "${PROJECT_ROOT}/backend/pyproject.toml" "${STAGING}/opt/health-manager/backend/"
 cp "${SCRIPT_DIR}/db-setup.py" "${STAGING}/opt/health-manager/backend/"
 
+# Repo-root prompts/*.md — runtime prompt templates loaded by the AI pipeline
+# (extraction.md, transcription_report.md, consultation_summary.md). The loaders
+# resolve 5 parents up from backend/app/services/ai/, i.e. /opt/health-manager/,
+# so install them there (only the .md templates — not the SDD .txt artefacts).
+mkdir -p "${STAGING}/opt/health-manager/prompts"
+cp "${PROJECT_ROOT}"/prompts/*.md "${STAGING}/opt/health-manager/prompts/"
+
 # ── 5. Copy frontend build output ───────────────────────────────────────────
 echo "[5/8] Copying frontend build..."
 cp -r "${PROJECT_ROOT}/frontend/dist/." "${STAGING}/opt/health-manager/frontend/"

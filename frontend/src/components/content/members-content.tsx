@@ -267,7 +267,7 @@ export function MembersContent({ members, scores }: MembersContentProps) {
               className="inline-flex items-center gap-1.5 rounded-lg bg-primary px-3.5 h-9 text-sm font-semibold text-primary-foreground hover:bg-primary/90 transition-colors"
             >
               <Plus className="h-4 w-4" />
-              <span className="hidden sm:inline">Add Member</span>
+              <span className="hidden sm:inline">Member</span>
             </button>
           </div>
         </div>

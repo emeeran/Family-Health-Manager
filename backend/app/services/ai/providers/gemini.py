@@ -42,7 +42,8 @@ def _adc_access_token() -> str | None:
     """
     now = time.time()
     cached = _adc_cache["token"]
-    if cached and _adc_cache["expires_at"] > now + 60:
+    expires_at = _adc_cache["expires_at"]
+    if cached and isinstance(expires_at, (int, float)) and expires_at > now + 60:
         return cached  # type: ignore[return-value]
 
     path = gemini_adc_file_path()
@@ -77,12 +78,25 @@ def _adc_access_token() -> str | None:
         return None
 
 
-async def _gemini_generate(model: str, parts: list, temperature: float = 0.1) -> str | None:
+async def _gemini_generate(
+    model: str,
+    parts: list,
+    temperature: float = 0.1,
+    gemini_auth: str = "auto",
+) -> str | None:
     """Call Gemini ``generateContent`` via Vertex AI (ADC) or Gen Lang API (key).
 
     ``parts`` is the Gemini ``parts`` list (e.g. ``[{"text": prompt}]`` or with
     an ``inline_data`` for vision). Returns the concatenated text response, or
     ``None`` when neither ADC nor an API key is available.
+
+    ``gemini_auth`` overrides the automatic ADC-vs-key choice:
+
+    * ``"auto"`` — ADC (Vertex) when a credentials file + ``VERTEX_PROJECT`` are
+      configured, otherwise the API key (the original behaviour).
+    * ``"adc"`` — force ADC; if it isn't configured, fall back to the API key
+      with a warning rather than failing the whole provider chain.
+    * ``"api_key"`` — skip ADC entirely and use the Generative Language API.
     """
     payload = {
         # Vertex requires an explicit role on each content; the Gen Lang API
@@ -92,7 +106,22 @@ async def _gemini_generate(model: str, parts: list, temperature: float = 0.1) ->
     }
 
     token = _adc_access_token()
-    if token and settings.VERTEX_PROJECT:
+    adc_ready = bool(token and settings.VERTEX_PROJECT)
+
+    if gemini_auth == "api_key":
+        use_adc = False
+    elif gemini_auth == "adc":
+        if not adc_ready:
+            logger.warning(
+                "Gemini auth='adc' requested but ADC is not configured "
+                "(no readable credentials file or VERTEX_PROJECT set); "
+                "falling back to API key"
+            )
+        use_adc = adc_ready
+    else:  # "auto"
+        use_adc = adc_ready
+
+    if use_adc:
         url = (
             f"https://{settings.VERTEX_LOCATION}-aiplatform.googleapis.com/v1/projects/"
             f"{settings.VERTEX_PROJECT}/locations/{settings.VERTEX_LOCATION}/"
@@ -116,32 +145,69 @@ async def _gemini_generate(model: str, parts: list, temperature: float = 0.1) ->
     return data["candidates"][0]["content"]["parts"][0]["text"]
 
 
-async def call_gemini_text(prompt: str, model: str | None = None) -> str | None:
+async def call_gemini_text(
+    prompt: str, model: str | None = None, gemini_auth: str = "auto"
+) -> str | None:
     """Call Google Gemini for text-based generation."""
-    return await _gemini_generate(model or settings.GEMINI_TEXT_MODEL, [{"text": prompt}])
+    return await _gemini_generate(
+        model or settings.GEMINI_TEXT_MODEL, [{"text": prompt}], gemini_auth=gemini_auth
+    )
 
 
-async def call_gemini_vision(b64_data: str, mime_type: str, extraction_prompt: str) -> str | None:
+async def call_gemini_vision(
+    b64_data: str,
+    mime_type: str,
+    extraction_prompt: str,
+    model: str | None = None,
+    gemini_auth: str = "auto",
+) -> str | None:
     """Call Google Gemini API for vision extraction."""
     return await _gemini_generate(
-        settings.GEMINI_VISION_MODEL,
+        model or settings.GEMINI_VISION_MODEL,
         [
             {"text": extraction_prompt},
             {"inline_data": {"mime_type": mime_type, "data": b64_data}},
         ],
+        gemini_auth=gemini_auth,
     )
 
 
-async def call_gemini_ocr(b64_data: str, mime_type: str) -> str | None:
+async def call_gemini_vision_multi(
+    b64_images: list[str],
+    mime_type: str,
+    extraction_prompt: str,
+    model: str | None = None,
+    gemini_auth: str = "auto",
+) -> str | None:
+    """Call Gemini with several page images in one request (multi-page scan).
+
+    Gemini's ``parts`` list accepts any number of ``inline_data`` images, so a
+    k-page batch becomes ONE call instead of k. Returns ``None`` for an empty
+    list (caller should fall back to single-image).
+    """
+    if not b64_images:
+        return None
+    parts: list = [{"text": extraction_prompt}]
+    for b64 in b64_images:
+        parts.append({"inline_data": {"mime_type": mime_type, "data": b64}})
+    return await _gemini_generate(
+        model or settings.GEMINI_VISION_MODEL, parts, gemini_auth=gemini_auth
+    )
+
+
+async def call_gemini_ocr(
+    b64_data: str, mime_type: str, model: str | None = None, gemini_auth: str = "auto"
+) -> str | None:
     """Use Google Gemini to OCR an image to text."""
     ocr_prompt = (
         "Transcribe all the text in this document, including any handwritten text. "
         "Return ONLY the raw text, nothing else."
     )
     return await _gemini_generate(
-        settings.GEMINI_VISION_MODEL,
+        model or settings.GEMINI_VISION_MODEL,
         [
             {"text": ocr_prompt},
             {"inline_data": {"mime_type": mime_type, "data": b64_data}},
         ],
+        gemini_auth=gemini_auth,
     )
