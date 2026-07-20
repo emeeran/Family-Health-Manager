@@ -346,7 +346,11 @@ class ExtractionProviderPlan:
         return ExtractionProviderPlan(items=kept, gemini_auth=self.gemini_auth)
 
     def _entry(
-        self, item: _PlanItem, kind: str, json_grammar: bool
+        self,
+        item: _PlanItem,
+        kind: str,
+        json_grammar: bool,
+        max_tokens: int | None = None,
     ) -> _ProviderEntry | None:
         if kind == "text":
             table = _PROVIDER_TEXT
@@ -380,26 +384,42 @@ class ExtractionProviderPlan:
             kwargs["gemini_auth"] = self.gemini_auth
         if item.provider_id == "ollama" and json_grammar:
             kwargs["fmt"] = "json"
+        # Generation cap for cloud extraction calls (bounds runaway output +
+        # trims latency/cost). Scoped to cloud providers — Ollama is already
+        # capped via options.num_predict and its callable has no max_tokens kw.
+        if max_tokens and item.provider_id != "ollama":
+            kwargs["max_tokens"] = max_tokens
         bound = functools.partial(fn, **kwargs) if kwargs else fn
         label = f"{_PROVIDER_LABEL[item.provider_id]} {kind}"
         return _ProviderEntry(fn=bound, label=label, is_local=item.is_local)
 
-    def text_entries(self, *, json_grammar: bool = False) -> list[_ProviderEntry]:
-        entries = [self._entry(it, "text", json_grammar) for it in self.items]
+    def text_entries(
+        self, *, json_grammar: bool = False, max_tokens: int | None = None
+    ) -> list[_ProviderEntry]:
+        entries = [self._entry(it, "text", json_grammar, max_tokens) for it in self.items]
         return [e for e in entries if e is not None]
 
-    def vision_entries(self, *, json_grammar: bool = False) -> list[_ProviderEntry]:
-        entries = [self._entry(it, "vision", json_grammar) for it in self.items]
+    def vision_entries(
+        self, *, json_grammar: bool = False, max_tokens: int | None = None
+    ) -> list[_ProviderEntry]:
+        entries = [
+            self._entry(it, "vision", json_grammar, max_tokens) for it in self.items
+        ]
         return [e for e in entries if e is not None]
 
-    def vision_multi_entries(self, *, json_grammar: bool = False) -> list[_ProviderEntry]:
+    def vision_multi_entries(
+        self, *, json_grammar: bool = False, max_tokens: int | None = None
+    ) -> list[_ProviderEntry]:
         """Multi-image vision entries (one call covers several pages).
 
         Same providers/order as :meth:`vision_entries` but resolved to the
         ``*_multi`` callables. Used to collapse per-page vision calls into one
         per batch on the scanned-PDF vision fallback.
         """
-        entries = [self._entry(it, "vision_multi", json_grammar) for it in self.items]
+        entries = [
+            self._entry(it, "vision_multi", json_grammar, max_tokens)
+            for it in self.items
+        ]
         return [e for e in entries if e is not None]
 
 
@@ -778,14 +798,21 @@ async def extract_medical_data(
             )
         # OCR failed / too low quality — fall through to vision providers
 
-    # Vision-only path: run extraction and transcription in parallel
+    # Vision-only path: run extraction and transcription in parallel.
+    # Downscale the raw upload once and reuse the bytes for both calls (phone
+    # photos are commonly ~4000px / multi-MB) so neither call ships a huge
+    # payload. Uses the b64 variant directly rather than the file-path wrapper
+    # so the bytes are read + downscaled exactly once.
     file_bytes = Path(file_path).read_bytes()
-    b64_data = base64.b64encode(file_bytes).decode()
+    vision_bytes, vision_mime = await asyncio.to_thread(
+        _downscale_for_vision, file_bytes, mime_type
+    )
+    b64_data = base64.b64encode(vision_bytes).decode()
     extraction_task = asyncio.create_task(
-        call_vision_provider(file_path, mime_type, last_provider_ref, plan)
+        call_vision_provider_from_b64(b64_data, vision_mime, last_provider_ref, plan)
     )
     transcription_task = asyncio.create_task(
-        _transcribe_via_vision([b64_data], mime_type, plan=plan)
+        _transcribe_via_vision([b64_data], vision_mime, plan=plan)
     )
     raw_text, transcription = await asyncio.gather(extraction_task, transcription_task)
     return ExtractionResult(
@@ -810,7 +837,13 @@ async def call_ocr(
 
         plan = ExtractionProviderPlan.from_config(default_provider_config())
     file_bytes = Path(file_path).read_bytes()
-    b64_data = base64.b64encode(file_bytes).decode()
+    # Downscale raw uploads (phone photos are often ~4000px) before encoding so
+    # the vision payload stays compact. PIL decode+resize is blocking, so it runs
+    # in a worker thread; falls back to the original bytes if PIL can't decode.
+    vision_bytes, vision_mime = await asyncio.to_thread(
+        _downscale_for_vision, file_bytes, mime_type
+    )
+    b64_data = base64.b64encode(vision_bytes).decode()
 
     for item in plan.items:
         is_local = item.provider_id == "ollama"
@@ -824,7 +857,7 @@ async def call_ocr(
                 result = await asyncio.wait_for(
                     call_gemini_ocr(
                         b64_data,
-                        mime_type,
+                        vision_mime,
                         model=item.model or None,
                         gemini_auth=plan.gemini_auth,
                     ),
@@ -832,7 +865,7 @@ async def call_ocr(
                 )
             elif item.provider_id == "ollama":
                 result = await asyncio.wait_for(
-                    call_ollama_ocr(b64_data, mime_type), timeout=timeout
+                    call_ollama_ocr(b64_data, vision_mime), timeout=timeout
                 )
             else:
                 continue
@@ -1021,6 +1054,151 @@ def _extract_first_number(text: str | None, labels: list[str]) -> str | None:
     return None
 
 
+# ── Prescription / lab-test parsing (deterministic backfill) ─────────────────
+# The transcription prompts emit ``--- Prescriptions ---`` and
+# ``--- Lab Results ---`` sections with a predictable per-line shape. When the
+# LLM's structured JSON pass is weak (the documented local-CPU failure mode),
+# these parsers recover the two most clinically valuable array fields from that
+# structured text. They only ever run via the heuristic, which fills fields the
+# AI left empty — so they can never clobber good AI data.
+
+# Leading token → canonical ``type`` (matches the extraction prompt's enum).
+_RX_TYPE_TOKENS: dict[str, str] = {
+    "tab": "Tab", "tablet": "Tab", "tablets": "Tab",
+    "cap": "Cap", "capsule": "Cap", "capsules": "Cap",
+    "inj": "Inj", "injection": "Inj",
+    "syp": "Syp", "syrup": "Syp",
+    "drops": "Drops", "drop": "Drops",
+    "cream": "Cream",
+}
+
+# Timing phrases (long-form first, then abbreviations) → canonical timing value.
+_TIMING_RX: list[tuple[re.Pattern, str]] = [
+    (re.compile(r"\bbefore\s+(?:food|meals?)\b", re.IGNORECASE), "before_food"),
+    (re.compile(r"\bafter\s+(?:food|meals?)\b", re.IGNORECASE), "after_food"),
+    (re.compile(r"\bwith\s+food\b", re.IGNORECASE), "with_food"),
+    (re.compile(r"\bempty\s+stomach\b", re.IGNORECASE), "empty_stomach"),
+    (re.compile(r"\b(?:bedtime|nocte)\b", re.IGNORECASE), "bedtime"),
+    (re.compile(r"\bhs\b", re.IGNORECASE), "bedtime"),
+    (re.compile(r"\b(?:sos|prn)\b", re.IGNORECASE), "sos"),
+    (re.compile(r"\bstat\b", re.IGNORECASE), "stat"),
+    (re.compile(r"\bac\b", re.IGNORECASE), "before_food"),
+    (re.compile(r"\bpc\b", re.IGNORECASE), "after_food"),
+]
+
+
+def _parse_prescription_line(line: str) -> dict | None:
+    """Parse one ``Type Name Dosage Duration Timing`` prescription line.
+
+    Returns a dict with the keys the extraction prompt + medication sync expect
+    (``type/medicine/dosage/duration/timing/note``), or ``None`` when nothing
+    parseable remains (blank line, the format-hint line, or a line with no
+    recognisable medicine after stripping the structured tokens).
+    """
+    s = line.strip()
+    if not s:
+        return None
+    # Skip the transcription format-hint line ("Each medicine on its own ...").
+    if re.match(r"^Each medicine", s, re.IGNORECASE) or re.match(
+        r"^Type\s+Name\s+Dosage", s, re.IGNORECASE
+    ):
+        return None
+
+    row: dict[str, str] = {
+        "type": "", "medicine": "", "dosage": "", "duration": "", "timing": "", "note": ""
+    }
+
+    # 1. Leading type token (Tab/Cap/Inj/...).
+    m = re.match(r"^([A-Za-z]+)\.?\s+", s)
+    if m and m.group(1).lower() in _RX_TYPE_TOKENS:
+        row["type"] = _RX_TYPE_TOKENS[m.group(1).lower()]
+        s = s[m.end():].strip()
+
+    # 2. Duration ("30 days", "2 weeks", "1 month").
+    m = re.search(r"\b(\d+\s*(?:days?|weeks?|wks?|months?|mos?))\b", s, re.IGNORECASE)
+    if m:
+        row["duration"] = re.sub(r"\s+", " ", m.group(1)).strip().lower()
+        s = (s[: m.start()] + s[m.end():]).strip()
+
+    # 3. Dosage: x-y-z frequency ("1-0-1"), else an abbreviation (BD/TDS/OD/...).
+    m = re.search(r"(\d\s*-\s*\d(?:\s*-\s*\d)?)", s)
+    if m:
+        row["dosage"] = re.sub(r"\s+", "", m.group(1))
+        s = (s[: m.start()] + s[m.end():]).strip()
+    else:
+        m = re.search(r"\b(BD|BID|TDS|TID|OD|QD|QID)\b", s, re.IGNORECASE)
+        if m:
+            row["dosage"] = m.group(1).upper()
+            s = (s[: m.start()] + s[m.end():]).strip()
+
+    # 4. Timing phrase (first match wins).
+    for rx, value in _TIMING_RX:
+        m = rx.search(s)
+        if m:
+            row["timing"] = value
+            s = (s[: m.start()] + s[m.end():]).strip()
+            break
+
+    # 5. Whatever remains is the medicine (name + strength), per the prompt shape.
+    row["medicine"] = re.sub(r"\s+", " ", s).strip()
+    if not row["medicine"]:
+        return None
+    return row
+
+
+def _parse_prescription_section(body: str) -> list[dict]:
+    """Parse a ``--- Prescriptions ---`` section body into prescription rows."""
+    rows: list[dict] = []
+    for line in body.splitlines():
+        row = _parse_prescription_line(line)
+        if row:
+            rows.append(row)
+    return rows
+
+
+def _parse_lab_result_line(line: str) -> dict | None:
+    """Parse one ``Test Name: Value Unit (Reference Range)`` lab-result line.
+
+    Returns a dict with ``test_name/result/units/ref_value/note`` (the keys the
+    extraction prompt + lab-result sync expect), or ``None`` for lines that
+    aren't ``name: value`` pairs.
+    """
+    s = line.strip()
+    if not s or ":" not in s:
+        return None
+    name, _, rest = s.partition(":")
+    test_name = name.strip()
+    if not test_name:
+        return None
+    rest = rest.strip()
+    row: dict[str, str] = {"test_name": test_name, "result": "", "units": "", "ref_value": "", "note": ""}
+
+    # Reference range in parentheses — strip it before splitting value/unit.
+    m = re.search(r"\(([^)]*)\)", rest)
+    if m:
+        row["ref_value"] = m.group(1).strip()
+        rest = (rest[: m.start()] + rest[m.end():]).strip()
+
+    # Leading numeric result (+ optional comparator) then trailing units.
+    m = re.match(r"^([<>~]?\d+(?:\.\d+)?)\s*(.*)$", rest)
+    if m:
+        row["result"] = m.group(1).strip()
+        row["units"] = m.group(2).strip()
+    else:
+        row["result"] = rest
+    return row
+
+
+def _parse_lab_result_section(body: str) -> list[dict]:
+    """Parse a ``--- Lab Results ---`` section body into lab-test rows."""
+    rows: list[dict] = []
+    for line in body.splitlines():
+        row = _parse_lab_result_line(line)
+        if row:
+            rows.append(row)
+    return rows
+
+
 def _clean_extracted(extracted: "ExtractedFields") -> "ExtractedFields":  # noqa: F821
     """Return a copy with [illegible] markers cleaned from string fields (or the
     original object if nothing changed)."""
@@ -1160,6 +1338,26 @@ def heuristic_extract(text: str | None, mime_type: str = "application/pdf") -> "
         ht = _extract_first_number(vitals, [r"\bht\b", r"height"])
         if ht:
             fields.height = ht
+
+    # ── Prescriptions + lab tests (deterministic backfill from sections) ──────
+    # The transcription prompt emits structured ``--- Prescriptions ---`` /
+    # ``--- Lab Results ---`` sections; recover the rows the AI's JSON pass may
+    # have missed. Only assigned here — the caller's _fill_null_fields merges
+    # them in solely for fields the AI left empty, so AI data is never clobbered.
+    rx_body = (
+        sections.get("prescriptions")
+        or sections.get("medicines")
+        or sections.get("medications")
+    )
+    if rx_body:
+        parsed = _parse_prescription_section(rx_body)
+        if parsed:
+            fields.prescriptions = parsed
+    lab_body = sections.get("lab results") or sections.get("labs") or sections.get("lab report")
+    if lab_body:
+        parsed = _parse_lab_result_section(lab_body)
+        if parsed:
+            fields.lab_tests = parsed
 
     return fields
 
@@ -1555,6 +1753,56 @@ def _png_to_jpeg(png_bytes: bytes, quality: int = 85) -> bytes:
         return png_bytes
 
 
+def _downscale_for_vision(
+    image_bytes: bytes, mime_type: str, max_dim: int | None = None, quality: int = 85
+) -> tuple[bytes, str]:
+    """Downscale + JPEG-re-encode an image for a compact vision-AI payload.
+
+    Uploaded photos of documents are often ~4000px / multi-MB and were sent raw;
+    vision providers tile-bill by resolution and process smaller images faster,
+    so capping the longest side (``settings.EXTRACTION_VISION_MAX_DIM``, default
+    1568px) and re-encoding as JPEG q85 cuts the payload ~10-20× with no loss of
+    medical legibility (the providers downscale internally anyway — this saves
+    bandwidth + image tokens, not visible detail). PDF pages are already
+    DPI-bounded by their render path, so this is only applied to raw image
+    uploads (the ``image/*`` OCR-via-LLM and image vision-only paths).
+
+    Returns ``(bytes, mime)``. Falls back to the original ``(image_bytes,
+    mime_type)`` when the cap is disabled (``max_dim <= 0``), PIL is missing, or
+    the bytes can't be decoded — so a conversion failure never strands a doc.
+    """
+    import io
+
+    limit = settings.EXTRACTION_VISION_MAX_DIM if max_dim is None else max_dim
+    if not limit or limit <= 0:
+        return image_bytes, mime_type
+    try:
+        from PIL import Image
+    except ImportError:
+        return image_bytes, mime_type
+    try:
+        img = Image.open(io.BytesIO(image_bytes))
+        # Flatten alpha/transparency onto white — JPEG has no alpha, and a
+        # transparent PNG screenshot would otherwise render black. Palette
+        # images with a transparency index are converted to RGBA first.
+        if img.mode in ("RGBA", "LA") or (img.mode == "P" and "transparency" in img.info):
+            img = img.convert("RGBA")
+            background = Image.new("RGB", img.size, (255, 255, 255))
+            background.paste(img, mask=img.split()[-1])
+            img = background
+        elif img.mode != "RGB":
+            img = img.convert("RGB")
+        # thumbnail preserves aspect ratio and only shrinks (never upscales).
+        if max(img.size) > limit:
+            img.thumbnail((limit, limit), Image.Resampling.LANCZOS)
+        buf = io.BytesIO()
+        img.save(buf, format="JPEG", quality=quality, optimize=True)
+        return buf.getvalue(), "image/jpeg"
+    except Exception as exc:
+        logger.debug("Vision image downscale failed — using original: %s", exc)
+        return image_bytes, mime_type
+
+
 def pdf_page_to_image(file_path: str, page_num: int = 0) -> bytes | None:
     """Render a PDF page to JPEG bytes using PyMuPDF.
 
@@ -1776,7 +2024,9 @@ async def call_text_extraction(
         plan = ExtractionProviderPlan.from_config(default_provider_config())
     prompt = f"{EXTRACTION_PROMPT}\n\nDocument Content:\n{pdf_text[:30000]}"
 
-    providers = plan.text_entries(json_grammar=True)
+    providers = plan.text_entries(
+        json_grammar=True, max_tokens=settings.EXTRACTION_MAX_TOKENS or None
+    )
 
     async def invoke(fn):
         return await fn(prompt)
@@ -2030,18 +2280,6 @@ def parse_extraction(raw_text: str | None, extracted_class: type) -> "ExtractedF
     return _build_extracted_lenient(data)
 
 
-async def call_vision_provider(
-    file_path: str,
-    mime_type: str,
-    last_provider_ref: list,
-    plan: ExtractionProviderPlan | None = None,
-) -> str | None:
-    """Send document to vision-capable AI provider with failover."""
-    file_bytes = Path(file_path).read_bytes()
-    b64_data = base64.b64encode(file_bytes).decode()
-    return await call_vision_provider_from_b64(b64_data, mime_type, last_provider_ref, plan)
-
-
 async def call_vision_provider_from_b64(
     b64_data: str,
     mime_type: str,
@@ -2061,7 +2299,9 @@ async def call_vision_provider_from_b64(
         plan = ExtractionProviderPlan.from_config(default_provider_config())
     MAX_RESPONSE_CHARS = 4096
 
-    providers = plan.vision_entries(json_grammar=True)
+    providers = plan.vision_entries(
+        json_grammar=True, max_tokens=settings.EXTRACTION_MAX_TOKENS or None
+    )
 
     async def invoke(fn):
         result = await fn(b64_data, mime_type, EXTRACTION_PROMPT)
@@ -2094,7 +2334,9 @@ async def call_vision_provider_from_b64_multi(
         plan = ExtractionProviderPlan.from_config(default_provider_config())
     MAX_RESPONSE_CHARS = 4096
 
-    providers = plan.vision_multi_entries(json_grammar=True)
+    providers = plan.vision_multi_entries(
+        json_grammar=True, max_tokens=settings.EXTRACTION_MAX_TOKENS or None
+    )
 
     async def invoke(fn):
         result = await fn(b64_images, mime_type, EXTRACTION_PROMPT)

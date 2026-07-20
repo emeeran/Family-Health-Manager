@@ -117,3 +117,23 @@ async def get_ai_status(
 
     providers = await status_for_endpoint(config)
     return {"providers": providers}
+
+
+@router.get("/extraction-metrics")
+async def get_extraction_metrics(
+    household: Household = Depends(get_household_from_token),
+):
+    """Per-extraction metrics summary (measurement harness).
+
+    Returns an aggregate of recent extractions: latency p50/p95/max, cache hit
+    rate, data rate, pruned rate, and distributions by provider/mime, plus the
+    last ~10 raw records. Process-wide and in-memory (resets on restart).
+
+    Lets prompt-trim / fast-model / image-downscale / concurrency changes be
+    validated against real per-doc behaviour — the eval gate that previously
+    blocked the deferred prompt-trim and fast-model work. Read-only; no PII (no
+    file content, hashes, or member ids are recorded).
+    """
+    from app.services.ai.extraction_metrics import metrics_summary
+
+    return metrics_summary()

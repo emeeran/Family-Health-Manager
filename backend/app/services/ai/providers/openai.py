@@ -12,11 +12,14 @@ PRIMARY_MODEL = "gpt-5.4-mini"
 FALLBACK_MODEL = "gpt-5.4-nano"
 
 
-async def call_openai_text(prompt: str, model: str | None = None) -> str | None:
+async def call_openai_text(
+    prompt: str, model: str | None = None, max_tokens: int | None = None
+) -> str | None:
     """Call OpenAI chat completions for text-based extraction.
 
     If model is specified, uses that single model.
     Otherwise tries PRIMARY_MODEL first, falls back to FALLBACK_MODEL on failure.
+    ``max_tokens`` bounds generation when set (structured extraction).
     """
     api_key = await resolve_provider_api_key("openai")
     if not api_key:
@@ -30,11 +33,13 @@ async def call_openai_text(prompt: str, model: str | None = None) -> str | None:
     models_to_try = [model] if model else [PRIMARY_MODEL, FALLBACK_MODEL]
 
     for m in models_to_try:
-        payload = {
+        payload: dict = {
             "model": m,
             "messages": [{"role": "user", "content": prompt}],
             "temperature": 0.1,
         }
+        if max_tokens:
+            payload["max_tokens"] = max_tokens
 
         async def _do_call():
             client = await get_cloud_client()
@@ -54,14 +59,18 @@ async def call_openai_text(prompt: str, model: str | None = None) -> str | None:
 
 
 async def call_openai_vision(
-    b64_data: str, mime_type: str, extraction_prompt: str, model: str | None = None
+    b64_data: str,
+    mime_type: str,
+    extraction_prompt: str,
+    model: str | None = None,
+    max_tokens: int | None = None,
 ) -> str | None:
     """Call OpenAI API for vision extraction."""
     api_key = await resolve_provider_api_key("openai")
     if not api_key:
         return None
     url = "https://api.openai.com/v1/chat/completions"
-    payload = {
+    payload: dict = {
         "model": model or PRIMARY_MODEL,
         "messages": [
             {
@@ -79,6 +88,8 @@ async def call_openai_vision(
         ],
         "temperature": 0.1,
     }
+    if max_tokens:
+        payload["max_tokens"] = max_tokens
     headers = {
         "Authorization": f"Bearer {api_key}",
         "Content-Type": "application/json",
@@ -95,6 +106,7 @@ async def call_openai_vision_multi(
     mime_type: str,
     extraction_prompt: str,
     model: str | None = None,
+    max_tokens: int | None = None,
 ) -> str | None:
     """Call OpenAI vision with several page images in one request.
 
@@ -113,11 +125,13 @@ async def call_openai_vision_multi(
         content.append(
             {"type": "image_url", "image_url": {"url": f"data:{mime_type};base64,{b64}"}}
         )
-    payload = {
+    payload: dict = {
         "model": model or PRIMARY_MODEL,
         "messages": [{"role": "user", "content": content}],
         "temperature": 0.1,
     }
+    if max_tokens:
+        payload["max_tokens"] = max_tokens
     headers = {"Authorization": f"Bearer {api_key}", "Content-Type": "application/json"}
     client = await get_cloud_client()
     resp = await client.post(url, json=payload, headers=headers)

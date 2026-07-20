@@ -32,7 +32,13 @@ DEFAULT_MODELS: dict[str, str] = {
     "openai": "gpt-5.4-mini",
 }
 
-DEFAULT_ORDER: list[str] = ["groq", "openrouter", "gemini", "openai", "ollama"]
+DEFAULT_ORDER: list[str] = ["groq", "gemini", "ollama"]
+# Groq (fastest free cloud) → Gemini (broad capability + ADC) → Ollama (local
+# CPU fallback). OpenRouter and OpenAI remain available (AVAILABLE_MODELS /
+# DEFAULT_MODELS / the Settings UI) but are opt-in — the default chain keeps
+# extraction fast and free for a freshly-keyed household, with local as the
+# last resort. ``primary_provider="auto"`` tries the cloud group first when any
+# cloud key is configured, else local; see ``ordered_providers``.
 
 
 class ProviderConfigItem(BaseModel):

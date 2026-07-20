@@ -99,14 +99,13 @@ def test_prune_is_noop_when_no_probe():
 
 def test_prune_removes_confirmed_dead_keeps_rest():
     ph.clear()
-    ph._state["result"] = {"groq": False, "openrouter": False}
+    ph._state["result"] = {"groq": False}
     ph._state["expires_at"] = time.monotonic() + 60
     plan = ExtractionProviderPlan.from_config(default_provider_config())
     pruned = plan.prune_known_dead()
     ids = {it.provider_id for it in pruned.items}
     assert "groq" not in ids
-    assert "openrouter" not in ids
-    assert {"gemini", "openai", "ollama"} <= ids
+    assert {"gemini", "ollama"} <= ids  # the rest of the default chain survives
 
 
 def test_prune_never_empties_the_chain():

@@ -10,18 +10,22 @@ settings = get_settings()
 logger = logging.getLogger(__name__)
 
 
-async def call_openrouter_text(prompt: str, model: str | None = None) -> str | None:
+async def call_openrouter_text(
+    prompt: str, model: str | None = None, max_tokens: int | None = None
+) -> str | None:
     """Call OpenRouter API for text-based generation."""
     api_key = await resolve_provider_api_key("openrouter")
     if not api_key:
         return None
     model = model or settings.OPENROUTER_TEXT_MODEL
     url = "https://openrouter.ai/api/v1/chat/completions"
-    payload = {
+    payload: dict = {
         "model": model,
         "messages": [{"role": "user", "content": prompt}],
         "temperature": 0.3,
     }
+    if max_tokens:
+        payload["max_tokens"] = max_tokens
     headers = {
         "Authorization": f"Bearer {api_key}",
         "Content-Type": "application/json",
@@ -38,14 +42,18 @@ async def call_openrouter_text(prompt: str, model: str | None = None) -> str | N
 
 
 async def call_openrouter_vision(
-    b64_data: str, mime_type: str, extraction_prompt: str, model: str | None = None
+    b64_data: str,
+    mime_type: str,
+    extraction_prompt: str,
+    model: str | None = None,
+    max_tokens: int | None = None,
 ) -> str | None:
     """Call OpenRouter API for vision extraction."""
     api_key = await resolve_provider_api_key("openrouter")
     if not api_key:
         return None
     url = "https://openrouter.ai/api/v1/chat/completions"
-    payload = {
+    payload: dict = {
         "model": model or settings.OPENROUTER_VISION_MODEL,
         "messages": [
             {
@@ -63,6 +71,8 @@ async def call_openrouter_vision(
         ],
         "temperature": 0.1,
     }
+    if max_tokens:
+        payload["max_tokens"] = max_tokens
     headers = {
         "Authorization": f"Bearer {api_key}",
         "Content-Type": "application/json",
@@ -79,6 +89,7 @@ async def call_openrouter_vision_multi(
     mime_type: str,
     extraction_prompt: str,
     model: str | None = None,
+    max_tokens: int | None = None,
 ) -> str | None:
     """Call OpenRouter vision with several page images in one request.
 
@@ -97,11 +108,13 @@ async def call_openrouter_vision_multi(
         content.append(
             {"type": "image_url", "image_url": {"url": f"data:{mime_type};base64,{b64}"}}
         )
-    payload = {
+    payload: dict = {
         "model": model or settings.OPENROUTER_VISION_MODEL,
         "messages": [{"role": "user", "content": content}],
         "temperature": 0.1,
     }
+    if max_tokens:
+        payload["max_tokens"] = max_tokens
     headers = {"Authorization": f"Bearer {api_key}", "Content-Type": "application/json"}
     client = await get_cloud_client()
     resp = await client.post(url, json=payload, headers=headers)

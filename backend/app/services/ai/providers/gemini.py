@@ -83,6 +83,7 @@ async def _gemini_generate(
     parts: list,
     temperature: float = 0.1,
     gemini_auth: str = "auto",
+    max_output_tokens: int | None = None,
 ) -> str | None:
     """Call Gemini ``generateContent`` via Vertex AI (ADC) or Gen Lang API (key).
 
@@ -97,12 +98,17 @@ async def _gemini_generate(
     * ``"adc"`` — force ADC; if it isn't configured, fall back to the API key
       with a warning rather than failing the whole provider chain.
     * ``"api_key"`` — skip ADC entirely and use the Generative Language API.
+
+    ``max_output_tokens`` bounds generation when set (structured extraction).
     """
+    generation_config: dict = {"temperature": temperature}
+    if max_output_tokens:
+        generation_config["maxOutputTokens"] = max_output_tokens
     payload = {
         # Vertex requires an explicit role on each content; the Gen Lang API
         # accepts it too, so it's included unconditionally.
         "contents": [{"role": "user", "parts": parts}],
-        "generationConfig": {"temperature": temperature},
+        "generationConfig": generation_config,
     }
 
     token = _adc_access_token()
@@ -146,11 +152,17 @@ async def _gemini_generate(
 
 
 async def call_gemini_text(
-    prompt: str, model: str | None = None, gemini_auth: str = "auto"
+    prompt: str,
+    model: str | None = None,
+    gemini_auth: str = "auto",
+    max_tokens: int | None = None,
 ) -> str | None:
     """Call Google Gemini for text-based generation."""
     return await _gemini_generate(
-        model or settings.GEMINI_TEXT_MODEL, [{"text": prompt}], gemini_auth=gemini_auth
+        model or settings.GEMINI_TEXT_MODEL,
+        [{"text": prompt}],
+        gemini_auth=gemini_auth,
+        max_output_tokens=max_tokens,
     )
 
 
@@ -160,6 +172,7 @@ async def call_gemini_vision(
     extraction_prompt: str,
     model: str | None = None,
     gemini_auth: str = "auto",
+    max_tokens: int | None = None,
 ) -> str | None:
     """Call Google Gemini API for vision extraction."""
     return await _gemini_generate(
@@ -169,6 +182,7 @@ async def call_gemini_vision(
             {"inline_data": {"mime_type": mime_type, "data": b64_data}},
         ],
         gemini_auth=gemini_auth,
+        max_output_tokens=max_tokens,
     )
 
 
@@ -178,6 +192,7 @@ async def call_gemini_vision_multi(
     extraction_prompt: str,
     model: str | None = None,
     gemini_auth: str = "auto",
+    max_tokens: int | None = None,
 ) -> str | None:
     """Call Gemini with several page images in one request (multi-page scan).
 
@@ -191,7 +206,10 @@ async def call_gemini_vision_multi(
     for b64 in b64_images:
         parts.append({"inline_data": {"mime_type": mime_type, "data": b64}})
     return await _gemini_generate(
-        model or settings.GEMINI_VISION_MODEL, parts, gemini_auth=gemini_auth
+        model or settings.GEMINI_VISION_MODEL,
+        parts,
+        gemini_auth=gemini_auth,
+        max_output_tokens=max_tokens,
     )
 
 

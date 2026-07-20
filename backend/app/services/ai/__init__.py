@@ -35,6 +35,22 @@ EXTRACTION_NEGATIVE_CACHE_TTL = 600  # seconds (10 minutes)
 # Bumped 4 → 5: prompt hash added to cache key; old entries miss and re-extract.
 EXTRACTION_CACHE_VERSION = "5"
 
+
+def _record_extraction_metric(**fields: object) -> None:
+    """Best-effort tap into the per-extraction metrics ring buffer.
+
+    Wraps :func:`extraction_metrics.record_extraction` so a failure here (e.g.
+    the module being unavailable) can never break extraction. Keeps the call
+    sites one-liners.
+    """
+    try:
+        from app.services.ai.extraction_metrics import record_extraction
+
+        record_extraction(**fields)
+    except Exception:  # noqa: BLE001 — metrics are best-effort
+        pass
+
+
 _CLINICAL_SYSTEM_NOTE = (
     "You are a senior clinical reviewer AI, functioning as an attending physician "
     "conducting a thorough chart review. Your role is to produce professional clinical "
@@ -609,10 +625,18 @@ class AIService:
                     from app.schemas.health_record import ExtractedFields
 
                     cache_hit = True
-                    return ExtractionResult(
+                    cached_result = ExtractionResult(
                         extracted=ExtractedFields.model_validate_json(cached["extracted_json"]),
                         transcription=cached.get("transcription"),
                     )
+                    _record_extraction_metric(
+                        mime=mime_type,
+                        provider="-",
+                        cache_hit=True,
+                        had_data=cached_result.extracted.has_any_data(),
+                        elapsed_ms=int((time.monotonic() - started) * 1000),
+                    )
+                    return cached_result
                 except Exception as exc:
                     logger.warning("Extraction cache parse failed — re-extracting: %s", exc)
 
@@ -667,6 +691,14 @@ class AIService:
             "hit" if cache_hit else "miss",
             providers_were_pruned,
             elapsed_ms,
+        )
+        _record_extraction_metric(
+            mime=mime_type,
+            provider=self._last_provider_ref[0] or "-",
+            cache_hit=False,
+            pruned=providers_were_pruned,
+            had_data=had_data,
+            elapsed_ms=elapsed_ms,
         )
         return result
 

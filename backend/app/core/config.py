@@ -150,6 +150,29 @@ class Settings(BaseSettings):
     # typical rate ceilings. Local Ollama is always sequential (it serializes
     # one generation per model regardless).
     EXTRACTION_VISION_BATCH_CONCURRENCY: int = 4
+    # Longest-side cap (px) applied to raw image uploads before they become a
+    # vision payload. Phone photos of documents are commonly ~4000px / multi-MB
+    # and were sent raw; vision providers tile-bill by resolution and process
+    # smaller images faster, so capping + JPEG re-encode cuts the payload ~10-20x
+    # with no loss of medical legibility (the providers downscale internally
+    # anyway — this saves bandwidth + image tokens, not visible detail). 1568 is
+    # the OpenAI high-detail tile boundary. PDF pages are already DPI-bounded, so
+    # this only affects the image/* OCR-via-LLM and image vision-only paths. 0
+    # disables (sends the original bytes unchanged).
+    EXTRACTION_VISION_MAX_DIM: int = 1568
+    # Hard cap on generated tokens for cloud *extraction* calls (text + vision).
+    # Soft cap on generated tokens for cloud *extraction* calls (text + vision).
+    # Primary value is bounding pathological over-generation (cost); wall-clock
+    # runaway is already bounded by EXTRACTION_PROVIDER_TIMEOUT. Tuned for
+    # ACCURACY: 4096 = 2x the proven-local num_predict=2048 cap, giving headroom
+    # so a dense extraction (long prescription list, sizable clinical_data) is
+    # never truncated mid-JSON — a truncation would yield unparseable JSON and an
+    # empty extraction (accuracy loss). If it ever bites, data_rate in
+    # /ai/extraction-metrics drops and you can raise or disable (0) it. Applied
+    # to Groq/OpenRouter/OpenAI (max_tokens) and Gemini (maxOutputTokens); the
+    # local Ollama path is capped separately via num_predict, and OCR/transcription
+    # are left uncapped (they can legitimately run long).
+    EXTRACTION_MAX_TOKENS: int = 4096
     # CPU-inference thread pinning. Ollama is CPU-only on this hardware (no
     # CUDA) and commonly defaults ``num_thread`` to *physical* cores, ignoring
     # SMT. Setting it to the logical core count (``os.cpu_count()``) uses the

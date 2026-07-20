@@ -9,18 +9,26 @@ logger = logging.getLogger(__name__)
 
 
 async def call_groq_text(
-    prompt: str, model: str = "llama-3.3-70b-versatile"
+    prompt: str,
+    model: str = "llama-3.3-70b-versatile",
+    max_tokens: int | None = None,
 ) -> str | None:
-    """Call Groq API for text-based generation."""
+    """Call Groq API for text-based generation.
+
+    ``max_tokens`` bounds the generated length when set (used by structured
+    extraction to cap runaway output and trim latency/cost); omitted otherwise.
+    """
     api_key = await resolve_provider_api_key("groq")
     if not api_key:
         return None
     url = "https://api.groq.com/openai/v1/chat/completions"
-    payload = {
+    payload: dict = {
         "model": model,
         "messages": [{"role": "user", "content": prompt}],
         "temperature": 0.3,
     }
+    if max_tokens:
+        payload["max_tokens"] = max_tokens
     headers = {
         "Authorization": f"Bearer {api_key}",
         "Content-Type": "application/json",
@@ -37,14 +45,18 @@ async def call_groq_text(
 
 
 async def call_groq_vision(
-    b64_data: str, mime_type: str, extraction_prompt: str, model: str | None = None
+    b64_data: str,
+    mime_type: str,
+    extraction_prompt: str,
+    model: str | None = None,
+    max_tokens: int | None = None,
 ) -> str | None:
     """Call Groq API for vision extraction."""
     api_key = await resolve_provider_api_key("groq")
     if not api_key:
         return None
     url = "https://api.groq.com/openai/v1/chat/completions"
-    payload = {
+    payload: dict = {
         "model": model or "llama-3.3-70b-versatile",
         "messages": [
             {
@@ -62,6 +74,8 @@ async def call_groq_vision(
         ],
         "temperature": 0.1,
     }
+    if max_tokens:
+        payload["max_tokens"] = max_tokens
     headers = {
         "Authorization": f"Bearer {api_key}",
         "Content-Type": "application/json",
@@ -78,6 +92,7 @@ async def call_groq_vision_multi(
     mime_type: str,
     extraction_prompt: str,
     model: str | None = None,
+    max_tokens: int | None = None,
 ) -> str | None:
     """Call Groq vision with several page images in one OpenAI-format request.
 
@@ -96,11 +111,13 @@ async def call_groq_vision_multi(
         content.append(
             {"type": "image_url", "image_url": {"url": f"data:{mime_type};base64,{b64}"}}
         )
-    payload = {
+    payload: dict = {
         "model": model or "llama-3.3-70b-versatile",
         "messages": [{"role": "user", "content": content}],
         "temperature": 0.1,
     }
+    if max_tokens:
+        payload["max_tokens"] = max_tokens
     headers = {"Authorization": f"Bearer {api_key}", "Content-Type": "application/json"}
     client = await get_cloud_client()
     resp = await client.post(url, json=payload, headers=headers)

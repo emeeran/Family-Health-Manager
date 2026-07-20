@@ -149,15 +149,17 @@ async def test_call_ai_ollama_first_then_cloud(ai_service):
 
 
 @pytest.mark.asyncio
-async def test_call_ai_fallback_to_openrouter(ai_service):
-    """Test fallback to OpenRouter when Groq, Gemini, and Ollama fail."""
+async def test_call_ai_fallback_through_default_chain(ai_service):
+    """Default chain fallback: Ollama + Groq fail -> Gemini wins.
+
+    The default chain is now [groq, gemini, ollama] (OpenRouter/OpenAI are
+    opt-in). This proves _call_ai iterates past provider failures to a winner.
+    """
     from app.schemas.ai_provider_config import default_provider_config
 
     mock_groq = AsyncMock(return_value=None)
-    mock_gemini = AsyncMock(return_value=None)
+    mock_gemini = AsyncMock(return_value="Gemini response")
     mock_ollama = AsyncMock(return_value=None)
-    mock_openrouter = AsyncMock(return_value="OpenRouter response")
-    mock_openai = AsyncMock(return_value=None)
     with (
         patch.object(
             ai_service,
@@ -168,12 +170,10 @@ async def test_call_ai_fallback_to_openrouter(ai_service):
         patch.object(ai_service, "_call_groq_text", mock_groq),
         patch.object(ai_service, "_call_gemini_text", mock_gemini),
         patch.object(ai_service, "_call_ollama_text", mock_ollama),
-        patch.object(ai_service, "_call_openrouter_text", mock_openrouter),
-        patch.object(ai_service, "_call_openai_text", mock_openai),
     ):
         result, provider = await ai_service._call_ai("Test prompt", "")
-        assert result == "OpenRouter response"
-        assert "OpenRouter" in provider
+        assert result == "Gemini response"
+        assert "Gemini" in provider
 
 
 @pytest.mark.asyncio
