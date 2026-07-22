@@ -163,6 +163,30 @@ async def lifespan(app: FastAPI):
 
     asyncio.create_task(_ollama_boot())
 
+    # Auto-tune cloud AI models to the latest economical-capable on boot —
+    # refreshes each provider's catalog and sets the best model in every
+    # household (prevents stale/retired-model 404s). NON-BLOCKING + wrapped so a
+    # dead provider or a failed fetch can never stall or crash startup.
+    if settings.AI_AUTOTUNE_MODELS_ON_STARTUP:
+
+        async def _autotune_models():
+            try:
+                from app.core.database import SessionLocal
+                from app.services.ai.model_autoselect import refresh_and_autoselect
+
+                async with SessionLocal() as db:
+                    chosen = await refresh_and_autoselect(db)
+                    await db.commit()
+                if chosen:
+                    logger.info(
+                        "Model auto-tune: %s",
+                        ", ".join(f"{k}={v}" for k, v in chosen.items()),
+                    )
+            except Exception as exc:  # never let a boot task crash the event loop
+                logger.warning("Model auto-tune failed: %s", exc)
+
+        asyncio.create_task(_autotune_models())
+
     # Token pruning — clean up expired refresh and revoked tokens daily
     async def _prune_tokens():
         from app.core.database import SessionLocal

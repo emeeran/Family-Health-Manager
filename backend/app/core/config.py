@@ -20,7 +20,7 @@ class Settings(BaseSettings):
     # Application
     APP_ENV: str = "development"
     APP_NAME: str = "DAWNSTAR Family Health Keeper"
-    APP_VERSION: str = "1.2.13"
+    APP_VERSION: str = "1.2.14"
     DEBUG: bool = False
     # Root log level (DEBUG/INFO/WARNING/ERROR/CRITICAL). Default WARNING keeps
     # the journal quiet; raise it for diagnosis without a rebuild.
@@ -76,6 +76,12 @@ class Settings(BaseSettings):
     REMINDER_POLL_INTERVAL: int = 60  # seconds between reminder sweeps
     AI_PROVIDER_HEALTH_CHECK_ENABLED: bool = True
     AI_HEALTH_CHECK_INTERVAL: int = 300  # already key-gated, so cheap when keyless
+    # On startup, refresh each CLOUD provider's model list and auto-set the
+    # latest economical-capable model (prevents stale/retired-model 404s, e.g.
+    # Groq retiring llama-4-scout). Ollama is never auto-set (local free-text).
+    # Always overwrites the active cloud model on each boot — set false to keep
+    # manual Settings choices. See services/ai/model_autoselect.py.
+    AI_AUTOTUNE_MODELS_ON_STARTUP: bool = True
     ANOMALY_DETECTION_ENABLED: bool = True
     ANOMALY_DETECTION_INTERVAL: int = 21600  # 6h
     FILE_INTEGRITY_CHECK_ENABLED: bool = True

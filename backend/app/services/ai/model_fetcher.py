@@ -87,6 +87,61 @@ async def _fetch_ollama(client: httpx.AsyncClient) -> list[str]:
         return []
 
 
+async def fetch_openrouter_rich(
+    client: httpx.AsyncClient | None = None,
+) -> list[dict]:
+    """Fetch OpenRouter models with pricing/context/modality for auto-selection.
+
+    The ``/models`` endpoint is public (no key required); a key, when present, is
+    sent for higher rate limits. Returns pared-down dicts —
+    ``{id, prompt_price, completion_price, context, input_modalities}`` — so the
+    auto-tuner can rank by real price (the only provider that exposes it). Empty
+    on any failure. Pass a shared ``client`` to reuse connections; one is created
+    when omitted.
+    """
+    api_key = await resolve_provider_api_key("openrouter")
+    headers = {"Authorization": f"Bearer {api_key}"} if api_key else {}
+    own_client = client is None
+    if own_client:
+        client = httpx.AsyncClient(timeout=10)
+    assert client is not None
+    try:
+        resp = await client.get("https://openrouter.ai/api/v1/models", headers=headers)
+        resp.raise_for_status()
+        out: list[dict] = []
+        for m in resp.json().get("data", []):
+            pricing = m.get("pricing") or {}
+            arch = m.get("architecture") or {}
+            try:
+                ctx = int(m.get("context_length") or 0)
+            except (TypeError, ValueError):
+                ctx = 0
+            try:
+                prompt_price = float(pricing.get("prompt") or 0.0)
+            except (TypeError, ValueError):
+                prompt_price = 0.0
+            try:
+                completion_price = float(pricing.get("completion") or 0.0)
+            except (TypeError, ValueError):
+                completion_price = 0.0
+            out.append(
+                {
+                    "id": m.get("id", ""),
+                    "prompt_price": prompt_price,
+                    "completion_price": completion_price,
+                    "context": ctx,
+                    "input_modalities": arch.get("input_modalities") or [],
+                }
+            )
+        return out
+    except Exception as exc:
+        logger.debug("OpenRouter rich model fetch failed: %s", exc)
+        return []
+    finally:
+        if own_client:
+            await client.aclose()
+
+
 PROVIDER_FETCHERS: dict[str, Callable[[httpx.AsyncClient], Awaitable[list[str]]]] = {
     "openai": _fetch_openai,
     "groq": _fetch_groq,
