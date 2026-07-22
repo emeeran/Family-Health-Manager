@@ -207,11 +207,12 @@ function LabelBody({ label }: { label: DrugLabelSummary }) {
     "indications_and_usage",
     "warnings_and_precautions",
     "dosage_and_administration",
+    "adverse_reactions",
   ];
   const ordered = [
     ...priority.filter((k) => label.sections?.[k]).map((k) => [k, label.sections![k]] as const),
     ...entries.filter(([k]) => !priority.includes(k)),
-  ].slice(0, 3);
+  ].slice(0, 4);
   return (
     <div className="space-y-2">
       {ordered.map(([key, text]) => (
@@ -219,7 +220,7 @@ function LabelBody({ label }: { label: DrugLabelSummary }) {
           <div className="text-[10px] uppercase tracking-wide text-muted-foreground/80">
             {key.replace(/_/g, " ")}
           </div>
-          <p className="line-clamp-3 text-[11px] leading-relaxed">{text}</p>
+          <p className="line-clamp-4 text-[11px] leading-relaxed">{text}</p>
         </div>
       ))}
     </div>
