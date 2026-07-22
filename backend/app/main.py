@@ -113,42 +113,55 @@ async def lifespan(app: FastAPI):
     logger.info("Starting up application...")
     await create_tables()
 
-    # Register background jobs
-    register_job("process_reminders", 60, _jobs.process_reminders)
+    # Register background jobs. Heavy jobs are individually togglable and
+    # retimable (see REMINDERS_ENABLED / *_INTERVAL in config) so a low-resource
+    # host can shed work it doesn't need. Defaults preserve the original cadence.
+    if settings.REMINDERS_ENABLED:
+        register_job("process_reminders", settings.REMINDER_POLL_INTERVAL, _jobs.process_reminders)
     register_job("rotate_backups", 86400, _jobs.rotate_backups)
-    register_job("check_ai_providers", 300, _jobs.check_ai_providers)
-    register_job("detect_anomalies", 21600, _jobs.detect_anomalies)
+    if settings.AI_PROVIDER_HEALTH_CHECK_ENABLED:
+        register_job("check_ai_providers", settings.AI_HEALTH_CHECK_INTERVAL, _jobs.check_ai_providers)
+    if settings.ANOMALY_DETECTION_ENABLED:
+        register_job("detect_anomalies", settings.ANOMALY_DETECTION_INTERVAL, _jobs.detect_anomalies)
     register_job("cleanup_staging", 3600, _jobs.cleanup_staging_files)
-    register_job("verify_file_integrity", 86400, _jobs.verify_file_integrity)
+    if settings.FILE_INTEGRITY_CHECK_ENABLED:
+        register_job(
+            "verify_file_integrity", settings.FILE_INTEGRITY_CHECK_INTERVAL, _jobs.verify_file_integrity
+        )
 
     # Sweep orphaned staging files from crashed sessions
     from app.core.storage import sweep_orphaned_staging
 
     await sweep_orphaned_staging()
 
-    # Ensure Ollama is running and models are available
+    # Ensure Ollama is running + models pulled, and warm the model — all
+    # NON-BLOCKING. ensure_ollama_ready() can wait up to 30s for the server and
+    # up to ~10min if a model must be pulled; running it in the foreground
+    # stalled app startup on a cold box. AI paths already degrade gracefully
+    # when Ollama isn't ready yet (cloud fallback / friendly error), so boot the
+    # app immediately and do readiness + warmup in the background.
     from app.core.ollama_service import ensure_ollama_ready
 
-    ollama_ok = await ensure_ollama_ready()
-    if ollama_ok:
-        logger.info("Ollama ready — primary AI provider: %s", settings.OLLAMA_MODEL)
-        # Warm the model into memory as a background task so the first user
-        # extraction doesn't pay the ~9-20s CPU cold-load. Non-blocking: app
-        # readiness is unaffected, and a failure just means the first real
-        # extraction cold-loads on demand.
-        if settings.OLLAMA_WARMUP_ON_STARTUP:
-            import asyncio as _asyncio
+    async def _ollama_boot():
+        try:
+            if await ensure_ollama_ready():
+                logger.info("Ollama ready — primary AI provider: %s", settings.OLLAMA_MODEL)
+                # Warm the model into memory so the first user extraction skips
+                # the ~9-20s CPU cold-load. A failure just cold-loads on demand.
+                if settings.OLLAMA_WARMUP_ON_STARTUP:
+                    from app.core.ollama_service import warmup_model
 
-            from app.core.ollama_service import warmup_model
+                    for mdl in {settings.OLLAMA_MODEL, settings.OLLAMA_TEXT_MODEL}:
+                        if mdl:
+                            await warmup_model(mdl)
+            else:
+                logger.warning(
+                    "Ollama not available — will fall back to cloud providers if configured"
+                )
+        except Exception as exc:  # never let a boot task crash the event loop
+            logger.warning("Ollama startup check failed: %s", exc)
 
-            async def _warmup_all():
-                for mdl in {settings.OLLAMA_MODEL, settings.OLLAMA_TEXT_MODEL}:
-                    if mdl:
-                        await warmup_model(mdl)
-
-            _asyncio.create_task(_warmup_all())
-    else:
-        logger.warning("Ollama not available — will fall back to cloud providers if configured")
+    asyncio.create_task(_ollama_boot())
 
     # Token pruning — clean up expired refresh and revoked tokens daily
     async def _prune_tokens():

@@ -1449,7 +1449,8 @@ def chunk_ocr_text(ocr_text: str, pages_per_chunk: int = 3) -> list[str]:
 
 # Max concurrent tesseract processes during multi-page OCR. tesseract is CPU-bound,
 # so cap concurrency to avoid thrashing CPU/memory on multi-page scanned PDFs.
-OCR_CONCURRENCY = 4
+# Configurable via OCR_CONCURRENCY (default 4).
+OCR_CONCURRENCY = settings.OCR_CONCURRENCY
 
 # Minimum OCR quality to trust the text-extraction path instead of escalating to
 # vision AI. Garbage OCR (non-empty but mostly symbols, or very sparse) scores

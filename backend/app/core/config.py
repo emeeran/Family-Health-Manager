@@ -67,6 +67,20 @@ class Settings(BaseSettings):
 
     # Scheduler
     RUN_SCHEDULER: bool = True  # Set false when scheduler runs in separate container
+    # Per-job controls for low-resource / self-hosted deployments. Each heavy
+    # background job can be disabled or retimed via env without touching code.
+    # Defaults preserve existing behaviour — relax them on a constrained host
+    # (e.g. an Ollama-only box that doesn't use reminders: REMINDERS_ENABLED=false,
+    # or weekly integrity checks: FILE_INTEGRITY_CHECK_INTERVAL=604800).
+    REMINDERS_ENABLED: bool = True
+    REMINDER_POLL_INTERVAL: int = 60  # seconds between reminder sweeps
+    AI_PROVIDER_HEALTH_CHECK_ENABLED: bool = True
+    AI_HEALTH_CHECK_INTERVAL: int = 300  # already key-gated, so cheap when keyless
+    ANOMALY_DETECTION_ENABLED: bool = True
+    ANOMALY_DETECTION_INTERVAL: int = 21600  # 6h
+    FILE_INTEGRITY_CHECK_ENABLED: bool = True
+    FILE_INTEGRITY_CHECK_INTERVAL: int = 86400  # daily; 604800 = weekly
+    OCR_CONCURRENCY: int = 4  # parallel page OCR processes (PDF/image text path)
 
     # AI Providers
     OPENAI_API_KEY: str = ""
