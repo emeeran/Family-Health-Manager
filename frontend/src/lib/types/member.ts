@@ -152,6 +152,21 @@ export interface AdverseEventReaction {
   count: number;
 }
 
+/** An alternate/substitute brand (ABDM Drug Registry, India). */
+export interface SubstituteDrug {
+  id: string;
+  name: string;
+}
+
+/** Indian-context indication/contraindication for a medication (ABDM). */
+export interface DrugIndication {
+  indication: string;
+  contraindication: string;
+  dose_form: string;
+  routes: string[];
+  source: string;
+}
+
 /** A MedlinePlus patient-education health-topic link (MedlinePlus Connect). */
 export interface MedlinePlusTopic {
   title: string;

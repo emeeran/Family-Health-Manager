@@ -9,6 +9,8 @@ import type {
   DrugRecallsResponse,
   DrugLabelSummary,
   AdverseEventReaction,
+  SubstituteDrug,
+  DrugIndication,
   MedlinePlusTopic,
   DailyMedLabel,
   ClinicalTrial,
@@ -113,6 +115,22 @@ export function getDrugAdverseEvents(memberId: string, medicine: string) {
     `/members/${memberId}/drug-adverse-events`,
     { params: { medicine }, timeout: 30_000 }
   );
+}
+
+/** Alternate/substitute brands (ABDM Drug Registry, India) for a medication. */
+export function getDrugSubstitutes(memberId: string, medicine: string) {
+  return apiRequest<{ substitutes: SubstituteDrug[] }>(`/members/${memberId}/drug-substitutes`, {
+    params: { medicine },
+    timeout: 30_000,
+  });
+}
+
+/** Indian-context indication/contraindication (ABDM) for a medication. */
+export function getDrugIndication(memberId: string, medicine: string) {
+  return apiRequest<{ indication: DrugIndication | null }>(`/members/${memberId}/drug-indication`, {
+    params: { medicine },
+    timeout: 30_000,
+  });
 }
 
 /** Patient-education links (MedlinePlus) + full-label links (DailyMed) for a med. */

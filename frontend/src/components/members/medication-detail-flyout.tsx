@@ -1,15 +1,31 @@
 import { useCallback, useEffect, useState } from "react";
-import { Eye, ExternalLink, Info, AlertTriangle, BookOpen } from "lucide-react";
+import {
+  Eye,
+  ExternalLink,
+  Info,
+  AlertTriangle,
+  BookOpen,
+  Stethoscope,
+  Replace,
+} from "lucide-react";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Badge } from "@/components/ui/badge";
-import { getDrugAdverseEvents, getDrugEducation, getDrugLabel } from "@/lib/api/members";
+import {
+  getDrugAdverseEvents,
+  getDrugEducation,
+  getDrugIndication,
+  getDrugLabel,
+  getDrugSubstitutes,
+} from "@/lib/api/members";
 import type { ActiveMedication } from "@/lib/types/member";
 import type {
   AdverseEventReaction,
   DailyMedLabel,
+  DrugIndication,
   DrugLabelSummary,
   MedlinePlusTopic,
+  SubstituteDrug,
 } from "@/lib/types/member";
 import { TIMING_OPTIONS } from "@/lib/record-type-configs";
 
@@ -26,6 +42,8 @@ type LoadState =
       label: DrugLabelSummary | null;
       events: AdverseEventReaction[];
       edu: { medlineplus: MedlinePlusTopic[]; dailymed: DailyMedLabel[] };
+      substitutes: SubstituteDrug[];
+      indication: DrugIndication | null;
     }
   | { status: "error"; message: string };
 
@@ -50,16 +68,20 @@ export function MedicationDetailFlyout({ memberId, med }: MedicationDetailFlyout
   const load = useCallback(async () => {
     setState({ status: "loading" });
     try {
-      const [labelRes, eventsRes, eduRes] = await Promise.all([
+      const [labelRes, eventsRes, eduRes, subsRes, indRes] = await Promise.all([
         getDrugLabel(memberId, med.medicine),
         getDrugAdverseEvents(memberId, med.medicine),
         getDrugEducation(memberId, med.medicine),
+        getDrugSubstitutes(memberId, med.medicine),
+        getDrugIndication(memberId, med.medicine),
       ]);
       setState({
         status: "done",
         label: labelRes.label,
         events: eventsRes.events,
         edu: { medlineplus: eduRes.medlineplus, dailymed: eduRes.dailymed },
+        substitutes: subsRes.substitutes,
+        indication: indRes.indication,
       });
     } catch (err) {
       setState({
@@ -116,6 +138,13 @@ export function MedicationDetailFlyout({ memberId, med }: MedicationDetailFlyout
 
           {state.status === "done" && (
             <>
+              {state.indication &&
+                (state.indication.indication || state.indication.contraindication) && (
+                  <Section icon={<Stethoscope className="h-3 w-3" />} title="Indication (ABDM)">
+                    <IndicationBody indication={state.indication} />
+                  </Section>
+                )}
+
               <Section icon={<Info className="h-3 w-3" />} title="Prescribing label (openFDA)">
                 {state.label ? (
                   <LabelBody label={state.label} />
@@ -156,6 +185,22 @@ export function MedicationDetailFlyout({ memberId, med }: MedicationDetailFlyout
                   <Empty>No education links found.</Empty>
                 )}
               </Section>
+
+              {state.substitutes.length > 0 && (
+                <Section icon={<Replace className="h-3 w-3" />} title="Substitutes (ABDM)">
+                  <div className="flex flex-wrap gap-1">
+                    {state.substitutes.slice(0, 12).map((s) => (
+                      <Badge
+                        key={s.id || s.name}
+                        variant="outline"
+                        className="text-[10px] font-normal"
+                      >
+                        {s.name}
+                      </Badge>
+                    ))}
+                  </div>
+                </Section>
+              )}
             </>
           )}
         </div>
@@ -221,6 +266,29 @@ function LabelBody({ label }: { label: DrugLabelSummary }) {
             {key.replace(/_/g, " ")}
           </div>
           <p className="line-clamp-4 text-[11px] leading-relaxed">{text}</p>
+        </div>
+      ))}
+    </div>
+  );
+}
+
+function IndicationBody({ indication }: { indication: DrugIndication }) {
+  const meta = [indication.dose_form, ...(indication.routes || [])].filter(Boolean).join(" · ");
+  const blocks: { label: string; text: string }[] = [];
+  if (indication.indication) blocks.push({ label: "Indication", text: indication.indication });
+  if (indication.contraindication)
+    blocks.push({ label: "Contraindication", text: indication.contraindication });
+  return (
+    <div className="space-y-2">
+      {meta && (
+        <p className="text-[10px] uppercase tracking-wide text-muted-foreground/80">{meta}</p>
+      )}
+      {blocks.map((b) => (
+        <div key={b.label}>
+          <div className="text-[10px] uppercase tracking-wide text-muted-foreground/80">
+            {b.label}
+          </div>
+          <p className="line-clamp-4 text-[11px] leading-relaxed">{b.text}</p>
         </div>
       ))}
     </div>

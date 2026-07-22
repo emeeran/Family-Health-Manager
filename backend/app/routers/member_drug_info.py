@@ -69,3 +69,35 @@ async def get_drug_adverse_events(
         raise HTTPException(status_code=422, detail="medicine query parameter is required")
     events = await DrugInfoService(db).adverse_events(medicine.strip())
     return {"events": events}
+
+
+@router.get("/{member_id}/drug-substitutes")
+async def get_drug_substitutes(
+    medicine: str = Query(..., description="Medication name to look up"),
+    member: FamilyMember = Depends(require_member_in_household),
+    db: AsyncSession = Depends(get_db),
+):
+    """Alternate/substitute brands (ABDM Drug Registry, India) for a medication.
+
+    Returns an empty list when ABDM is unconfigured or no match is found.
+    """
+    if not medicine.strip():
+        raise HTTPException(status_code=422, detail="medicine query parameter is required")
+    substitutes = await DrugInfoService(db).substitutes(medicine.strip())
+    return {"substitutes": substitutes}
+
+
+@router.get("/{member_id}/drug-indication")
+async def get_drug_indication(
+    medicine: str = Query(..., description="Medication name to look up"),
+    member: FamilyMember = Depends(require_member_in_household),
+    db: AsyncSession = Depends(get_db),
+):
+    """Indian-context indication/contraindication (ABDM) for a medication.
+
+    Returns ``{"indication": null}`` when ABDM is unconfigured or no match found.
+    """
+    if not medicine.strip():
+        raise HTTPException(status_code=422, detail="medicine query parameter is required")
+    indication = await DrugInfoService(db).indication(medicine.strip())
+    return {"indication": indication}

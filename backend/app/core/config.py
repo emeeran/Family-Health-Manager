@@ -20,7 +20,7 @@ class Settings(BaseSettings):
     # Application
     APP_ENV: str = "development"
     APP_NAME: str = "DAWNSTAR Family Health Keeper"
-    APP_VERSION: str = "1.2.14"
+    APP_VERSION: str = "1.2.15"
     DEBUG: bool = False
     # Root log level (DEBUG/INFO/WARNING/ERROR/CRITICAL). Default WARNING keeps
     # the journal quiet; raise it for diagnosis without a rebuild.
@@ -223,6 +223,16 @@ class Settings(BaseSettings):
     DRUG_GENERIC_AI_FALLBACK: bool = True
     OPENFDA_BASE_URL: str = "https://api.fda.gov"
     RXNORM_BASE_URL: str = "https://rxnav.nlm.nih.gov/REST"
+    # ABDM Drug Registry (Ayushman Bharat Digital Mission — India's national drug
+    # catalog). OAuth client_credentials: register on the ABDM sandbox to receive
+    # a clientId/Secret, then set both here to enable Indian brand→generic
+    # resolution, indication/contraindication, and substitute drugs. Server-side
+    # only — never sent to the client. When unset, the ABDM provider returns
+    # empty and the app degrades to RxNorm/openFDA/AI as before.
+    ABDM_CLIENT_ID: str = ""
+    ABDM_CLIENT_SECRET: str = ""
+    ABDM_ENV: str = "sandbox"  # sandbox | production (selects base URL + X-CM-ID)
+    ABDM_DRUG_REGISTRY_BASE_URL: str = ""  # override; else derived from ABDM_ENV
 
     # External health-information APIs (free, no key) for patient education,
     # clinical-trial search, and full drug labels. All degrade to empty on failure.

@@ -14,7 +14,7 @@ import time
 
 from app.core.config import get_settings
 from app.services.drug_info.base import get_drug_info_client
-from app.services.drug_info.providers import drugbank, openfda, rxnorm
+from app.services.drug_info.providers import abdm, drugbank, openfda, rxnorm
 
 logger = logging.getLogger(__name__)
 
@@ -190,6 +190,52 @@ class DrugInfoService:
             logger.warning("openFDA adverse events failed for %r", medicine_name, exc_info=True)
             return []
 
+    # ── ABDM Drug Registry (India) ─────────────────────────────────────
+
+    async def substitutes(self, medicine_name: str) -> list[dict]:
+        """Alternate/substitute brands (ABDM) for a single med, or []."""
+        if not medicine_name or not medicine_name.strip() or not abdm.is_configured():
+            return []
+        client = await get_drug_info_client()
+        try:
+            hit = await abdm.resolve(client, medicine_name)
+            if not hit or not hit.get("brand_id"):
+                return []
+            detail = await abdm.brand_detail(client, hit["brand_id"])
+            return detail.get("substitutes", []) if detail else []
+        except Exception:  # noqa: BLE001 — never break a med-detail view
+            logger.warning("ABDM substitutes failed for %r", medicine_name, exc_info=True)
+            return []
+
+    async def indication(self, medicine_name: str) -> dict | None:
+        """Indian-context indication/contraindication (ABDM) for a single med."""
+        if not medicine_name or not medicine_name.strip() or not abdm.is_configured():
+            return None
+        client = await get_drug_info_client()
+        try:
+            hit = await abdm.resolve(client, medicine_name)
+            if not hit:
+                return None
+            # Brand detail carries dose form + route; fall back to generic detail.
+            if hit.get("brand_id"):
+                detail = await abdm.brand_detail(client, hit["brand_id"])
+            elif hit.get("generic_id"):
+                detail = await abdm.generic_detail(client, hit["generic_id"])
+            else:
+                detail = None
+            if not detail:
+                return None
+            return {
+                "indication": detail.get("indication", ""),
+                "contraindication": detail.get("contraindication", ""),
+                "dose_form": detail.get("dose_form", ""),
+                "routes": detail.get("routes", []),
+                "source": "abdm",
+            }
+        except Exception:  # noqa: BLE001
+            logger.warning("ABDM indication failed for %r", medicine_name, exc_info=True)
+            return None
+
     # ── name normalization ─────────────────────────────────────────────
 
     async def _resolve_generics(self, names: list[str]) -> list[str]:
@@ -205,14 +251,24 @@ class DrugInfoService:
     async def _resolve_generic(self, name: str, client=None) -> str | None:
         """Generic ingredient name for ``name``, or None if unresolvable.
 
-        Resolution order: RxNorm → AI brand→generic (cached, openFDA-validated)
-        → strength-stripping heuristic. The AI step covers names RxNorm doesn't
-        know (common for non-US brands, e.g. Ropark → ropinirole).
+        Resolution order: ABDM (when configured — authoritative for Indian
+        brands) → RxNorm → AI brand→generic (cached, openFDA-validated) →
+        strength-stripping heuristic. ABDM covers names the US sources miss
+        (common for Indian brands, e.g. Ropark → ropinirole); keyless boxes
+        skip straight to RxNorm unchanged.
         """
         if not name or not name.strip():
             return None
         if client is None:
             client = await get_drug_info_client()
+        # ABDM first when configured — it knows Indian brands RxNorm doesn't.
+        if abdm.is_configured():
+            try:
+                hit = await abdm.resolve(client, name)
+                if hit and hit.get("generic_name"):
+                    return hit["generic_name"]
+            except Exception:  # noqa: BLE001 — fall through to RxNorm / AI
+                logger.debug("ABDM resolve failed for %r; falling through", name)
         try:
             resolved = await rxnorm.resolve(client, name)
             if resolved and resolved.get("name"):
