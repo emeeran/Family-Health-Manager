@@ -59,3 +59,6 @@ staging/
 # AI tool caches
 .cache_ggshield
 .qwen/
+
+# Pipeline tooling artifacts (regenerable baselines/snapshots)
+.pipeline/*.tmp
