@@ -227,8 +227,12 @@ async def brand_detail(client: httpx.AsyncClient, brand_id: str) -> dict | None:
     )
     if status != 200 or not isinstance(body, dict):
         return None
-    brand = body.get("brand") if isinstance(body.get("brand"), dict) else {}
-    generic = body.get("generic") if isinstance(body.get("generic"), dict) else {}
+    brand = body.get("brand")
+    if not isinstance(brand, dict):
+        brand = {}
+    generic = body.get("generic")
+    if not isinstance(generic, dict):
+        generic = {}
     subs = body.get("alternateDrugs")
     substitutes: list[dict] = []
     if isinstance(subs, list):
@@ -262,7 +266,9 @@ async def generic_detail(client: httpx.AsyncClient, generic_id: str) -> dict | N
     )
     if status != 200 or not isinstance(body, dict):
         return None
-    generic = body.get("generic") if isinstance(body.get("generic"), dict) else {}
+    generic = body.get("generic")
+    if not isinstance(generic, dict):
+        generic = {}
     return {
         "generic_name": str(generic.get("name") or "").strip(),
         "indication": str(generic.get("indication") or "").strip(),
