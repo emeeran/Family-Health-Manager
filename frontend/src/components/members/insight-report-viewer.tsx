@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { VerificationBadge } from "@/components/shared/verification-badge";
 import { InsightSectionBlock } from "@/components/members/reports/insight-section";
+import { StreamingPreview } from "@/components/members/reports/streaming-preview";
 import { Hba1cTrendChart } from "@/components/members/reports/hba1c-trend-chart";
 import { exportElementToPDF } from "@/lib/pdf-export";
 import { parseSections, sectionKey } from "@/lib/parse-sections";
@@ -457,10 +458,9 @@ export function InsightReport({
               )}
             </div>
             {regenerateText && (
-              <p className="mt-2 max-h-40 overflow-y-auto whitespace-pre-wrap text-sm leading-relaxed text-foreground/80">
-                {regenerateText}
-                <span className="ml-0.5 inline-block h-4 w-1.5 animate-pulse bg-(--brand-accent) align-text-bottom" />
-              </p>
+              <div className="mt-2">
+                <StreamingPreview text={regenerateText} stage={regenerateStage} />
+              </div>
             )}
           </div>
         )}
@@ -498,6 +498,17 @@ export function InsightReport({
                 <Brain className="h-7 w-7 text-[#ff6b35]" />
               </div>
             </div>
+            {(provider || verification) && (
+              <div className="mt-4 flex flex-wrap items-center gap-2">
+                {provider && (
+                  <span className="inline-flex items-center gap-1.5 rounded-full bg-gray-100 px-2.5 py-1 text-[11px] font-medium text-gray-600">
+                    <Brain className="h-3 w-3 text-[#ff6b35]" />
+                    Generated via {provider}
+                  </span>
+                )}
+                <VerificationBadge verification={verification} />
+              </div>
+            )}
             <div className="mt-6 grid grid-cols-2 gap-x-6 gap-y-4 border-t border-gray-100 pt-5 sm:grid-cols-3 lg:grid-cols-5">
               <MetaItem label="Patient" value={memberName} />
               <MetaItem label="Date of birth" value={memberDob || "—"} />

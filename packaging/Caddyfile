@@ -26,7 +26,35 @@
 	}
 }
 
+# AI-generation SSE streams (smart-report / insights / chat / extraction — every
+# such route ends in /stream). These drive a slow local CPU LLM and can
+# legitimately take minutes; the 60s read_timeout above aborts them
+# mid-generation — the proximate cause of "Smart Report fails". Immediate
+# flushing (-1) + a generous read deadline keeps the stream alive. It stays
+# bounded by the backend heartbeat (every 15s) and EXTRACTION_LOCAL_TIMEOUT
+# (300s); a wedged backend is still caught by the active /health check on
+# backend_proxy (same upstream).
+(stream_proxy) {
+	reverse_proxy 127.0.0.1:8000 {
+		flush_interval -1
+		transport http {
+			dial_timeout 3s
+			read_timeout 600s
+			write_timeout 600s
+		}
+	}
+}
+
 :{$PORT:8080} {
+	# AI-generation SSE streams → streaming-aware proxy. Matched first so the
+	# generous read deadline applies; every generation route ends in /stream.
+	@streams {
+		path_regexp streamEnd /stream$
+	}
+	handle @streams {
+		import stream_proxy
+	}
+
 	# Health check → backend
 	handle /health* {
 		import backend_proxy

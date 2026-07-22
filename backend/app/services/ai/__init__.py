@@ -307,6 +307,15 @@ class AIService:
             if full_response:
                 break
 
+        # Strip residual qwen3 <think> tags / code fences from the final response
+        # before persist + postprocess. Belt-and-suspenders with think:False: if
+        # reasoning still leaks through, it can't corrupt the stored insight or
+        # the Smart-Report JSON parse. Lazy import avoids a module-load cycle.
+        if full_response:
+            from app.services.ai.document_extractor import strip_llm_noise
+
+            full_response = strip_llm_noise(full_response)
+
         # Stage 3: Save
         yield sse({"stage": "context", "message": "Saving insight..."})
         insight = AIInsight(
@@ -477,6 +486,13 @@ class AIService:
                 yield event
             if full_response:
                 break
+
+        # Strip residual qwen3 <think> tags / fences before persisting the
+        # assistant message (belt-and-suspenders with think:False).
+        if full_response:
+            from app.services.ai.document_extractor import strip_llm_noise
+
+            full_response = strip_llm_noise(full_response)
 
         if not full_response:
             yield sse({"stage": "error", "message": "All AI providers failed. Please try again."})

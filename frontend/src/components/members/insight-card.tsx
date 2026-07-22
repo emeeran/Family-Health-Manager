@@ -3,6 +3,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { VerificationBadge } from "@/components/shared/verification-badge";
 import { useInsightStream } from "@/lib/hooks/use-insight-stream";
+import { StreamingPreview } from "@/components/members/reports/streaming-preview";
 import type { GeneratedInsight } from "@/lib/api/members";
 import { Brain, Sparkles, Loader2, CheckCircle2, Eye } from "lucide-react";
 import { useVerificationPolling } from "@/lib/hooks/use-verification-polling";
@@ -76,13 +77,7 @@ export const InsightCard = memo(function InsightCard({
       <CardContent>
         {loading && streamText ? (
           <div className="p-3 rounded-lg bg-muted/30">
-            {streamStage && (
-              <p className="text-xs text-(--brand-accent) font-medium mb-2">{streamStage}</p>
-            )}
-            <p className="text-sm text-foreground/80 whitespace-pre-wrap leading-relaxed max-h-40 overflow-y-auto">
-              {streamText}
-              <span className="inline-block w-1.5 h-4 bg-(--brand-accent) animate-pulse ml-0.5 align-text-bottom" />
-            </p>
+            <StreamingPreview text={streamText} stage={streamStage} />
           </div>
         ) : loading ? (
           <div className="flex items-center gap-3 p-3 rounded-lg bg-muted/30">
@@ -113,9 +108,19 @@ export const InsightCard = memo(function InsightCard({
             <VerificationBadge verification={verification} />
           </div>
         ) : (
-          <p className="text-sm text-foreground/60">
-            Click Create to generate an AI health report for {memberFirstName}.
-          </p>
+          <div className="flex items-start gap-3 rounded-lg border border-dashed border-(--brand-accent)/30 bg-gradient-to-br from-(--brand-accent)/5 to-transparent p-3.5">
+            <div className="mt-0.5 flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-(--brand-accent)/10 ring-1 ring-(--brand-accent)/20">
+              <Sparkles className="h-4 w-4 text-(--brand-accent)" />
+            </div>
+            <div className="min-w-0">
+              <p className="text-sm font-medium text-foreground/80">
+                Generate an AI health report{memberFirstName ? ` for ${memberFirstName}` : ""}.
+              </p>
+              <p className="mt-0.5 text-xs text-muted-foreground">
+                Analyzes records, labs &amp; conditions into a structured assessment.
+              </p>
+            </div>
+          </div>
         )}
       </CardContent>
     </Card>

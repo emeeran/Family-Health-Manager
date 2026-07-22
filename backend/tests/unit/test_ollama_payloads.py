@@ -134,6 +134,32 @@ async def test_plain_text_leaves_thinking_alone(fake_ollama):
     assert not payload["messages"][0]["content"].endswith("/no_think")
 
 
+async def test_insight_chat_suppresses_thinking_by_default(fake_ollama):
+    """ollama_chat + ollama_chat_stream (insight/chat path) append /no_think +
+    set think=false by default — qwen3 reasoning is slow on CPU (blows past SSE
+    proxy timeouts on a Smart Report) and leaks <think> tags that corrupt the
+    JSON. Mirrors the extraction-path treatment."""
+    await ollama.ollama_chat("model", "Summarize the patient")
+    payload = fake_ollama.posted[-1]
+    assert payload["think"] is False
+    assert payload["messages"][0]["content"].endswith("/no_think")
+
+    async for _ in ollama.ollama_chat_stream("model", "Summarize the patient"):
+        pass
+    payload = fake_ollama.posted[-1]
+    assert payload["think"] is False
+    assert payload["messages"][0]["content"].endswith("/no_think")
+
+
+async def test_insight_chat_leaves_thinking_when_disabled(monkeypatch, fake_ollama):
+    """OLLAMA_SUPPRESS_THINK=False keeps reasoning on (deeper, but much slower)."""
+    monkeypatch.setattr(ollama.settings, "OLLAMA_SUPPRESS_THINK", False)
+    await ollama.ollama_chat("model", "hi")
+    payload = fake_ollama.posted[-1]
+    assert "think" not in payload
+    assert not payload["messages"][0]["content"].endswith("/no_think")
+
+
 async def test_vision_without_model_is_skipped(monkeypatch, fake_ollama):
     """No OLLAMA_VISION_MODEL → vision call returns None without hitting the API."""
     monkeypatch.setattr(ollama.settings, "OLLAMA_VISION_MODEL", "")

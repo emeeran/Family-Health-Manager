@@ -20,7 +20,7 @@ class Settings(BaseSettings):
     # Application
     APP_ENV: str = "development"
     APP_NAME: str = "DAWNSTAR Family Health Keeper"
-    APP_VERSION: str = "1.2.12"
+    APP_VERSION: str = "1.2.13"
     DEBUG: bool = False
     # Root log level (DEBUG/INFO/WARNING/ERROR/CRITICAL). Default WARNING keeps
     # the journal quiet; raise it for diagnosis without a rebuild.
@@ -193,6 +193,15 @@ class Settings(BaseSettings):
     # full 6C/12T and measurably cuts prompt-eval wall-clock on the local
     # fallback path. Set 0 to omit and let Ollama auto-select.
     OLLAMA_NUM_THREAD: int = os.cpu_count() or 8
+    # Suppress qwen3 reasoning (<think> blocks) on the insight/chat path
+    # (ollama_chat + ollama_chat_stream). Thinking is slow on CPU — a long
+    # reasoning trace can push Smart-Report/insight generation past proxy SSE
+    # timeouts (e.g. Caddy's read_timeout) and the <think> tags leak into the
+    # streamed JSON/prose and corrupt parsing. The extraction path already
+    # suppresses this unconditionally for JSON; this extends the same speed-up
+    # to conversational/insight generation. Turn off (false) only if you want
+    # deeper (but much slower) reasoning and accept the longer wait.
+    OLLAMA_SUPPRESS_THINK: bool = True
 
     # External drug-information APIs (all server-side only — never sent to the
     # client). DrugBank's Clinical API is a paid subscription; leaving

@@ -117,6 +117,26 @@ def test_parse_trailing_prose():
     assert len(report.systems_at_a_glance) == 2
 
 
+def test_parse_strips_qwen3_think_block():
+    """A leaked <think> reasoning trace (containing stray braces that would
+    otherwise mislead the brace-matcher) is stripped before extraction, so the
+    structured report still parses. The original raw is returned unchanged."""
+    think = '<think>Planning: emit {"systems_at_a_glance": []} then the real one.</think>'
+    wrapped = f"{think}\n{json.dumps(CLEAN_REPORT)}"
+    report, raw = parse_smart_report_response(wrapped)
+    assert report is not None
+    assert len(report.systems_at_a_glance) == 2
+    assert report.systems_at_a_glance[0].system == "Blood Health"
+    assert raw == wrapped  # original (incl. think block) preserved
+
+
+def test_parse_strips_unclosed_think_block():
+    """A truncated, unclosed <think> drops everything after it."""
+    wrapped = f"<think>half-finished reasoning that never closes{json.dumps(CLEAN_REPORT)}"
+    report, _ = parse_smart_report_response(wrapped)
+    assert report is None  # everything after the orphan tag was discarded
+
+
 def test_parse_partial_object():
     partial = '{"systems_at_a_glance": [{"system": "Blood Health", "status": "ideal"}]}'
     report, _ = parse_smart_report_response(partial)

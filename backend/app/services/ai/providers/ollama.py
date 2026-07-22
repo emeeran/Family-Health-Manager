@@ -88,6 +88,22 @@ def _ollama_options(**opts: int | float) -> dict:
     return opts
 
 
+def _think_suppressed(content: str) -> tuple[str, bool]:
+    """Conditionally mark insight/chat content for qwen3 reasoning suppression.
+
+    qwen3 is a "thinking" model: on CPU its ``<think>`` block is slow (enough to
+    blow past proxy SSE timeouts on a Smart Report) and the tags leak into the
+    streamed JSON/prose and corrupt parsing. Mirrors the extraction path, which
+    always suppresses reasoning for structured output. Returns ``(content,
+    suppress)``: callers append ``/no_think`` to the prompt and set ``think:
+    False`` on the payload when ``suppress`` is True. Gated by
+    ``OLLAMA_SUPPRESS_THINK`` so it's reversible without a rebuild.
+    """
+    if settings.OLLAMA_SUPPRESS_THINK:
+        return f"{content}\n/no_think", True
+    return content, False
+
+
 async def call_ollama_text(
     prompt: str, model: str | None = None, fmt: str | None = None
 ) -> str | None:
@@ -138,15 +154,18 @@ async def ollama_chat(model: str, prompt: str, num_predict: int = 4096) -> str |
     base_url = await resolve_provider_value("ollama")
     if not base_url:
         return None
+    content, suppress_think = _think_suppressed(prompt)
     url = f"{base_url}/api/chat"
     payload = {
         "model": model,
-        "messages": [{"role": "user", "content": prompt}],
+        "messages": [{"role": "user", "content": content}],
         "stream": False,
         "options": _ollama_options(num_ctx=32768, num_predict=num_predict, temperature=0.3),
         "keep_alive": settings.OLLAMA_KEEP_ALIVE,
     }
-    timeout = _ollama_timeout(len(prompt))
+    if suppress_think:
+        payload["think"] = False
+    timeout = _ollama_timeout(len(content))
 
     async def _do():
         client = await get_ollama_client()
@@ -176,15 +195,18 @@ async def ollama_chat_stream(
     base_url = await resolve_provider_value("ollama")
     if not base_url:
         return
+    content, suppress_think = _think_suppressed(prompt)
     url = f"{base_url}/api/chat"
     payload = {
         "model": model,
-        "messages": [{"role": "user", "content": prompt}],
+        "messages": [{"role": "user", "content": content}],
         "stream": True,
         "options": _ollama_options(num_ctx=32768, num_predict=num_predict, temperature=0.3),
         "keep_alive": settings.OLLAMA_KEEP_ALIVE,
     }
-    timeout = _ollama_timeout(len(prompt), streaming=True)
+    if suppress_think:
+        payload["think"] = False
+    timeout = _ollama_timeout(len(content), streaming=True)
 
     produced = False
     for attempt in range(2):  # initial attempt + 1 retry on transient errors

@@ -30,6 +30,13 @@ logger = logging.getLogger(__name__)
 # A verification still "pending" after this long is treated as unverifiable.
 _PENDING_TIMEOUT_SECONDS = 300
 _JSON_OBJECT_RE = re.compile(r"\{.*\}", re.DOTALL)
+# qwen3 "thinking" wrappers — stripped before JSON extraction so stray braces in
+# a reasoning trace can't mislead _JSON_OBJECT_RE into grabbing the wrong span.
+_REASONING_BLOCK_RE = re.compile(
+    r"<(?:think|thinking|reflection)>.*?</(?:think|thinking|reflection)>",
+    re.DOTALL | re.IGNORECASE,
+)
+_REASONING_OPEN_RE = re.compile(r"<(?:think|thinking|reflection)>.*", re.DOTALL | re.IGNORECASE)
 
 
 def _pending_status(insight: "AIInsight") -> str:
@@ -101,7 +108,11 @@ def parse_smart_report_response(raw: str) -> tuple[SmartReportData | None, str]:
     if not raw or not raw.strip():
         return None, raw
 
-    text = raw.strip()
+    # Drop any qwen3 reasoning trace first (belt-and-suspenders with the
+    # insight path's think:False) so a stray <think> block with braces can't
+    # poison the JSON extraction below.
+    text = _REASONING_BLOCK_RE.sub("", raw.strip())
+    text = _REASONING_OPEN_RE.sub("", text).strip()
     data = _try_load_json(text)
 
     if data is None and text.startswith("```"):
