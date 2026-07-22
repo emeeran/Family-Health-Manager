@@ -3,6 +3,7 @@ import { Button } from "@/components/ui/button";
 import { VerificationBadge } from "@/components/shared/verification-badge";
 import { InsightSectionBlock } from "@/components/members/reports/insight-section";
 import { StreamingPreview } from "@/components/members/reports/streaming-preview";
+import { ValidationFootnote } from "@/components/members/reports/validation-footnote";
 import { Hba1cTrendChart } from "@/components/members/reports/hba1c-trend-chart";
 import { exportElementToPDF } from "@/lib/pdf-export";
 import { parseSections, sectionKey } from "@/lib/parse-sections";
@@ -23,7 +24,6 @@ import {
   Activity,
   FlaskConical,
   CalendarClock,
-  Info,
   Loader2,
   RefreshCw,
 } from "lucide-react";
@@ -535,14 +535,11 @@ export function InsightReport({
               ))}
             </div>
 
-            <div className="flex gap-2.5 rounded-xl bg-gray-50 p-3.5 ring-1 ring-gray-100">
-              <Info className="mt-0.5 h-4 w-4 shrink-0 text-gray-400" />
-              <p className="text-[11.5px] leading-relaxed text-gray-500">
-                <span className="font-semibold text-gray-600">Note:</span> This information is for
-                educational purposes only and is not a substitute for professional medical advice.
-                Please consult your doctor for personalised guidance.
-              </p>
-            </div>
+            <ValidationFootnote
+              provider={provider}
+              verification={verification ?? null}
+              generatedAt={generatedAt}
+            />
           </div>
 
           {/* Footer */}
@@ -553,11 +550,6 @@ export function InsightReport({
             </span>
           </footer>
         </article>
-        {provider && (
-          <p className="mt-2 text-center text-[10px] text-muted-foreground">
-            Generated via {provider}
-          </p>
-        )}
       </div>
     </div>
   );

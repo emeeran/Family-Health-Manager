@@ -1,6 +1,6 @@
 [project]
 name = "hdd-health-manager"
-version = "1.2.15"
+version = "1.2.16"
 description = "Self-hosted, privacy-first family health record manager with AI-powered document extraction."
 readme = "README.md"
 requires-python = ">=3.11"

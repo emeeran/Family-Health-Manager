@@ -6,6 +6,7 @@ import { SystemStatusGrid } from "@/components/members/reports/system-status-gri
 import { ParameterTable } from "@/components/members/reports/parameter-table";
 import { FocusCard } from "@/components/members/reports/focus-card";
 import { RecommendationList } from "@/components/members/reports/recommendation-list";
+import { ValidationFootnote } from "@/components/members/reports/validation-footnote";
 import { InsightReport } from "@/components/members/insight-report-viewer";
 import { exportElementToPDF } from "@/lib/pdf-export";
 import type { VerificationResult } from "@/lib/types/message";
@@ -325,10 +326,11 @@ export function SmartReportViewer({
               </ReportSection>
             )}
 
-            <div className="rounded-lg bg-gray-50 p-3 text-[12px] leading-relaxed text-gray-500">
-              <span className="font-semibold text-gray-600">NOTE:</span> This information is for
-              educational purposes only. Please consult your doctor for personalised advice.
-            </div>
+            <ValidationFootnote
+              provider={provider}
+              verification={verification}
+              generatedAt={generatedAt}
+            />
           </div>
 
           {/* Footer */}
