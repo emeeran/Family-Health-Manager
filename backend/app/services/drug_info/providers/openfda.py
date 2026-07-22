@@ -114,6 +114,29 @@ def _drug_class(openfda_meta: dict) -> str | None:
     return None
 
 
+async def label_exists(client: httpx.AsyncClient, generic_name: str) -> bool:
+    """Cheap existence check: does openFDA have ≥1 label for this generic?
+
+    Used to validate an AI-suggested generic before caching/using it, so a
+    hallucinated name can't poison lookups. Treats any request failure as
+    "not found" rather than risking a false positive.
+    """
+    if not generic_name:
+        return False
+    params = {
+        "search": f"openfda.generic_name:{_quoted(generic_name)}",
+        "limit": 1,
+        **_auth_param(),
+    }
+    try:
+        _status, body = await fetch_json(
+            client, "GET", f"{_base()}/drug/label.json", params=params
+        )
+        return bool(_results(body))
+    except Exception:  # noqa: BLE001 — a failed probe is not a positive
+        return False
+
+
 async def label(client: httpx.AsyncClient, generic_name: str) -> dict | None:
     """The most recent FDA label for a generic drug (key sections only)."""
     if not generic_name:

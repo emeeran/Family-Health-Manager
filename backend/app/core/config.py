@@ -201,6 +201,11 @@ class Settings(BaseSettings):
     DRUGBANK_API_KEY: str = ""
     DRUGBANK_REGION: str = "us"  # at/ca/eu/... — filters DrugBank results
     OPENFDA_API_KEY: str = ""  # Optional; raises openFDA rate limits (1k/day→120k/day)
+    # When RxNorm + the strength-stripping heuristic can't map a free-text med
+    # name to a generic (common for non-US brands, e.g. "Ropark" → ropinirole),
+    # ask the configured AI for the active ingredient, then validate it against
+    # openFDA before use. Cached per brand. Disable to skip the AI round-trip.
+    DRUG_GENERIC_AI_FALLBACK: bool = True
     OPENFDA_BASE_URL: str = "https://api.fda.gov"
     RXNORM_BASE_URL: str = "https://rxnav.nlm.nih.gov/REST"
 

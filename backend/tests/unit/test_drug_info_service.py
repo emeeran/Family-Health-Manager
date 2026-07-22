@@ -4,6 +4,8 @@ name resolution with heuristic fallback."""
 
 from unittest.mock import AsyncMock, patch
 
+import pytest
+
 from app.core.config import get_settings
 from app.services.drug_info.service import DrugInfoService
 
@@ -21,6 +23,16 @@ def _patch_client():
 
 def _meds(*names):
     return [{"medicine": n, "type": "Tab", "dosage": "1-0-1"} for n in names]
+
+
+@pytest.fixture(autouse=True)
+def _clear_generic_ai_cache():
+    """The brand→generic AI cache is module-level; isolate every test."""
+    from app.services.drug_info import service as _svc
+
+    _svc._generic_ai_cache.clear()
+    yield
+    _svc._generic_ai_cache.clear()
 
 
 # ── DDI provider selection ────────────────────────────────────────────
@@ -199,3 +211,144 @@ async def test_adverse_events_empty_when_unresolvable():
         # Free text "500 mg" has no resolvable drug → heuristic yields None.
         assert await svc.adverse_events("500 mg") == []
     m.assert_not_awaited()
+
+
+# ── AI brand→generic fallback (RxNorm can't map non-US brands) ────────
+
+
+async def test_resolve_generic_uses_ai_when_rxnorm_misses():
+    """Ropark (a non-US brand) isn't in RxNorm; the AI fallback resolves it to
+    ropinirole, then validates that openFDA actually has it."""
+    svc = DrugInfoService(db=object())
+    with (
+        _patch_client(),
+        patch(
+            "app.services.drug_info.service.rxnorm.resolve",
+            new_callable=AsyncMock,
+            return_value=None,
+        ),
+        patch(
+            "app.services.drug_info.service._ai_generic_name",
+            new_callable=AsyncMock,
+            return_value="ropinirole",
+        ) as mock_ai,
+        patch(
+            "app.services.drug_info.service.openfda.label_exists",
+            new_callable=AsyncMock,
+            return_value=True,
+        ) as mock_exists,
+    ):
+        out = await svc._resolve_generic("Ropark 1mg")
+    assert out == "ropinirole"
+    mock_ai.assert_awaited_once()
+    mock_exists.assert_awaited_once_with(_FAKE_CLIENT, "ropinirole")
+
+
+async def test_resolve_generic_caches_ai_result_so_ai_runs_once():
+    svc = DrugInfoService(db=object())
+    with (
+        _patch_client(),
+        patch(
+            "app.services.drug_info.service.rxnorm.resolve",
+            new_callable=AsyncMock,
+            return_value=None,
+        ),
+        patch(
+            "app.services.drug_info.service._ai_generic_name",
+            new_callable=AsyncMock,
+            return_value="ropinirole",
+        ) as mock_ai,
+        patch(
+            "app.services.drug_info.service.openfda.label_exists",
+            new_callable=AsyncMock,
+            return_value=True,
+        ),
+    ):
+        await svc._resolve_generic("Ropark 1mg")
+        await svc._resolve_generic("Ropark 1mg")
+    assert mock_ai.await_count == 1
+
+
+async def test_resolve_generic_rejects_ai_candidate_not_in_openfda():
+    """A hallucinated/guessed name that openFDA doesn't have must not be used —
+    fall through to the heuristic tail instead."""
+    svc = DrugInfoService(db=object())
+    with (
+        _patch_client(),
+        patch(
+            "app.services.drug_info.service.rxnorm.resolve",
+            new_callable=AsyncMock,
+            return_value=None,
+        ),
+        patch(
+            "app.services.drug_info.service._ai_generic_name",
+            new_callable=AsyncMock,
+            return_value="xyznotadrug",
+        ),
+        patch(
+            "app.services.drug_info.service.openfda.label_exists",
+            new_callable=AsyncMock,
+            return_value=False,
+        ),
+    ):
+        out = await svc._resolve_generic("Mysterybrand 5mg")
+    # Rejected → heuristic tail: strips "5mg", capitalizes the brand token.
+    assert out == "Mysterybrand"
+
+
+async def test_resolve_generic_ai_unsure_falls_to_heuristic():
+    svc = DrugInfoService(db=object())
+    with (
+        _patch_client(),
+        patch(
+            "app.services.drug_info.service.rxnorm.resolve",
+            new_callable=AsyncMock,
+            return_value=None,
+        ),
+        patch(
+            "app.services.drug_info.service._ai_generic_name",
+            new_callable=AsyncMock,
+            return_value=None,
+        ),
+        patch(
+            "app.services.drug_info.service.openfda.label_exists", new_callable=AsyncMock
+        ) as mock_exists,
+    ):
+        out = await svc._resolve_generic("Warfarin 5mg")
+    assert out == "Warfarin"  # heuristic
+    mock_exists.assert_not_awaited()  # no candidate → no openFDA probe
+
+
+async def test_ai_generic_name_respects_disable_flag(monkeypatch):
+    from app.services.drug_info.service import _ai_generic_name
+
+    monkeypatch.setattr(get_settings(), "DRUG_GENERIC_AI_FALLBACK", False)
+    assert await _ai_generic_name(object(), "Ropark 1mg") is None
+
+
+async def test_ai_generic_name_calls_ai_and_sanitizes():
+    from app.services.drug_info.service import _ai_generic_name
+
+    with patch(
+        "app.services.ai.AIService._call_ai",
+        new_callable=AsyncMock,
+        return_value=("Ropinirole.", "ollama"),
+    ) as mock_call:
+        out = await _ai_generic_name(object(), "Ropark 1mg")
+    assert out == "ropinirole"
+    mock_call.assert_awaited_once()
+
+
+def test_sanitize_generic_rejects_non_answers():
+    from app.services.drug_info.service import _sanitize_generic
+
+    for bad in ["unknown", "Unknown", "n/a", "I don't know", "", "ab", "x" * 50]:
+        assert _sanitize_generic(bad) is None, bad
+
+
+def test_sanitize_generic_keeps_clean_tokens():
+    from app.services.drug_info.service import _sanitize_generic
+
+    assert _sanitize_generic("ropinirole") == "ropinirole"
+    assert _sanitize_generic("Ropinirole hydrochloride") == "ropinirole"
+    assert _sanitize_generic("  metformin.") == "metformin"

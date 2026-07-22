@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import logging
 import re
+import time
 
 from app.core.config import get_settings
 from app.services.drug_info.base import get_drug_info_client
@@ -47,6 +48,64 @@ _FORM_WORDS = {
     "strip",
     "sachet",
 }
+
+# brand→generic resolved by the AI fallback (when RxNorm + heuristic can't map a
+# name). Cached so each brand costs at most one AI round-trip; negatives cached
+# shorter so a transient AI miss is retried. Shared across requests (module-level).
+_GENERIC_AI_POS_TTL = 7 * 24 * 3600  # 7 days — brand→generic is stable
+_GENERIC_AI_NEG_TTL = 24 * 3600  # 1 day — retry unresolved names sooner
+_generic_ai_cache: dict[str, tuple[str | None, float]] = {}
+
+
+def _ai_cache_key(name: str) -> str:
+    return re.sub(r"\s+", " ", name.strip().lower())
+
+
+def _sanitize_generic(raw: str) -> str | None:
+    """Pull a single plausible generic token out of an AI reply.
+
+    The prompt asks for one lowercase word; this defends against model chattiness
+    or a refusal by taking the first alpha run and rejecting non-answers.
+    """
+    match = re.search(r"[A-Za-z][A-Za-z\-]*", raw)
+    if not match:
+        return None
+    token = match.group(0).lower()
+    if token in {"unknown", "none", "na", "n", "no", "not", "unsure", "null"}:
+        return None
+    if len(token) < 3 or len(token) > 40:
+        return None
+    return token
+
+
+async def _ai_generic_name(db, name: str) -> str | None:
+    """Ask the configured AI for the active ingredient of ``name``.
+
+    Returns a sanitized single token, or None if the AI is unavailable or unsure.
+    Uses the household's provider failover chain, so it works on Ollama-only boxes.
+    """
+    if not get_settings().DRUG_GENERIC_AI_FALLBACK:
+        return None
+    if db is None:
+        # No session (e.g. unit tests) — can't build an AIService, so skip the
+        # AI step and let the heuristic tail handle it.
+        return None
+    try:
+        from app.services.ai import AIService
+    except Exception:  # noqa: BLE001 — AI is optional for drug lookups
+        return None
+    prompt = (
+        "You map medicine names to their single generic active ingredient. "
+        f'Medicine: "{name}". '
+        "Reply with ONLY the lowercase generic (active ingredient) name and "
+        "nothing else — no punctuation, no explanation. If you are not "
+        "confident, reply exactly: unknown"
+    )
+    try:
+        text, _provider = await AIService(db)._call_ai(prompt, context="")
+    except Exception:  # noqa: BLE001 — never let an AI failure break a drug lookup
+        return None
+    return _sanitize_generic(text or "")
 
 
 class DrugInfoService:
@@ -144,7 +203,12 @@ class DrugInfoService:
         return out
 
     async def _resolve_generic(self, name: str, client=None) -> str | None:
-        """Generic ingredient name for ``name``, or None if unresolvable."""
+        """Generic ingredient name for ``name``, or None if unresolvable.
+
+        Resolution order: RxNorm → AI brand→generic (cached, openFDA-validated)
+        → strength-stripping heuristic. The AI step covers names RxNorm doesn't
+        know (common for non-US brands, e.g. Ropark → ropinirole).
+        """
         if not name or not name.strip():
             return None
         if client is None:
@@ -153,9 +217,36 @@ class DrugInfoService:
             resolved = await rxnorm.resolve(client, name)
             if resolved and resolved.get("name"):
                 return resolved["name"]
-        except Exception:  # noqa: BLE001 — fall through to heuristic
-            logger.debug("RxNorm resolve failed for %r; using heuristic", name)
+        except Exception:  # noqa: BLE001 — fall through to AI / heuristic
+            logger.debug("RxNorm resolve failed for %r; trying AI/heuristic", name)
+
+        # RxNorm missed → AI brand→generic fallback (cached), validated against
+        # openFDA so a hallucinated name can't poison downstream lookups.
+        key = _ai_cache_key(name)
+        now = time.monotonic()
+        cached = _generic_ai_cache.get(key)
+        ttl = _GENERIC_AI_POS_TTL if (cached and cached[0]) else _GENERIC_AI_NEG_TTL
+        if cached is None or now - cached[1] >= ttl:
+            generic = await self._ai_resolve(name, client)
+            _generic_ai_cache[key] = (generic, now)
+        else:
+            generic = cached[0]
+        if generic:
+            return generic
         return _heuristic_generic(name)
+
+    async def _ai_resolve(self, name: str, client) -> str | None:
+        """AI brand→generic, validated against openFDA existence. None if unsure."""
+        candidate = await _ai_generic_name(self.db, name)
+        if not candidate:
+            return None
+        try:
+            if await openfda.label_exists(client, candidate):
+                return candidate
+            logger.debug("AI generic %r for %r not in openFDA; rejecting", candidate, name)
+        except Exception:  # noqa: BLE001 — treat a failed probe as unresolvable
+            logger.debug("openFDA existence check failed for AI generic %r", candidate)
+        return None
 
 
 def _heuristic_generic(name: str) -> str | None:
