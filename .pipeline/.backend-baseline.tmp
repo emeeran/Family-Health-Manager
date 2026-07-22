@@ -1,0 +1,129 @@
+=== BACKEND: uv run pytest -q ===
+started: 2026-07-21T18:39:11Z
+........................................................................ [ 11%]
+........................................................................ [ 23%]
+.......FFF...FF......................................................... [ 34%]
+........................................................................ [ 46%]
+........................................................................ [ 57%]
+........................................................................ [ 69%]
+........................................................................ [ 80%]
+........................................................................ [ 92%]
+.................................................                        [100%]
+=================================== FAILURES ===================================
+__________________ test_repair_operations_succeed[checkpoint] __________________
+
+auth_client = <httpx.AsyncClient object at 0x7cd05020b2d0>
+tmp_path = PosixPath('/tmp/pytest-of-em/pytest-7/test_repair_operations_succeed0')
+monkeypatch = <_pytest.monkeypatch.MonkeyPatch object at 0x7cd050110b10>
+operation = 'checkpoint'
+
+    @pytest.mark.asyncio
+    @pytest.mark.parametrize("operation", OPS)
+    async def test_repair_operations_succeed(auth_client, tmp_path, monkeypatch, operation):
+        """Each maintenance operation runs and returns before/after snapshots."""
+        db = tmp_path / "health.db"
+        _seed_sqlite(db)
+        _point_service_at(monkeypatch, db)
+    
+        resp = await auth_client.post("/api/v1/database/repair", json={"operation": operation})
+>       assert resp.status_code == 200, resp.text
+E       AssertionError: {"detail":"A restore is in progress"}
+E       assert 409 == 200
+E        +  where 409 = <Response [409 Conflict]>.status_code
+
+tests/test_db_maintenance.py:135: AssertionError
+___________________ test_repair_operations_succeed[reindex] ____________________
+
+auth_client = <httpx.AsyncClient object at 0x7cd0501fafd0>
+tmp_path = PosixPath('/tmp/pytest-of-em/pytest-7/test_repair_operations_succeed1')
+monkeypatch = <_pytest.monkeypatch.MonkeyPatch object at 0x7cd04a6d7650>
+operation = 'reindex'
+
+    @pytest.mark.asyncio
+    @pytest.mark.parametrize("operation", OPS)
+    async def test_repair_operations_succeed(auth_client, tmp_path, monkeypatch, operation):
+        """Each maintenance operation runs and returns before/after snapshots."""
+        db = tmp_path / "health.db"
+        _seed_sqlite(db)
+        _point_service_at(monkeypatch, db)
+    
+        resp = await auth_client.post("/api/v1/database/repair", json={"operation": operation})
+>       assert resp.status_code == 200, resp.text
+E       AssertionError: {"detail":"A restore is in progress"}
+E       assert 409 == 200
+E        +  where 409 = <Response [409 Conflict]>.status_code
+
+tests/test_db_maintenance.py:135: AssertionError
+____________________ test_repair_operations_succeed[vacuum] ____________________
+
+auth_client = <httpx.AsyncClient object at 0x7cd051118510>
+tmp_path = PosixPath('/tmp/pytest-of-em/pytest-7/test_repair_operations_succeed2')
+monkeypatch = <_pytest.monkeypatch.MonkeyPatch object at 0x7cd0501faf50>
+operation = 'vacuum'
+
+    @pytest.mark.asyncio
+    @pytest.mark.parametrize("operation", OPS)
+    async def test_repair_operations_succeed(auth_client, tmp_path, monkeypatch, operation):
+        """Each maintenance operation runs and returns before/after snapshots."""
+        db = tmp_path / "health.db"
+        _seed_sqlite(db)
+        _point_service_at(monkeypatch, db)
+    
+        resp = await auth_client.post("/api/v1/database/repair", json={"operation": operation})
+>       assert resp.status_code == 200, resp.text
+E       AssertionError: {"detail":"A restore is in progress"}
+E       assert 409 == 200
+E        +  where 409 = <Response [409 Conflict]>.status_code
+
+tests/test_db_maintenance.py:135: AssertionError
+__________________ test_restore_restarts_caddy_after_backend ___________________
+
+tmp_path = PosixPath('/tmp/pytest-of-em/pytest-7/test_restore_restarts_caddy_af0')
+
+>   ???
+E   AssertionError: restore did not start Caddy (site would be unreachable):
+E     systemctl stop health-manager.service
+E     systemctl start health-manager.service
+E     
+E   assert 'start health-manager-caddy.service' in 'systemctl stop health-manager.service\nsystemctl start health-manager.service\n'
+
+tests/test_restore_archive.py:203: AssertionError
+______________________ test_restore_handles_large_archive ______________________
+
+tmp_path = PosixPath('/tmp/pytest-of-em/pytest-7/test_restore_handles_large_arc0')
+systemctl_guard = ('/tmp/pytest-of-em/pytest-7/test_restore_handles_large_arc0/fakebin:/home/em/code/finished/health-manager/backend/.ve...kflow/plugins/sdd-workflow/bin', PosixPath('/tmp/pytest-of-em/pytest-7/test_restore_handles_large_arc0/systemctl.log'))
+
+>   ???
+E   AssertionError: restore failed:
+E     STDOUT:
+E     STDERR:
+E   assert 1 == 0
+E    +  where 1 = CompletedProcess(args=['bash', '/home/em/code/finished/health-manager/packaging/restore-archive.sh'], returncode=1, stdout='', stderr='').returncode
+
+tests/test_restore_archive.py:238: AssertionError
+=============================== warnings summary ===============================
+.venv/lib/python3.11/site-packages/passlib/utils/__init__.py:854
+  /home/em/code/finished/health-manager/backend/.venv/lib/python3.11/site-packages/passlib/utils/__init__.py:854: DeprecationWarning: 'crypt' is deprecated and slated for removal in Python 3.13
+    from crypt import crypt as _crypt
+
+tests/integration/test_ai_status.py::test_ollama_available_when_reachable_and_model_installed
+  /home/em/code/finished/health-manager/backend/.venv/lib/python3.11/site-packages/passlib/handlers/argon2.py:716: DeprecationWarning: Accessing argon2.__version__ is deprecated and will be removed in a future release. Use importlib.metadata directly to query for argon2-cffi's packaging metadata.
+    _argon2_cffi.__version__, max_version)
+
+tests/unit/test_attachment_service.py::test_download_attachment
+  /home/em/.local/share/uv/python/cpython-3.11.14-linux-x86_64-gnu/lib/python3.11/asyncio/events.py:84: RuntimeWarning: coroutine 'AsyncMockMixin._execute_mock_call' was never awaited
+    self._context.run(self._callback, *self._args)
+  Enable tracemalloc to get traceback where the object was allocated.
+  See https://docs.pytest.org/en/stable/how-to/capture-warnings.html#resource-warnings for more info.
+
+-- Docs: https://docs.pytest.org/en/stable/how-to/capture-warnings.html
+=========================== short test summary info ============================
+FAILED tests/test_db_maintenance.py::test_repair_operations_succeed[checkpoint]
+FAILED tests/test_db_maintenance.py::test_repair_operations_succeed[reindex]
+FAILED tests/test_db_maintenance.py::test_repair_operations_succeed[vacuum]
+FAILED tests/test_restore_archive.py::test_restore_restarts_caddy_after_backend
+FAILED tests/test_restore_archive.py::test_restore_handles_large_archive - As...
+5 failed, 620 passed, 3 warnings in 502.61s (0:08:22)
+
+BACKEND_EXIT=1
+finished: 2026-07-21T18:47:36Z
