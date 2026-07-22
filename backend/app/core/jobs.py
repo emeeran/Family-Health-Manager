@@ -713,17 +713,23 @@ async def migrate_attachments_to_encrypted() -> dict:
 
     migrated = 0
     failed = 0
+    skipped = 0  # un-encrypted rows whose file is already gone (not a failure)
     async with SessionLocal() as db:
         result = await db.execute(select(Attachment).where(Attachment.encrypted.is_(False)))
         attachments = list(result.scalars().all())
         if not attachments:
-            return {"migrated": 0, "failed": 0}
+            return {"migrated": 0, "skipped": 0, "failed": 0}
 
         for att in attachments:
             old_path = Path(att.file_path)
             if not old_path.exists():
-                logger.warning("attachment migration: file missing for %s — skipping", att.id)
-                failed += 1
+                # A missing file isn't a migration failure — the row's file is
+                # already gone (it 404s on download regardless). Skip quietly
+                # (DEBUG) and don't count it as failed, so a handful of stale
+                # orphans don't log a scary "N failed" every boot. Remove the
+                # orphaned rows with the one-off cleanup script if desired.
+                logger.debug("attachment migration: file missing for %s — skipping", att.id)
+                skipped += 1
                 continue
             try:
                 ext = old_path.suffix or ".bin"
@@ -748,5 +754,10 @@ async def migrate_attachments_to_encrypted() -> dict:
                 logger.exception("attachment migration: failed for %s", att.id)
                 failed += 1
 
-    logger.info("attachment migration complete: %d migrated, %d failed", migrated, failed)
-    return {"migrated": migrated, "failed": failed}
+    logger.info(
+        "attachment migration complete: %d migrated, %d skipped, %d failed",
+        migrated,
+        skipped,
+        failed,
+    )
+    return {"migrated": migrated, "skipped": skipped, "failed": failed}
