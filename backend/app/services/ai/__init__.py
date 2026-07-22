@@ -400,8 +400,9 @@ class AIService:
         provider = ""
 
         config = await self._get_provider_config()
+        from app.schemas.ai_provider_config import PROVIDER_LABELS
 
-        # Primary: Ollama models (local streaming) — use configured model
+        # Local: Ollama models (streaming) — use configured model
         ollama_cfg = next((p for p in config.providers if p.id == "ollama"), None)
         ollama_model = (
             ollama_cfg.model if ollama_cfg and ollama_cfg.model else settings.OLLAMA_MODEL
@@ -411,53 +412,71 @@ class AIService:
             ollama_models.append(
                 (settings.OLLAMA_TEXT_MODEL, f"Ollama {settings.OLLAMA_TEXT_MODEL}")
             )
-        for model, label in ollama_models:
-            try:
-                yield sse({"stage": "provider", "provider": label})
-                chunks = []
-                async for kind, payload in _base.stream_with_heartbeat(
-                    self._ollama_chat_stream(model, full_prompt)
-                ):
-                    if kind == "beat":
-                        yield sse({"stage": "ping"})
-                    elif kind == "chunk" and isinstance(payload, str):
-                        chunks.append(payload)
-                        yield sse({"stage": "token", "content": payload})
-                    elif kind == "error" and isinstance(payload, BaseException):
-                        raise payload
-                result = "".join(chunks)
-                if result:
-                    full_response = result
-                    provider = label
-                    break
-            except Exception as exc:
-                logger.warning(
-                    "Ollama streaming model %s failed: %s", label, _base.exc_description(exc)
-                )
 
-        if not full_response:
-            from app.schemas.ai_provider_config import PROVIDER_LABELS
+        # Cloud: configured providers in the user-defined fallback order.
+        cloud_providers: list[tuple] = []
+        for prov in config.providers:
+            if not prov.enabled or prov.id == "ollama":
+                continue
+            provider_fn = self._get_provider_fn(prov.id)
+            if not provider_fn:
+                continue
+            label = f"{PROVIDER_LABELS.get(prov.id, prov.id)} ({prov.model})"
+            cloud_providers.append((provider_fn, label, prov.model))
 
-            cloud_providers: list[tuple] = []
-            for prov in config.providers:
-                if not prov.enabled or prov.id == "ollama":
-                    continue
-                provider_fn = self._get_provider_fn(prov.id)
-                if not provider_fn:
-                    continue
-                label = f"{PROVIDER_LABELS.get(prov.id, prov.id)} ({prov.model})"
-                cloud_providers.append((provider_fn, label, prov.model))
-
-            if cloud_providers:
+        async def local_phase() -> AsyncGenerator[str, None]:
+            nonlocal full_response, provider
+            for model, label in ollama_models:
                 try:
-                    yield sse({"stage": "provider", "provider": "Cloud AI"})
-                    full_response, provider = await self._race_providers(
-                        full_prompt, cloud_providers
-                    )
-                    if full_response:
-                        yield sse({"stage": "token", "content": full_response})
+                    yield sse({"stage": "provider", "provider": label})
+                    chunks = []
+                    async for kind, payload in _base.stream_with_heartbeat(
+                        self._ollama_chat_stream(model, full_prompt)
+                    ):
+                        if kind == "beat":
+                            yield sse({"stage": "ping"})
+                        elif kind == "chunk" and isinstance(payload, str):
+                            chunks.append(payload)
+                            yield sse({"stage": "token", "content": payload})
+                        elif kind == "error" and isinstance(payload, BaseException):
+                            raise payload
+                    result = "".join(chunks)
+                    if result:
+                        full_response = result
+                        provider = label
+                        return
                 except Exception as exc:
-                    logger.warning("Cloud providers failed for streaming chat: %s", exc)
+                    logger.warning(
+                        "Ollama streaming model %s failed: %s", label, _base.exc_description(exc)
+                    )
+
+        async def cloud_phase() -> AsyncGenerator[str, None]:
+            nonlocal full_response, provider
+            if full_response or not cloud_providers:
+                return
+            try:
+                yield sse({"stage": "provider", "provider": "Cloud AI"})
+                resp, prov = await self._race_providers(full_prompt, cloud_providers)
+                if resp:
+                    full_response = resp
+                    provider = prov
+                    yield sse({"stage": "token", "content": resp})
+            except Exception as exc:
+                logger.warning("Cloud providers failed for streaming chat: %s", exc)
+
+        # Primary group first, the other as automatic fallback — mirrors
+        # generate_insight_stream so chat respects the cloud/local setting
+        # (and the resolved "auto" primary).
+        phases = (
+            [cloud_phase, local_phase]
+            if config.primary_provider == "cloud"
+            else [local_phase, cloud_phase]
+        )
+        for phase_fn in phases:
+            async for event in phase_fn():
+                yield event
+            if full_response:
+                break
 
         if not full_response:
             yield sse({"stage": "error", "message": "All AI providers failed. Please try again."})
