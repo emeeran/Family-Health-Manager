@@ -50,6 +50,93 @@ async def _generate_interactions(
     return interactions
 
 
+def _insight_verification_dict(insight: AIInsight) -> dict:
+    """Build the verification sub-object from an AIInsight's verification fields."""
+    return {
+        "status": insight.verification_status,
+        "claims_checked": insight.verification_claims_checked,
+        "verifier_provider": insight.verification_verifier,
+        "summary": insight.verification_summary,
+        "warnings": json.loads(insight.verification_warnings_json)
+        if insight.verification_warnings_json
+        else None,
+        "verified_at": insight.verification_at.isoformat() if insight.verification_at else None,
+    }
+
+
+async def _verify_ddi_inline(
+    db: AsyncSession,
+    household: Household,
+    insight: AIInsight,
+    interactions: list[dict],
+    medications: list[dict],
+) -> dict | None:
+    """Synchronously validate AI-generated drug interactions with a second model.
+
+    Writes the result onto ``insight`` (the cached AIInsight) and returns the
+    verification dict. Returns None when verification is disabled or the result
+    was DrugBank-sourced (authoritative — no AI content to validate). DDI is
+    non-streaming and cached, so the check always runs inline regardless of
+    ``AI_VERIFICATION_SYNCHRONOUS``.
+    """
+    from app.core.config import get_settings
+
+    if not get_settings().AI_VERIFICATION_ENABLED:
+        return None
+    if not any(isinstance(ix, dict) and ix.get("source") == "ai" for ix in interactions):
+        return None  # DrugBank-only — authoritative, nothing AI-generated to check.
+
+    from app.services.ai_service import AIService
+    from app.services.verification_service import DDI_VERIFICATION_PROMPT, VerificationService
+
+    med_list = "; ".join(
+        f"{m.get('medicine', '?')} ({m.get('dosage', '?')})" for m in medications
+    )
+    prompt = DDI_VERIFICATION_PROMPT.format(
+        medications=med_list[:2000], interactions=insight.response
+    )
+    try:
+        await VerificationService(db, AIService(db, household_id=household.id)).verify_insight(
+            insight, prompt=prompt
+        )
+        await db.flush()
+    except Exception as exc:
+        logger.warning("DDI verification failed: %s", exc)
+    return _insight_verification_dict(insight)
+
+
+async def _generate_cache_and_verify(
+    db: AsyncSession,
+    household: Household,
+    member_id: UUID,
+    medications: list[dict],
+) -> dict:
+    """Generate interactions, cache as an AIInsight, validate inline, commit."""
+    interactions = await _generate_interactions(db, household, medications)
+    cached_insight = AIInsight(
+        prompt=f"__drug_interactions__{member_id}",
+        response=json.dumps(interactions),
+        provider_used="auto",
+    )
+    db.add(cached_insight)
+    await db.flush()
+
+    verification = await _verify_ddi_inline(
+        db, household, cached_insight, interactions, medications
+    )
+    try:
+        await db.commit()
+    except Exception as exc:
+        logger.error("Failed to cache drug interactions: %s", exc)
+
+    return {
+        "interactions": interactions,
+        "medications_checked": len(medications),
+        "cached_at": None,
+        "verification": verification,
+    }
+
+
 @router.get("/{member_id}/latest-drug-interactions")
 async def get_latest_drug_interactions(
     member_id: UUID,
@@ -88,27 +175,12 @@ async def get_latest_drug_interactions(
                     "interactions": interactions,
                     "medications_checked": len(medications),
                     "cached_at": cached.generated_at.isoformat(),
+                    "verification": _insight_verification_dict(cached),
                 }
         except (json.JSONDecodeError, ValueError):
             pass
 
-    interactions = await _generate_interactions(db, household, medications)
-    try:
-        cached_insight = AIInsight(
-            prompt=f"__drug_interactions__{member_id}",
-            response=json.dumps(interactions),
-            provider_used="auto",
-        )
-        db.add(cached_insight)
-        await db.commit()
-    except Exception as exc:
-        logger.error("Failed to cache drug interactions: %s", exc)
-
-    return {
-        "interactions": interactions,
-        "medications_checked": len(medications),
-        "cached_at": None,
-    }
+    return await _generate_cache_and_verify(db, household, member_id, medications)
 
 
 @router.get("/{member_id}/drug-interactions")
@@ -129,9 +201,4 @@ async def get_drug_interactions(
     if len(medications) < 2:
         return {"interactions": [], "medications_checked": len(medications)}
 
-    interactions = await _generate_interactions(db, household, medications)
-
-    return {
-        "interactions": interactions,
-        "medications_checked": len(medications),
-    }
+    return await _generate_cache_and_verify(db, household, member_id, medications)

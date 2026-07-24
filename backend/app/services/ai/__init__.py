@@ -9,6 +9,7 @@ import logging
 import time
 from collections.abc import AsyncGenerator, Callable
 from datetime import date
+from typing import TYPE_CHECKING
 from uuid import UUID
 
 import httpx
@@ -17,6 +18,9 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.core.config import get_settings
 from app.models.base import AIInsight, Message, MessageRole
 from app.schemas.ai_provider_config import AIProviderConfig, ProviderConfigItem, ordered_providers
+
+if TYPE_CHECKING:
+    from app.services.ai.task_router import TaskType
 
 settings = get_settings()
 logger = logging.getLogger(__name__)
@@ -147,10 +151,11 @@ class AIService:
         comprehensive: bool = False,
         mode: str = "comprehensive",
     ) -> AIInsight:
-        """Generate AI insight using local Ollama models (medgemma/gemma4).
+        """Generate AI insight via the configured provider chain (cloud-first when
+        a cloud key is set, else local Ollama; the other group is fallback).
 
-        ``mode`` ("comprehensive" | "brief") sets the Ollama ``num_predict`` cap
-        (4096 / 1400) so a brief report generates ~2x faster on local hardware.
+        ``mode`` ("comprehensive" | "brief") sets the local Ollama ``num_predict``
+        cap (4096 / 1400) so a brief report generates ~2x faster on local hardware.
         """
         context = ""
         if member_id:
@@ -215,7 +220,7 @@ class AIService:
             yield sse({"stage": "context", "message": "Loading health record..."})
             context = await self._build_record_context(health_record_id)
 
-        # Stage 2: Generate — Ollama first (streaming), cloud as fallback
+        # Stage 2: Generate — primary group first (cloud or local), other as fallback
         from app.schemas.ai_provider_config import PROVIDER_LABELS
 
         system_note = _CLINICAL_SYSTEM_NOTE.format(today=self._fmt_date(date.today()))
@@ -254,6 +259,14 @@ class AIService:
             label = f"{PROVIDER_LABELS.get(prov.id, prov.id)} ({prov.model})"
             cloud_providers.append((provider_fn, label, prov.model))
 
+        from app.services.ai.task_router import TaskType
+
+        # Pre-call routing: try the cheapest capable cloud model first (the
+        # configured order remains as failover). No escalation for streaming.
+        cloud_providers = await self._routed_cloud_first(
+            TaskType.REPORT_INSIGHT, cloud_providers
+        )
+
         async def local_phase() -> AsyncGenerator[str, None]:
             nonlocal full_response, provider
             for model, label in ollama_models:
@@ -284,16 +297,14 @@ class AIService:
             nonlocal full_response, provider
             if full_response or not cloud_providers:
                 return
-            try:
-                yield sse({"stage": "provider", "provider": "Cloud AI"})
-                resp, prov = await self._race_providers(full_prompt, cloud_providers)
-                if resp:
-                    full_response = resp
-                    provider = prov
-                    for i in range(0, len(resp), 40):
-                        yield sse({"stage": "token", "content": resp[i : i + 40]})
-            except Exception as exc:
-                logger.warning("Cloud providers failed for streaming insight: %s", exc)
+            yield sse({"stage": "provider", "provider": "Cloud AI"})
+            result = await self._call_cloud_sequential(full_prompt, cloud_providers)
+            if result:
+                resp, prov = result
+                full_response = resp
+                provider = prov
+                for i in range(0, len(resp), 40):
+                    yield sse({"stage": "token", "content": resp[i : i + 40]})
 
         # Primary group first, the other as automatic fallback.
         phases = (
@@ -328,10 +339,32 @@ class AIService:
         self.db.add(insight)
         await self.db.flush()
 
+        # Synchronous second-model validation: resolve before the complete frame
+        # so the verification status ships with the finished insight (never
+        # 'pending'); falls back to fire-and-forget when synchronous mode is off.
+        try:
+            from app.services.insight_service import verify_insight_inline
+
+            await verify_insight_inline(self.db, self, insight, context, member_id)
+        except Exception:
+            logger.debug("Streaming insight verification skipped")
+
         complete_event: dict = {
             "stage": "complete",
             "insight_id": str(insight.id),
             "provider": provider,
+            "verification": {
+                "status": insight.verification_status,
+                "claims_checked": insight.verification_claims_checked,
+                "verifier_provider": insight.verification_verifier,
+                "summary": insight.verification_summary,
+                "warnings": json.loads(insight.verification_warnings_json)
+                if insight.verification_warnings_json
+                else None,
+                "verified_at": insight.verification_at.isoformat()
+                if insight.verification_at
+                else None,
+            },
         }
         if member_id:
             complete_event["member_id"] = str(member_id)
@@ -433,6 +466,10 @@ class AIService:
             label = f"{PROVIDER_LABELS.get(prov.id, prov.id)} ({prov.model})"
             cloud_providers.append((provider_fn, label, prov.model))
 
+        from app.services.ai.task_router import TaskType
+
+        cloud_providers = await self._routed_cloud_first(TaskType.CHAT, cloud_providers)
+
         async def local_phase() -> AsyncGenerator[str, None]:
             nonlocal full_response, provider
             for model, label in ollama_models:
@@ -463,15 +500,13 @@ class AIService:
             nonlocal full_response, provider
             if full_response or not cloud_providers:
                 return
-            try:
-                yield sse({"stage": "provider", "provider": "Cloud AI"})
-                resp, prov = await self._race_providers(full_prompt, cloud_providers)
-                if resp:
-                    full_response = resp
-                    provider = prov
-                    yield sse({"stage": "token", "content": resp})
-            except Exception as exc:
-                logger.warning("Cloud providers failed for streaming chat: %s", exc)
+            yield sse({"stage": "provider", "provider": "Cloud AI"})
+            result = await self._call_cloud_sequential(full_prompt, cloud_providers)
+            if result:
+                resp, prov = result
+                full_response = resp
+                provider = prov
+                yield sse({"stage": "token", "content": resp})
 
         # Primary group first, the other as automatic fallback — mirrors
         # generate_insight_stream so chat respects the cloud/local setting
@@ -514,21 +549,53 @@ class AIService:
         self.db.add(insight)
         await self.db.flush()
 
-        yield sse(
-            {
-                "stage": "complete",
-                "assistant_message": {
-                    "id": str(assistant_msg.id),
-                    "conversation_id": str(conversation_id),
-                    "role": "assistant",
-                    "content": full_response,
-                    "created_at": assistant_msg.created_at.isoformat(),
-                    "disclaimer": "This is not medical advice. Consult a healthcare professional.",
-                },
-                "provider": provider,
-                "health_context": health_context,
-            }
-        )
+        # Synchronous second-model validation: resolve before the complete frame
+        # so the verification status ships with the answer (never pending). The
+        # conversations router fires the async fallback when this is off.
+        verification_payload: dict | None = None
+        if (
+            settings.AI_VERIFICATION_ENABLED
+            and settings.AI_VERIFICATION_SYNCHRONOUS
+            and health_context
+        ):
+            try:
+                from app.services.verification_service import VerificationService
+
+                verification = await VerificationService(self.db, self).verify(
+                    question=user_message,
+                    ai_response=full_response,
+                    health_context=health_context,
+                    original_provider=provider,
+                    message_id=assistant_msg.id,
+                )
+                verification_payload = {
+                    "status": verification.status,
+                    "claims_checked": verification.claims_checked,
+                    "verifier_provider": verification.verifier_provider,
+                    "summary": verification.summary,
+                    "warnings": json.loads(verification.warnings_json)
+                    if verification.warnings_json
+                    else None,
+                }
+            except Exception as exc:
+                logger.warning("Inline chat verification failed: %s", exc)
+
+        complete_frame = {
+            "stage": "complete",
+            "assistant_message": {
+                "id": str(assistant_msg.id),
+                "conversation_id": str(conversation_id),
+                "role": "assistant",
+                "content": full_response,
+                "created_at": assistant_msg.created_at.isoformat(),
+                "disclaimer": "This is not medical advice. Consult a healthcare professional.",
+            },
+            "provider": provider,
+            "health_context": health_context,
+        }
+        if verification_payload is not None:
+            complete_frame["verification"] = verification_payload
+        yield sse(complete_frame)
 
     async def chat(
         self,
@@ -564,7 +631,11 @@ class AIService:
 
         full_context = f"{health_context}\n{history}" if health_context else history
 
-        response_text, provider = await self._call_ai(user_message, full_context)
+        from app.services.ai.task_router import TaskType
+
+        response_text, provider = await self._call_ai(
+            user_message, full_context, task=TaskType.CHAT
+        )
 
         assistant_msg = Message(
             conversation_id=conversation_id,
@@ -637,7 +708,23 @@ class AIService:
 
         started = time.monotonic()
         config = await self._get_provider_config()
-        plan = ExtractionProviderPlan.from_config(config)
+        # Task-aware routing: image/pdf -> vision extraction, else text. Difficulty
+        # defaults to "normal" and is memoized per content so an escalated
+        # re-extract sticks (the same doc routes straight to the stronger model).
+        from app.services.ai.document_extractor import extraction_confidence
+        from app.services.ai.task_router import (
+            TaskType,
+            difficulty_for,
+            next_difficulty,
+            record_escalation,
+            should_escalate,
+        )
+
+        is_vision = bool(mime_type) and (mime_type.startswith("image/") or "pdf" in mime_type)
+        task = TaskType.EXTRACTION_VISION if is_vision else TaskType.EXTRACTION_TEXT
+        route_key = content_hash or file_path
+        difficulty = difficulty_for(task, route_key, "normal")
+        plan = await ExtractionProviderPlan.from_config_for_task(task, difficulty, config)
         # Drop providers a recent pre-flight health probe confirmed dead so the
         # sequential failover doesn't pay the 15s dead-key tax on each. No-op
         # (returns the same plan) when no probe has populated the cache.
@@ -683,6 +770,32 @@ class AIService:
             plan=plan,
             on_progress=on_progress,
         )
+
+        # Escalate once on low confidence: re-extract at a higher tier and
+        # memoize, so this content routes directly to the stronger model next
+        # time. Only when there IS data to re-check — escalating an empty
+        # (no-data) result is pointless. Cost guardrail: one bump, ≤ task ceiling.
+        if result.extracted.has_any_data() and should_escalate(
+            task, extraction_confidence(result.extracted)
+        ):
+            bumped = next_difficulty(difficulty)
+            if bumped != difficulty:
+                record_escalation(task, route_key, bumped)
+                esc_plan = (
+                    await ExtractionProviderPlan.from_config_for_task(task, bumped, config)
+                ).prune_known_dead()
+                try:
+                    result = await _extract(
+                        self.db,
+                        file_path,
+                        mime_type,
+                        self._last_provider_ref,
+                        plan=esc_plan,
+                        on_progress=on_progress,
+                    )
+                    plan = esc_plan  # cache write uses the escalated fingerprint
+                except Exception as exc:
+                    logger.warning("Escalated re-extraction failed; keeping first result: %s", exc)
 
         had_data = result.extracted.has_any_data()
         # Cache when we have a content hash. Positive results use the long TTL.
@@ -898,7 +1011,7 @@ class AIService:
         extracted_data: dict,
         member_ctx: dict | None = None,
         provider_ctx: dict | None = None,
-    ) -> str:
+    ) -> tuple[str, dict | None]:
         """Generate a formal 'Medical Records Transcription Report'.
 
         Produces the polished, numbered-section layout (Patient Identification
@@ -907,12 +1020,18 @@ class AIService:
         demographics. Uses the AI provider failover chain; falls back to a
         deterministic template (_build_template_transcription_report) if every
         provider fails, so the record always receives a report.
+
+        Returns ``(report, verification)`` where ``verification`` is the
+        second-model check result (dict) for the AI-generated report, or ``None``
+        when the report came from the deterministic template / verification is
+        disabled. Transcription runs as a background task, so the check always
+        runs inline (not gated on ``AI_VERIFICATION_SYNCHRONOUS``).
         """
         from pathlib import Path
 
         context_str = self._build_report_context(extracted_data, member_ctx, provider_ctx)
         if not context_str:
-            return ""
+            return "", None
 
         # Repo-root prompts/ dir (5 parents up from backend/app/services/ai/).
         prompt_path = (
@@ -938,11 +1057,31 @@ class AIService:
             result, provider = await self._call_ai(prompt, "")
             if result:
                 logger.info("Transcription report generated via %s", provider)
-                return self._strip_markdown_fences(result)
+                report = self._strip_markdown_fences(result)
+                verification = await self._verify_transcription_report(
+                    report, extracted_data, provider
+                )
+                return report, verification
         except Exception as exc:
             logger.warning("AI transcription report failed, using template: %s", exc)
 
-        return self._build_template_transcription_report(extracted_data, member_ctx, provider_ctx)
+        return self._build_template_transcription_report(extracted_data, member_ctx, provider_ctx), None
+
+    async def _verify_transcription_report(
+        self, report: str, extracted_data: dict, generator_label: str
+    ) -> dict | None:
+        """Second-model validation for an AI transcription report (None if disabled)."""
+        if not settings.AI_VERIFICATION_ENABLED:
+            return None
+        try:
+            from app.services.verification_service import VerificationService
+
+            return await VerificationService(self.db, self).verify_transcription(
+                report, extracted_data, generator_label
+            )
+        except Exception as exc:
+            logger.warning("Transcription verification failed: %s", exc)
+            return None
 
     @staticmethod
     def _build_report_context(
@@ -1217,6 +1356,37 @@ class AIService:
             return getattr(self, method_name)
         return None
 
+    async def _routed_cloud_first(
+        self, task: "TaskType", cloud_providers: list[tuple]
+    ) -> list[tuple]:
+        """Pre-call routing for streaming tasks: when the router is on, prepend the
+        cheapest capable CLOUD model so the streaming cloud phase tries it first
+        (the rest of the configured order remains as failover). Ollama is never
+        prepended here — it stays the local fallback. Returns ``cloud_providers``
+        unchanged when routing is off, yields nothing, or picks Ollama.
+        """
+        try:
+            from app.services.ai.task_router import resolve_model_for_task, router_enabled
+
+            if not router_enabled():
+                return cloud_providers
+            config = await self._get_provider_config()
+            pick = await resolve_model_for_task(task, "normal", config)
+        except Exception:
+            return cloud_providers
+        if not pick:
+            return cloud_providers
+        provider_id, model = pick
+        if provider_id == "ollama":
+            return cloud_providers
+        fn = self._get_provider_fn(provider_id)
+        if not fn:
+            return cloud_providers
+        from app.schemas.ai_provider_config import PROVIDER_LABELS
+
+        label = f"{PROVIDER_LABELS.get(provider_id, provider_id)} ({model})"
+        return [(fn, label, model), *cloud_providers]
+
     @staticmethod
     def _ordered_providers(config: AIProviderConfig) -> list[ProviderConfigItem]:
         """Order providers so the primary group (local or cloud) is tried first.
@@ -1229,12 +1399,20 @@ class AIService:
 
     # ---- Internal AI call routing ----
 
-    async def _call_ai(self, prompt: str, context: str) -> tuple[str, str]:
-        """Call AI provider with failover chain — order and models from household config.
+    async def _call_ai(
+        self,
+        prompt: str,
+        context: str,
+        task: "TaskType | None" = None,
+        difficulty: str = "normal",
+    ) -> tuple[str, str]:
+        """Call AI provider with failover chain.
 
-        Uses circuit breaker to skip providers that have recently failed, reducing
-        tail latency on failover chains.  Also checks AI response cache before
-        calling providers, and stores successful results for reuse within the TTL window.
+        Order and models come from the household config by default; when ``task``
+        is given and ``AI_ROUTER_ENABLED``, the task router picks the cheapest
+        model meeting the task's accuracy floor instead (falling back to the
+        configured order if routing yields nothing). Uses the circuit breaker to
+        skip recently-failed providers and the AI-response cache to reuse results.
         """
         from app.schemas.ai_provider_config import PROVIDER_LABELS
         from app.services.ai import base as _base
@@ -1255,24 +1433,37 @@ class AIService:
         )
 
         config = await self._get_provider_config()
-        for prov in self._ordered_providers(config):
-            if not prov.enabled:
-                continue
-            provider_fn = self._get_provider_fn(prov.id)
+        # Failover plan as (provider_id, model). Default = configured order; the
+        # router overrides when a task is declared.
+        plan: list[tuple[str, str]] = [
+            (p.id, p.model) for p in self._ordered_providers(config) if p.enabled
+        ]
+        if task is not None:
+            try:
+                from app.services.ai.task_router import difficulty_for, route, router_enabled
+
+                if router_enabled():
+                    routed = await route(task, difficulty_for(task, prompt, difficulty), config)
+                    if routed:
+                        plan = routed
+            except Exception:
+                logger.debug("Task routing failed; using configured order", exc_info=True)
+
+        for provider_id, model in plan:
+            provider_fn = self._get_provider_fn(provider_id)
             if not provider_fn:
                 continue
-            label = f"{PROVIDER_LABELS.get(prov.id, prov.id)} ({prov.model})"
+            label = f"{PROVIDER_LABELS.get(provider_id, provider_id)} ({model})"
 
             # Performance: skip providers whose circuit breaker is open
-            if not is_provider_available(prov.id):
+            if not is_provider_available(provider_id):
                 logger.debug("Skipping provider %s — circuit breaker open", label)
                 continue
 
             try:
-                result = await provider_fn(full_prompt, model=prov.model)
+                result = await provider_fn(full_prompt, model=model)
                 if result:
-                    record_provider_success(prov.id)
-                    # Performance: log token-sized metrics at DEBUG for usage tracking
+                    record_provider_success(provider_id)
                     logger.debug(
                         "AI call: provider=%s prompt_chars=%d response_chars=%d",
                         label,
@@ -1280,46 +1471,130 @@ class AIService:
                         len(result),
                     )
                     logger.info("AI text call succeeded via %s", label)
-                    # Performance: store successful response for cache reuse
                     _base.put_ai_response(prompt, context, result, label)
                     return result, label
             except Exception as exc:
-                record_provider_failure(prov.id)
+                record_provider_failure(provider_id)
                 logger.warning("Provider %s failed: %s", label, _base.exc_description(exc))
                 continue
         raise ValueError("All AI providers failed")
 
-    async def _call_ai_excluding(self, prompt: str, exclude_provider: str) -> tuple[str, str]:
-        """Call AI provider with failover, skipping the excluded provider."""
+    async def _call_validator(
+        self, prompt: str, generator_label: str
+    ) -> tuple[str, str] | None:
+        """Pick a second model to validate content generated by ``generator_label``.
+
+        Honors the configured provider order but (1) never uses the same provider
+        *family* as the generator (Groq never validates Groq), (2) when
+        ``settings.AI_VALIDATOR_CLOUD_PREFERRED`` is set, tries local Ollama only
+        after every cloud candidate — so Ollama never validates Ollama while a
+        cloud option exists, and (3) when
+        ``settings.AI_VALIDATOR_PREFERRED_FAMILY`` is set (default ``"gemini"``),
+        tries that family first within the cloud group — so Groq-generated
+        content is validated by Google even if OpenRouter/OpenAI sit earlier in
+        the household's list. Returns ``(result, label)`` for the first eligible
+        provider returning non-empty output, or ``None`` when no different-family
+        validator is available (the caller then marks the content "unvalidated"
+        instead of raising). Circuit breakers + success/failure recording apply
+        per provider, same as :meth:`_call_ai`.
+        """
         from app.schemas.ai_provider_config import PROVIDER_LABELS
         from app.services.ai import base as _base
+        from app.services.ai.base import (
+            is_provider_available,
+            record_provider_failure,
+            record_provider_success,
+        )
+
+        def family_of(label: str) -> str:
+            """Map a provider label to its family id.
+
+            Cloud labels are ``'<Label> (<model>)'`` (e.g. ``'Groq (x)'``); local
+            Ollama labels are ``'Ollama <model>'`` (no ``'(local)'``), so match the
+            ``PROVIDER_LABELS`` value first, then fall back to an ``ollama`` prefix.
+            """
+            if not label:
+                return ""
+            for pid, lbl in PROVIDER_LABELS.items():
+                if label.startswith(lbl):
+                    return pid
+            if label.lower().startswith("ollama"):
+                return "ollama"
+            return ""
+
+        generator_family = family_of(generator_label)
+        preferred = getattr(settings, "AI_VALIDATOR_PREFERRED_FAMILY", "") or ""
 
         config = await self._get_provider_config()
-        for prov in self._ordered_providers(config):
-            if not prov.enabled:
-                continue
-            provider_fn = self._get_provider_fn(prov.id)
+
+        # Failover plan as (provider_id, model). When the task router is enabled,
+        # VALIDATION routes via it — cheapest capable model, different family from
+        # the generator, preferred family first, Ollama last (cost-ordered).
+        plan: list[tuple[str, str]] = []
+        try:
+            from app.services.ai.task_router import TaskType as _TaskType
+            from app.services.ai.task_router import route as _route
+            from app.services.ai.task_router import router_enabled
+
+            if router_enabled():
+                plan = await _route(
+                    _TaskType.VALIDATION,
+                    "normal",
+                    config,
+                    exclude_family=generator_family,
+                    prefer_family=preferred,
+                )
+        except Exception:
+            logger.debug("Validator routing failed; using configured order", exc_info=True)
+
+        if not plan:  # router off, or nothing qualified — configured order fallback
+            ordered = self._ordered_providers(config)
+            cloud_pref = getattr(settings, "AI_VALIDATOR_CLOUD_PREFERRED", True)
+
+            def prefer_first(group: list) -> list:
+                if not preferred:
+                    return group
+                return [p for p in group if p.id == preferred] + [
+                    p for p in group if p.id != preferred
+                ]
+
+            groups = (
+                [
+                    prefer_first([p for p in ordered if p.id != "ollama"]),
+                    [p for p in ordered if p.id == "ollama"],
+                ]
+                if cloud_pref
+                else [prefer_first(list(ordered))]
+            )
+            for group in groups:
+                for prov in group:
+                    if prov.enabled and prov.id != generator_family:
+                        plan.append((prov.id, prov.model))
+
+        for provider_id, model in plan:
+            provider_fn = self._get_provider_fn(provider_id)
             if not provider_fn:
                 continue
-            label = f"{PROVIDER_LABELS.get(prov.id, prov.id)} ({prov.model})"
-            if label == exclude_provider:
+            label = f"{PROVIDER_LABELS.get(provider_id, provider_id)} ({model})"
+            if not is_provider_available(label):
+                logger.debug("Skipping validator %s — circuit breaker open", label)
                 continue
             try:
-                result = await provider_fn(prompt, model=prov.model)
+                result = await provider_fn(prompt, model=model)
                 if result:
-                    logger.info("Verification AI call succeeded via %s", label)
+                    record_provider_success(label)
+                    logger.info("Validation call succeeded via %s", label)
                     return result, label
             except Exception as exc:
-                logger.warning(
-                    "Verification provider %s failed: %s", label, _base.exc_description(exc)
-                )
+                record_provider_failure(label)
+                logger.warning("Validator %s failed: %s", label, _base.exc_description(exc))
                 continue
-        raise ValueError("All verification providers failed")
+        return None
 
     async def _call_ollama_insight(
         self, prompt: str, context: str, num_predict: int = 4096
     ) -> tuple[str, str]:
-        """Generate insight — Ollama first, cloud providers as fallback."""
+        """Generate insight — primary group first (cloud or local), other as fallback."""
         from app.schemas.ai_provider_config import PROVIDER_LABELS
 
         system_note = _CLINICAL_SYSTEM_NOTE.format(today=self._fmt_date(date.today()))
@@ -1351,6 +1626,12 @@ class AIService:
             label = f"{PROVIDER_LABELS.get(prov.id, prov.id)} ({prov.model})"
             cloud_providers.append((provider_fn, label, prov.model))
 
+        from app.services.ai.task_router import TaskType
+
+        cloud_providers = await self._routed_cloud_first(
+            TaskType.REPORT_INSIGHT, cloud_providers
+        )
+
         async def _try_local() -> tuple[str, str] | None:
             for model, label in ollama_models:
                 try:
@@ -1370,13 +1651,7 @@ class AIService:
         async def _try_cloud() -> tuple[str, str] | None:
             if not cloud_providers:
                 return None
-            try:
-                result, provider = await self._race_providers(full_prompt, cloud_providers)
-                if result:
-                    return result, provider
-            except Exception as exc:
-                logger.debug("All cloud providers failed for insight: %s", exc)
-            return None
+            return await self._call_cloud_sequential(full_prompt, cloud_providers)
 
         # Primary group first, the other as fallback.
         phases = (
@@ -1391,66 +1666,44 @@ class AIService:
 
         raise ValueError("All AI providers failed for insight generation")
 
-    async def _race_providers(self, prompt: str, providers: list[tuple]) -> tuple[str, str]:
-        """Race multiple providers in parallel -- return the first successful result.
+    async def _call_cloud_sequential(
+        self, prompt: str, cloud_providers: list[tuple]
+    ) -> tuple[str, str] | None:
+        """Try cloud providers one at a time in configured order; first non-empty wins.
 
-        Skips providers whose circuit breaker is open, avoiding wasted requests
-        to known-down providers.
-
-        Each provider tuple is (fn, label) or (fn, label, model).
+        Honors a household's provider order as a strict failover chain (e.g.
+        Groq → Gemini → …) rather than racing them in parallel — so the chosen
+        ``primary`` cloud provider is genuinely preferred, and the next is tried
+        only on failure/empty. Mirrors :meth:`_call_ai` and document extraction.
+        Ollama is never in this list; callers keep it as the separate local
+        fallback. Each entry is ``(fn, label, model)``. Circuit breakers skip
+        known-down providers; successes/failures are recorded for the breaker.
+        Returns ``(result, label)`` on success, ``None`` when every entry fails.
         """
+        from app.services.ai import base as _base
         from app.services.ai.base import (
             is_provider_available,
             record_provider_failure,
             record_provider_success,
         )
 
-        tasks: dict[asyncio.Task, str] = {}
-        for entry in providers:
+        for entry in cloud_providers:
             provider_fn, label = entry[0], entry[1]
-            model = entry[2] if len(entry) > 2 else None
-            # Performance: skip providers with open circuits
+            model = entry[2] if len(entry) > 2 else ""
             if not is_provider_available(label):
-                logger.debug("Skipping race provider %s — circuit breaker open", label)
+                logger.debug("Skipping cloud provider %s — circuit breaker open", label)
                 continue
-            if model:
-                task = asyncio.create_task(provider_fn(prompt, model=model))
-            else:
-                task = asyncio.create_task(provider_fn(prompt))
-            tasks[task] = label
-
-        if not tasks:
-            raise ValueError("All providers skipped — circuit breakers open")
-
-        pending = set(tasks.keys())
-        errors: list[Exception] = []
-
-        while pending:
-            done, pending = await asyncio.wait(pending, return_when=asyncio.FIRST_COMPLETED)
-            for task in done:
-                label = tasks[task]
-                try:
-                    result = task.result()
-                    if result:
-                        record_provider_success(label)
-                        # Performance: log token-sized metrics at DEBUG for usage tracking
-                        logger.debug(
-                            "AI call: provider=%s prompt_chars=%d response_chars=%d",
-                            label,
-                            len(prompt),
-                            len(result),
-                        )
-                        for t in pending:
-                            t.cancel()
-                        await asyncio.gather(*pending, return_exceptions=True)
-                        logger.info("Insight race won by %s", label)
-                        return result, label
-                except Exception as exc:
-                    record_provider_failure(label)
-                    errors.append(exc)
-                    logger.debug("Provider %s failed in race: %s", label, exc)
-
-        raise ValueError(f"All providers failed: {[str(e)[:80] for e in errors]}")
+            try:
+                result = await provider_fn(prompt, model=model)
+                if result:
+                    record_provider_success(label)
+                    logger.info("Cloud call succeeded via %s", label)
+                    return result, label
+            except Exception as exc:
+                record_provider_failure(label)
+                logger.warning("Cloud provider %s failed: %s", label, _base.exc_description(exc))
+                continue
+        return None
 
     # ---- Context builder delegation ----
 

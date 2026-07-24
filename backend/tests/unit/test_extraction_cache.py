@@ -19,6 +19,14 @@ def clean_extraction_cache():
     cache.invalidate("extraction:")
 
 
+@pytest.fixture(autouse=True)
+def _disable_router(monkeypatch):
+    """These tests exercise cache mechanics with a controlled fake extractor, not
+    routing/escalation — disable the task router so extraction uses from_config
+    and doesn't re-extract on the deliberately-sparse (low-confidence) fixtures."""
+    monkeypatch.setattr("app.services.ai.task_router.router_enabled", lambda: False)
+
+
 async def test_extract_caches_by_content_hash(monkeypatch, clean_extraction_cache):
     """The underlying extractor runs once; the second call is a cache hit."""
     calls = {"n": 0}

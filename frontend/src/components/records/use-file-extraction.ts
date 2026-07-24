@@ -324,7 +324,8 @@ export function useFileExtraction({
               original_file_name: (event.original_file_name as string) ?? null,
               extracted: event.extracted as ExtractedFields,
               confidence: (event.confidence as string) ?? "medium",
-              verification: null,
+              verification:
+                (event.verification as ExtractionResponse["verification"] | undefined) ?? null,
               transcription: (event.transcription as string) ?? null,
             },
           });

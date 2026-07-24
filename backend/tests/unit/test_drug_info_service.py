@@ -218,7 +218,9 @@ async def test_adverse_events_empty_when_unresolvable():
 
 async def test_resolve_generic_uses_ai_when_rxnorm_misses():
     """Ropark (a non-US brand) isn't in RxNorm; the AI fallback resolves it to
-    ropinirole, then validates that openFDA actually has it."""
+    ropinirole, then verifies the input brand is among ropinirole's known brands
+    (so a hallucinated real-but-wrong generic like ranitidine for Parktidine is
+    rejected)."""
     svc = DrugInfoService(db=object())
     with (
         _patch_client(),
@@ -233,15 +235,41 @@ async def test_resolve_generic_uses_ai_when_rxnorm_misses():
             return_value="ropinirole",
         ) as mock_ai,
         patch(
-            "app.services.drug_info.service.openfda.label_exists",
+            "app.services.drug_info.service.openfda.brands_for_generic",
             new_callable=AsyncMock,
-            return_value=True,
-        ) as mock_exists,
+            return_value=(["ropark"], ["ropinirole"]),
+        ) as mock_brands,
     ):
         out = await svc._resolve_generic("Ropark 1mg")
     assert out == "ropinirole"
     mock_ai.assert_awaited_once()
-    mock_exists.assert_awaited_once_with(_FAKE_CLIENT, "ropinirole")
+    mock_brands.assert_awaited_once_with(_FAKE_CLIENT, "ropinirole")
+
+
+async def test_resolve_generic_rejects_ai_guess_for_unknown_brand():
+    """An unconfirmable AI guess (Parktidine -> ranitidine) is rejected so the
+    flyout shows no data instead of the wrong drug's information."""
+    svc = DrugInfoService(db=object())
+    with (
+        _patch_client(),
+        patch(
+            "app.services.drug_info.service.rxnorm.resolve",
+            new_callable=AsyncMock,
+            return_value=None,
+        ),
+        patch(
+            "app.services.drug_info.service._ai_generic_name",
+            new_callable=AsyncMock,
+            return_value="ranitidine",
+        ),
+        patch(
+            "app.services.drug_info.service.openfda.brands_for_generic",
+            new_callable=AsyncMock,
+            return_value=(["zantac"], ["ranitidine"]),  # parktidine isn't a ranitidine brand
+        ),
+    ):
+        out = await svc._resolve_generic("Parktidine")
+    assert out != "ranitidine"  # rejected -> heuristic tail, never the wrong drug
 
 
 async def test_resolve_generic_caches_ai_result_so_ai_runs_once():
@@ -259,9 +287,9 @@ async def test_resolve_generic_caches_ai_result_so_ai_runs_once():
             return_value="ropinirole",
         ) as mock_ai,
         patch(
-            "app.services.drug_info.service.openfda.label_exists",
+            "app.services.drug_info.service.openfda.brands_for_generic",
             new_callable=AsyncMock,
-            return_value=True,
+            return_value=(["ropark"], ["ropinirole"]),
         ),
     ):
         await svc._resolve_generic("Ropark 1mg")
@@ -286,9 +314,9 @@ async def test_resolve_generic_rejects_ai_candidate_not_in_openfda():
             return_value="xyznotadrug",
         ),
         patch(
-            "app.services.drug_info.service.openfda.label_exists",
+            "app.services.drug_info.service.openfda.brands_for_generic",
             new_callable=AsyncMock,
-            return_value=False,
+            return_value=([], []),
         ),
     ):
         out = await svc._resolve_generic("Mysterybrand 5mg")

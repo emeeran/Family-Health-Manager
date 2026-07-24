@@ -123,12 +123,12 @@ def _stream_chat_spy(monkeypatch, primary: str) -> tuple[AIService, list[str]]:
         call_log.append("local")
         yield "local-response"
 
-    async def fake_race(_prompt: str, _providers):
+    async def fake_cloud_seq(_prompt: str, _providers):
         call_log.append("cloud")
         return "cloud-response", "Cloud AI"
 
     svc._ollama_chat_stream = fake_ollama_stream  # type: ignore[method-assign]
-    svc._race_providers = fake_race  # type: ignore[method-assign]
+    svc._call_cloud_sequential = fake_cloud_seq  # type: ignore[method-assign]
     return svc, call_log
 
 
@@ -153,3 +153,189 @@ async def test_chat_stream_local_primary_tries_local_first(monkeypatch):
     ]
     assert call_log == ["local"]
     assert any('"stage": "complete"' in e for e in events)
+
+
+# ---- _call_cloud_sequential: strict Groq → Gemini → … failover (no race) ----
+
+
+@pytest.mark.asyncio
+async def test_call_cloud_sequential_short_circuits_on_first_success():
+    """First non-empty cloud result wins; later providers are never called."""
+    svc = AIService(db=_FakeDB())
+    calls: list[str] = []
+
+    async def ok_groq(_p, *, model=""):
+        calls.append("groq")
+        return "groq-answer"
+
+    async def never_gemini(_p, *, model=""):
+        calls.append("gemini")
+        return "should-not-happen"
+
+    cloud = [(ok_groq, "Groq (g)", "g"), (never_gemini, "Google Gemini (gm)", "gm")]
+    result = await svc._call_cloud_sequential("prompt", cloud)
+    assert result == ("groq-answer", "Groq (g)")
+    assert calls == ["groq"]
+
+
+@pytest.mark.asyncio
+async def test_call_cloud_sequential_falls_through_on_failure():
+    """A failing/empty provider is skipped and the next is tried in order."""
+    svc = AIService(db=_FakeDB())
+    calls: list[str] = []
+
+    async def fails_groq(_p, *, model=""):
+        calls.append("groq")
+        raise RuntimeError("boom")
+
+    async def empty_gemini(_p, *, model=""):
+        calls.append("gemini")
+        return ""
+
+    async def ok_openai(_p, *, model=""):
+        calls.append("openai")
+        return "openai-answer"
+
+    cloud = [
+        (fails_groq, "Groq (g)", "g"),
+        (empty_gemini, "Google Gemini (gm)", "gm"),
+        (ok_openai, "OpenAI (o)", "o"),
+    ]
+    result = await svc._call_cloud_sequential("prompt", cloud)
+    assert result == ("openai-answer", "OpenAI (o)")
+    assert calls == ["groq", "gemini", "openai"]
+
+
+@pytest.mark.asyncio
+async def test_call_cloud_sequential_returns_none_when_all_fail():
+    svc = AIService(db=_FakeDB())
+
+    async def fails(_p, *, model=""):
+        raise RuntimeError("boom")
+
+    async def empty(_p, *, model=""):
+        return ""
+
+    cloud = [(fails, "Groq (g)", "g"), (empty, "Google Gemini (gm)", "gm")]
+    assert await svc._call_cloud_sequential("prompt", cloud) is None
+
+
+@pytest.mark.asyncio
+async def test_call_cloud_sequential_skips_open_circuit(monkeypatch):
+    """Providers with an open circuit breaker are skipped without being called."""
+    import app.services.ai.base as base
+
+    svc = AIService(db=_FakeDB())
+    calls: list[str] = []
+
+    # Groq breaker is "open"; Gemini is available.
+    monkeypatch.setattr(base, "is_provider_available", lambda label: not label.startswith("Groq"))
+
+    async def skipped_groq(_p, *, model=""):
+        calls.append("groq")
+        return "x"
+
+    async def ok_gemini(_p, *, model=""):
+        calls.append("gemini")
+        return "gemini-answer"
+
+    cloud = [(skipped_groq, "Groq (g)", "g"), (ok_gemini, "Google Gemini (gm)", "gm")]
+    result = await svc._call_cloud_sequential("prompt", cloud)
+    assert result == ("gemini-answer", "Google Gemini (gm)")
+    assert calls == ["gemini"]
+
+
+# ---- _call_validator: cloud-preferred, different-family selection ----
+
+
+def _validator_svc(
+    monkeypatch, primary: str, providers: list[ProviderConfigItem]
+) -> AIService:
+    """AIService wired with a fixed config + fake provider fns for validator tests.
+
+    All providers are treated as keyed (so the task router's route() considers
+    every configured provider, independent of real env keys).
+    """
+    async def _configured(_pid: str) -> bool:
+        return True
+
+    monkeypatch.setattr("app.services.ai.task_router.is_provider_configured", _configured)
+
+    svc = AIService(db=_FakeDB())
+    cfg = AIProviderConfig(providers=providers, primary_provider=primary)  # type: ignore[arg-type]
+
+    async def cfg_fn():
+        return cfg
+
+    svc._get_provider_config = cfg_fn  # type: ignore[method-assign]
+
+    async def groq_fn(_p, *, model=""):
+        return "from-groq"
+
+    async def gemini_fn(_p, *, model=""):
+        return "from-gemini"
+
+    async def ollama_fn(_p, *, model=""):
+        return "from-ollama"
+
+    async def openrouter_fn(_p, *, model=""):
+        return "from-openrouter"
+
+    fns = {
+        "groq": groq_fn,
+        "gemini": gemini_fn,
+        "ollama": ollama_fn,
+        "openrouter": openrouter_fn,
+    }
+    svc._get_provider_fn = lambda pid: fns.get(pid)  # type: ignore[method-assign]
+    return svc
+
+
+@pytest.mark.asyncio
+async def test_call_validator_skips_generator_family_prefers_cloud(monkeypatch):
+    """Generator=Groq -> validator is a different family, cloud-preferred (Gemini)."""
+    svc = _validator_svc(
+        monkeypatch,
+        "cloud",
+        [
+            ProviderConfigItem(id="groq", enabled=True, model="g1"),
+            ProviderConfigItem(id="ollama", enabled=True, model="m"),
+            ProviderConfigItem(id="gemini", enabled=True, model="gm"),
+        ],
+    )
+    result = await svc._call_validator("prompt", generator_label="Groq (g1)")
+    assert result is not None
+    text, label = result
+    assert text == "from-gemini"
+    assert label.startswith("Google Gemini")
+
+
+@pytest.mark.asyncio
+async def test_call_validator_returns_none_for_single_provider_household(monkeypatch):
+    """Only-Ollama household + Ollama generator -> no different-family validator -> None."""
+    svc = _validator_svc(
+        monkeypatch, "local", [ProviderConfigItem(id="ollama", enabled=True, model="m")]
+    )
+    assert await svc._call_validator("prompt", generator_label="Ollama m") is None
+
+
+@pytest.mark.asyncio
+async def test_call_validator_picks_cheapest_different_family(monkeypatch):
+    """Generator=Groq; OpenRouter BEFORE Gemini in config. The router picks by
+    cost, so Gemini (free tier) wins regardless of config order or the
+    preference flag — config order never forces the earlier provider."""
+    svc = _validator_svc(
+        monkeypatch,
+        "cloud",
+        [
+            ProviderConfigItem(id="groq", enabled=True, model="g1"),
+            ProviderConfigItem(id="openrouter", enabled=True, model="or"),
+            ProviderConfigItem(id="gemini", enabled=True, model="gm"),
+        ],
+    )
+    result = await svc._call_validator("prompt", generator_label="Groq (g1)")
+    assert result is not None
+    text, label = result
+    # Groq (generator family) excluded; Gemini is cheapest capable -> chosen.
+    assert text == "from-gemini"
+    assert label.startswith("Google Gemini")

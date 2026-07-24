@@ -106,6 +106,112 @@ Return ONLY valid JSON (no markdown, no code fences):
 }}"""
 
 
+DDI_VERIFICATION_PROMPT = """You are a clinical pharmacist fact-checker. Another AI generated a list of drug-drug
+interactions for a patient's medication list. Verify each interaction.
+
+CRITICAL CHECKS:
+1. FABRICATION: Every interaction must involve two drugs that are ACTUALLY in the
+   medication list below. Flag any interaction that names a drug the patient is
+   not taking as fabrication.
+2. SEVERITY ACCURACY: Is the stated severity (high/moderate/low) clinically
+   reasonable for that drug pair? Flag gross miscategorizations.
+3. DRUG IDENTITY: Watch for the same drug listed twice under different names, or
+   a generic/brand confusion that invents a pair.
+4. OMISSION: Only flag a MISSED major interaction if it is well-documented and
+   clinically significant (do not invent theoretical risks).
+
+MEDICATION LIST:
+{medications}
+
+AI-GENERATED INTERACTIONS TO VERIFY:
+{interactions}
+
+Return ONLY valid JSON (no markdown, no code fences):
+{{
+  "status": "verified" | "warnings" | "unverifiable",
+  "claims_checked": <number>,
+  "warnings": [
+    {{
+      "type": "fabrication" | "wrong_value" | "omission",
+      "claim": "<the suspect interaction>",
+      "correction": "<what the medication list actually supports>",
+      "severity": "high" | "medium" | "low"
+    }}
+  ],
+  "summary": "<one sentence assessment>"
+}}"""
+
+
+TRANSCRIPTION_VERIFICATION_PROMPT = """You are a medical transcription fact-checker. Another AI produced a formal
+"Medical Records Transcription Report" from the structured data below. Verify the
+report against that source data.
+
+CRITICAL CHECKS:
+1. FABRICATION: Every medication, dosage, lab value, date, and diagnosis in the
+   report must come from the source data. Flag anything invented or not present.
+2. VALUE ACCURACY: Numeric values, units, and dates must match the source exactly.
+3. MEMBER/PROVIDER ATTRIBUTION: Demographics and provider details must match.
+4. OMISSION: Flag only clearly-important source data that the report dropped.
+
+SOURCE EXTRACTED DATA:
+{extracted_data}
+
+AI-GENERATED TRANSCRIPTION REPORT:
+{report}
+
+Return ONLY valid JSON (no markdown, no code fences):
+{{
+  "status": "verified" | "warnings" | "unverifiable",
+  "claims_checked": <number>,
+  "warnings": [
+    {{
+      "type": "fabrication" | "wrong_value" | "omission" | "wrong_date",
+      "claim": "<the suspect statement in the report>",
+      "correction": "<what the source data actually says>",
+      "severity": "high" | "medium" | "low"
+    }}
+  ],
+  "summary": "<one sentence assessment>"
+}}"""
+
+
+DRUG_INFO_VERIFICATION_PROMPT = """You are a medication-safety fact-checker. A patient app flyout shows the
+registry-sourced information below for one of a patient's medicines. Verify the
+information pertains to the CORRECT medicine — registry lookups can resolve to
+the wrong drug when a brand/generic name is ambiguous.
+
+CRITICAL CHECKS:
+1. WRONG DRUG: Does the indication/label match the stated medicine's drug class?
+   Flag if the indication describes a different condition/class (e.g. medicine is
+   a beta-blocker but the indication describes diabetes treatment).
+2. PLAUSIBILITY: Are the listed adverse events and substitutes plausible for this
+   medicine? Flag clearly unrelated ones (e.g. an oncology drug among substitutes
+   for an antacid).
+3. BRAND/GENERIC CONFUSION: Flag if two different drugs appear mixed together.
+Do NOT flag missing data, formatting, or completeness — only correctness
+mismatches that would mislead a patient about THIS medicine.
+
+MEDICINE: {medicine}
+
+FLYOUT CONTENT (JSON):
+{content}
+
+Return ONLY valid JSON (no markdown, no code fences):
+{{
+  "status": "verified" | "warnings" | "unverifiable",
+  "claims_checked": <number>,
+  "warnings": [
+    {{
+      "type": "wrong_drug" | "wrong_value" | "fabrication",
+      "claim": "<the suspect item>",
+      "correction": "<what is wrong about it>",
+      "severity": "high" | "medium" | "low"
+    }}
+  ],
+  "summary": "<one sentence assessment>"
+}}"""
+
+
 class VerificationService:
     """Verifies AI responses against health context using a different provider."""
 
@@ -138,22 +244,28 @@ class VerificationService:
                 response=ai_response,
             )
 
-            result_text, provider = await self.ai_service._call_ai_excluding(
-                prompt, exclude_provider=original_provider
+            validated = await self.ai_service._call_validator(
+                prompt, generator_label=original_provider
             )
 
-            verification.verifier_provider = provider
-            parsed = self._parse_verification_response(result_text)
-
-            if parsed:
-                verification.status = parsed.get("status", "unverifiable")
-                verification.claims_checked = parsed.get("claims_checked", 0)
-                verification.summary = (parsed.get("summary") or "")[:500]
-                warnings = parsed.get("warnings", [])
-                verification.warnings_json = json.dumps(warnings) if warnings else None
+            if validated is None:
+                verification.verifier_provider = ""
+                verification.status = "unvalidated"
+                verification.summary = "No second model available to validate this content."
             else:
-                verification.status = "failed"
-                verification.summary = "Could not parse verification response"
+                result_text, provider = validated
+                verification.verifier_provider = provider
+                parsed = self._parse_verification_response(result_text)
+
+                if parsed:
+                    verification.status = parsed.get("status", "unverifiable")
+                    verification.claims_checked = parsed.get("claims_checked", 0)
+                    verification.summary = (parsed.get("summary") or "")[:500]
+                    warnings = parsed.get("warnings", [])
+                    verification.warnings_json = json.dumps(warnings) if warnings else None
+                else:
+                    verification.status = "failed"
+                    verification.summary = "Could not parse verification response"
 
         except Exception as exc:
             logger.warning("Verification failed for message %s: %s", message_id, exc)
@@ -166,34 +278,47 @@ class VerificationService:
     async def verify_insight(
         self,
         insight: "AIInsight",  # noqa: F821
-        health_context: str,
+        health_context: str = "",
+        *,
+        prompt: str | None = None,
     ) -> None:
         """Cross-check an AI-generated insight against health context using a different provider.
 
-        Writes verification results directly on the AIInsight record.
+        Writes verification results directly on the AIInsight record. Pass
+        ``prompt`` to use a domain-specific verification prompt (e.g. DDI);
+        otherwise the default insight prompt is built from ``health_context``.
         """
         try:
-            prompt = INSIGHT_VERIFICATION_PROMPT.format(
-                context=health_context[:2000],
-                insight=insight.response,
+            if prompt is None:
+                prompt = INSIGHT_VERIFICATION_PROMPT.format(
+                    context=(health_context or "")[:2000],
+                    insight=insight.response,
+                )
+
+            validated = await self.ai_service._call_validator(
+                prompt, generator_label=insight.provider_used
             )
 
-            result_text, provider = await self.ai_service._call_ai_excluding(
-                prompt, exclude_provider=insight.provider_used
-            )
-
-            insight.verification_verifier = provider
-            parsed = self._parse_verification_response(result_text)
-
-            if parsed:
-                insight.verification_status = parsed.get("status", "unverifiable")
-                insight.verification_claims_checked = parsed.get("claims_checked", 0)
-                insight.verification_summary = (parsed.get("summary") or "")[:500]
-                warnings = parsed.get("warnings", [])
-                insight.verification_warnings_json = json.dumps(warnings) if warnings else None
+            if validated is None:
+                # No different-family validator available (e.g. single-provider
+                # household). Surface as "unvalidated" — content is still shown.
+                insight.verification_verifier = None
+                insight.verification_status = "unvalidated"
+                insight.verification_summary = "No second model available to validate this content."
             else:
-                insight.verification_status = "failed"
-                insight.verification_summary = "Could not parse verification response"
+                result_text, provider = validated
+                insight.verification_verifier = provider
+                parsed = self._parse_verification_response(result_text)
+
+                if parsed:
+                    insight.verification_status = parsed.get("status", "unverifiable")
+                    insight.verification_claims_checked = parsed.get("claims_checked", 0)
+                    insight.verification_summary = (parsed.get("summary") or "")[:500]
+                    warnings = parsed.get("warnings", [])
+                    insight.verification_warnings_json = json.dumps(warnings) if warnings else None
+                else:
+                    insight.verification_status = "failed"
+                    insight.verification_summary = "Could not parse verification response"
 
         except Exception as exc:
             logger.warning("Insight verification failed for %s: %s", insight.id, exc)
@@ -213,33 +338,80 @@ class VerificationService:
         Returns a verification dict with status, warnings, and summary.
         Does NOT persist — extraction results are ephemeral until a record is saved.
         """
-        extraction_json = json.dumps(extracted_fields, indent=2, default=str)
-
         prompt = EXTRACTION_VERIFICATION_PROMPT.format(
-            extraction=extraction_json,
+            extraction=json.dumps(extracted_fields, indent=2, default=str),
         )
+        return await self._verify_with_prompt(prompt, original_provider)
 
+    async def verify_transcription(
+        self,
+        report: str,
+        extracted_data: dict,
+        generator_label: str,
+    ) -> dict:
+        """Cross-check an AI transcription report against its source extracted data.
+
+        Returns a verification dict; the caller persists it on the record.
+        """
+        prompt = TRANSCRIPTION_VERIFICATION_PROMPT.format(
+            extracted_data=json.dumps(extracted_data, indent=2, default=str)[:2000],
+            report=report,
+        )
+        return await self._verify_with_prompt(prompt, generator_label)
+
+    async def verify_drug_info(
+        self, medicine: str, content: dict, generator_label: str = ""
+    ) -> dict:
+        """Cross-check drug-info flyout content against the stated medicine.
+
+        The flyout content is registry-sourced (openFDA/ABDM/FAERS), so this
+        guards the one real risk: a name-resolution error resolving the content
+        to the wrong drug. Returns a verification dict (does not persist).
+        """
+        prompt = DRUG_INFO_VERIFICATION_PROMPT.format(
+            medicine=medicine,
+            content=json.dumps(content, indent=2, default=str)[:2000],
+        )
+        return await self._verify_with_prompt(prompt, generator_label)
+
+    async def _verify_with_prompt(self, prompt: str, generator_label: str) -> dict:
+        """Run a second-model check and return a verification dict.
+
+        Shared by :meth:`verify_extraction` and :meth:`verify_transcription`.
+        Returns status ``unvalidated`` when no different-family validator is
+        available, ``failed`` on parse/error, else the parsed verdict.
+        """
         try:
-            result_text, provider = await self.ai_service._call_ai_excluding(
-                prompt, exclude_provider=original_provider
+            validated = await self.ai_service._call_validator(
+                prompt, generator_label=generator_label
             )
 
+            if validated is None:
+                return {
+                    "status": "unvalidated",
+                    "claims_checked": 0,
+                    "warnings": [],
+                    "summary": "No second model available to validate this content.",
+                    "verifier_provider": "",
+                    "verified_at": datetime.now(timezone.utc).isoformat(),
+                }
+
+            result_text, provider = validated
             parsed = self._parse_verification_response(result_text)
             if parsed:
                 parsed["verifier_provider"] = provider
                 parsed["verified_at"] = datetime.now(timezone.utc).isoformat()
                 return parsed
-            else:
-                return {
-                    "status": "failed",
-                    "claims_checked": 0,
-                    "warnings": [],
-                    "summary": "Could not parse verification response",
-                    "verifier_provider": provider,
-                    "verified_at": datetime.now(timezone.utc).isoformat(),
-                }
+            return {
+                "status": "failed",
+                "claims_checked": 0,
+                "warnings": [],
+                "summary": "Could not parse verification response",
+                "verifier_provider": provider,
+                "verified_at": datetime.now(timezone.utc).isoformat(),
+            }
         except Exception as exc:
-            logger.warning("Extraction verification failed: %s", exc)
+            logger.warning("Verification failed: %s", exc)
             return {
                 "status": "failed",
                 "claims_checked": 0,

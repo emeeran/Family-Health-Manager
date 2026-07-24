@@ -141,6 +141,23 @@ export function getDrugEducation(memberId: string, medicine: string) {
   );
 }
 
+/** Second-model check that the flyout content pertains to the right medicine. */
+export function validateDrugInfo(
+  memberId: string,
+  payload: {
+    medicine: string;
+    indication: DrugIndication | null;
+    label: DrugLabelSummary | null;
+    events: AdverseEventReaction[];
+    substitutes: SubstituteDrug[];
+  }
+) {
+  return apiRequest<{ verification: VerificationResult | null }>(
+    `/members/${memberId}/drug-info/validate`,
+    { method: "POST", body: payload, timeout: 45_000 }
+  );
+}
+
 /** Free-text condition → ICD-10 + MedlinePlus patient education (keyless). */
 export function getConditionLookup(memberId: string, condition: string) {
   return apiRequest<ConditionLookup>(`/members/${memberId}/condition-lookup`, {

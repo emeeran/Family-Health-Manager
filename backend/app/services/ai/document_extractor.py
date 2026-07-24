@@ -299,6 +299,37 @@ class ExtractionProviderPlan:
             fast_text_model=settings.OLLAMA_FAST_MODEL,
         )
 
+    @classmethod
+    async def from_config_for_task(
+        cls, task: "str", difficulty: str, config: Any
+    ) -> "ExtractionProviderPlan":
+        """Router-driven plan: cheapest capable models for ``task``+``difficulty``.
+
+        ``task`` is a :class:`~app.services.ai.task_router.TaskType` value
+        (``EXTRACTION_VISION`` / ``EXTRACTION_TEXT``). Falls back to
+        :meth:`from_config` (configured order) when the router is off or yields
+        nothing, so extraction never strands on an empty plan.
+        """
+        from app.services.ai.task_router import route, router_enabled
+
+        base = cls.from_config(config)  # configured-order fallback + gemini_auth/fast model
+        if not router_enabled():
+            return base
+        try:
+            from app.services.ai.task_router import TaskType
+
+            plan_models = await route(TaskType(task), difficulty, config)
+        except Exception:
+            logger.debug("Extraction task routing failed; using configured order", exc_info=True)
+            return base
+        if not plan_models:
+            return base
+        items = [
+            _PlanItem(provider_id=pid, model=model, is_local=(pid == "ollama"))
+            for pid, model in plan_models
+        ]
+        return cls(items=items, gemini_auth=base.gemini_auth, fast_text_model=base.fast_text_model)
+
     def cache_fingerprint(self) -> str:
         """Stable short hash of the ordered providers + Gemini auth + fast model.
 

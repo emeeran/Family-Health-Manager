@@ -7,6 +7,10 @@ import {
   BookOpen,
   Stethoscope,
   Replace,
+  CheckCircle2,
+  HelpCircle,
+  Loader2,
+  XCircle,
 } from "lucide-react";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -17,8 +21,10 @@ import {
   getDrugIndication,
   getDrugLabel,
   getDrugSubstitutes,
+  validateDrugInfo,
 } from "@/lib/api/members";
 import type { ActiveMedication } from "@/lib/types/member";
+import type { VerificationResult } from "@/lib/types/message";
 import type {
   AdverseEventReaction,
   DailyMedLabel,
@@ -64,9 +70,12 @@ function timingLabel(t: string): string {
 export function MedicationDetailFlyout({ memberId, med }: MedicationDetailFlyoutProps) {
   const [open, setOpen] = useState(false);
   const [state, setState] = useState<LoadState>({ status: "idle" });
+  const [verification, setVerification] = useState<VerificationResult | null>(null);
+  const [validating, setValidating] = useState(false);
 
   const load = useCallback(async () => {
     setState({ status: "loading" });
+    setVerification(null);
     try {
       const [labelRes, eventsRes, eduRes, subsRes, indRes] = await Promise.all([
         getDrugLabel(memberId, med.medicine),
@@ -75,14 +84,25 @@ export function MedicationDetailFlyout({ memberId, med }: MedicationDetailFlyout
         getDrugSubstitutes(memberId, med.medicine),
         getDrugIndication(memberId, med.medicine),
       ]);
+      const label = labelRes.label;
+      const events = eventsRes.events;
+      const substitutes = subsRes.substitutes;
+      const indication = indRes.indication;
       setState({
         status: "done",
-        label: labelRes.label,
-        events: eventsRes.events,
+        label,
+        events,
         edu: { medlineplus: eduRes.medlineplus, dailymed: eduRes.dailymed },
-        substitutes: subsRes.substitutes,
-        indication: indRes.indication,
+        substitutes,
+        indication,
       });
+      // Best-effort second-model check that the content matches this medicine.
+      // Never blocks the flyout — the badge resolves after the content shows.
+      setValidating(true);
+      validateDrugInfo(memberId, { medicine: med.medicine, indication, label, events, substitutes })
+        .then((r) => setVerification(r.verification))
+        .catch(() => setVerification(null))
+        .finally(() => setValidating(false));
     } catch (err) {
       setState({
         status: "error",
@@ -94,7 +114,10 @@ export function MedicationDetailFlyout({ memberId, med }: MedicationDetailFlyout
   // Fetch on open; reset on close so a stale payload never lingers.
   useEffect(() => {
     if (open) load();
-    else setState({ status: "idle" });
+    else {
+      setState({ status: "idle" });
+      setVerification(null);
+    }
   }, [open, load]);
 
   return (
@@ -138,6 +161,8 @@ export function MedicationDetailFlyout({ memberId, med }: MedicationDetailFlyout
 
           {state.status === "done" && (
             <>
+              <ValidationChip verification={verification} validating={validating} />
+
               {state.indication &&
                 (state.indication.indication || state.indication.contraindication) && (
                   <Section icon={<Stethoscope className="h-3 w-3" />} title="Indication (ABDM)">
@@ -313,6 +338,54 @@ function LinkRow({ href, title }: { href: string; title: string }) {
 
 function Empty({ children }: { children: React.ReactNode }) {
   return <p className="text-[11px] italic text-muted-foreground">{children}</p>;
+}
+
+function ValidationChip({
+  verification,
+  validating,
+}: {
+  verification: VerificationResult | null;
+  validating: boolean;
+}) {
+  if (validating) {
+    return (
+      <div className="flex items-center gap-1.5 text-[10px] text-muted-foreground">
+        <Loader2 className="h-3 w-3 animate-spin" />
+        Cross-checking content…
+      </div>
+    );
+  }
+  const status = verification?.status;
+  const high = (verification?.warnings ?? []).filter((w) => w?.severity === "high").length;
+  let Icon: typeof CheckCircle2 = HelpCircle;
+  let label = "Not validated";
+  let tone = "text-muted-foreground";
+  if (status === "verified") {
+    Icon = CheckCircle2;
+    label = "Content verified";
+    tone = "text-emerald-600";
+  } else if (status === "warnings") {
+    Icon = AlertTriangle;
+    label = high ? `${high} high-severity flag${high > 1 ? "s" : ""}` : "Verified — with warnings";
+    tone = "text-amber-600";
+  } else if (status === "unverifiable") {
+    Icon = HelpCircle;
+    label = "Could not cross-check";
+  } else if (status === "unvalidated" || status === "failed") {
+    Icon = XCircle;
+    label = "Cross-check unavailable";
+  }
+  return (
+    <div className={`flex items-center gap-1.5 text-[10px] ${tone}`}>
+      <Icon className="h-3 w-3 shrink-0" />
+      <span className="truncate">{label}</span>
+      {verification?.verifier_provider && (
+        <span className="ml-auto truncate text-muted-foreground/70">
+          via {verification.verifier_provider}
+        </span>
+      )}
+    </div>
+  );
 }
 
 function FlyoutSkeletons() {

@@ -107,7 +107,8 @@ export const PreConsultationCard = memo(function PreConsultationCard({
                 response: fullText,
                 provider_used: e.provider as string,
                 generated_at: new Date().toISOString(),
-                verification: null,
+                verification:
+                  (e.verification as GeneratedInsight["verification"] | undefined) ?? null,
               };
               setNote(result);
               setStreamStage("");

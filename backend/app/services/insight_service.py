@@ -3,6 +3,7 @@
 import asyncio
 import json
 import logging
+from uuid import UUID
 
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -234,3 +235,45 @@ def spawn_insight_verification_task(
         loop.create_task(_run())
     except RuntimeError:
         logger.warning("No running event loop — skipping insight verification")
+
+
+async def verify_insight_inline(
+    db: AsyncSession,
+    ai_service: AIService,
+    insight: AIInsight,
+    health_context: str,
+    member_id: UUID | None = None,
+) -> None:
+    """Verify an insight synchronously on the caller's session before returning.
+
+    The second-model result is written onto ``insight`` (the same instance the
+    caller holds) and committed, so the verification status always ships with the
+    content — never 'pending'. No-op when verification is disabled; falls back to
+    fire-and-forget (:func:`spawn_insight_verification_task`) when
+    ``AI_VERIFICATION_SYNCHRONOUS`` is off.
+    """
+    from app.core.config import get_settings
+
+    settings = get_settings()
+    if not settings.AI_VERIFICATION_ENABLED:
+        return
+    if not settings.AI_VERIFICATION_SYNCHRONOUS:
+        spawn_insight_verification_task(
+            insight.id, health_context, str(member_id) if member_id else None
+        )
+        return
+
+    from app.services.verification_service import VerificationService
+
+    try:
+        await VerificationService(db, ai_service).verify_insight(insight, health_context)
+        await db.commit()
+    except Exception:
+        await db.rollback()
+        logger.exception("Inline insight verification failed for %s", insight.id)
+        try:
+            insight.verification_status = "failed"
+            insight.verification_summary = "Inline verification could not be completed."
+            await db.commit()
+        except Exception:
+            logger.debug("Could not persist verification failure marker")

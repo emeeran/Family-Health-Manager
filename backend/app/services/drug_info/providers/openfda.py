@@ -137,6 +137,43 @@ async def label_exists(client: httpx.AsyncClient, generic_name: str) -> bool:
         return False
 
 
+async def brands_for_generic(
+    client: httpx.AsyncClient, generic_name: str
+) -> tuple[list[str], list[str]]:
+    """Known brand names + generic names openFDA associates with ``generic_name``.
+
+    Used to verify an AI brand→generic guess: the input brand must appear among
+    the generic's brands (or be the generic itself). A real-but-WRONG guess
+    (e.g. "Parktidine" → "ranitidine") won't be confirmed — Parktidine isn't a
+    ranitidine brand — so it's rejected upstream rather than shown. Returns
+    ``([], [])`` on any failure (treated as unverified → rejected).
+    """
+    if not generic_name:
+        return [], []
+    params = {
+        "search": f"openfda.generic_name:{_quoted(generic_name)}",
+        "limit": 25,
+        **_auth_param(),
+    }
+    try:
+        _status, body = await fetch_json(
+            client, "GET", f"{_base()}/drug/label.json", params=params
+        )
+    except Exception:  # noqa: BLE001 — a failed probe can't confirm anything
+        return [], []
+    brands: list[str] = []
+    generics: set[str] = set()
+    for row in _results(body):
+        meta = row.get("openfda") if isinstance(row.get("openfda"), dict) else {}
+        for b in meta.get("brand_name") or []:
+            if isinstance(b, str) and b.strip():
+                brands.append(b.strip().lower())
+        for g in meta.get("generic_name") or []:
+            if isinstance(g, str) and g.strip():
+                generics.add(g.strip().lower())
+    return brands, sorted(generics)
+
+
 async def label(client: httpx.AsyncClient, generic_name: str) -> dict | None:
     """The most recent FDA label for a generic drug (key sections only)."""
     if not generic_name:

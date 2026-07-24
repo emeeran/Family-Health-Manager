@@ -51,10 +51,10 @@ async def generate_member_insights(
         raise HTTPException(status_code=502, detail="AI service unavailable. Please try again.")
 
     try:
-        from app.services.insight_service import spawn_insight_verification_task
+        from app.services.insight_service import verify_insight_inline
 
         context = await ai_service._build_member_context(member_id, comprehensive=True)
-        spawn_insight_verification_task(insight.id, context)
+        await verify_insight_inline(db, ai_service, insight, context, member_id)
     except Exception:
         logger.debug("Insight verification skipped")
 

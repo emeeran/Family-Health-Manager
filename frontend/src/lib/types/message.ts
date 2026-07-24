@@ -10,7 +10,8 @@ export type VerificationStatus =
   | "unverifiable"
   | "pending"
   | "failed"
-  | "auto_verified";
+  | "auto_verified"
+  | "unvalidated";
 export type WarningType =
   | "wrong_date"
   | "wrong_value"

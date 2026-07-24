@@ -31,6 +31,10 @@ class HealthRecord(Base):
     prescription_text: Mapped[str | None] = mapped_column(Text, nullable=True)
     summary: Mapped[str | None] = mapped_column(Text, nullable=True)
     transcription_report: Mapped[str | None] = mapped_column(Text, nullable=True)
+    # JSON (Text) verification result from the second-model check on
+    # ``transcription_report`` (status/verifier/warnings/summary). Null until the
+    # report is generated and validated.
+    transcription_verification: Mapped[str | None] = mapped_column(Text, nullable=True)
     next_review_date: Mapped[date | None] = mapped_column(Date, nullable=True)
     tags: Mapped[str | None] = mapped_column(Text, nullable=True)
     is_deleted: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False, index=True)

@@ -270,7 +270,12 @@ async def send_message_stream(
                 yield chunk
 
             # Fire verification in background with its own DB session
-            if settings.AI_VERIFICATION_ENABLED and health_context and message_id:
+            if (
+                settings.AI_VERIFICATION_ENABLED
+                and not settings.AI_VERIFICATION_SYNCHRONOUS
+                and health_context
+                and message_id
+            ):
 
                 async def _run_verification():
                     verify_db = SessionLocal()
@@ -337,6 +342,9 @@ async def send_message(
     if settings.AI_VERIFICATION_ENABLED and health_context:
         try:
             verification_svc = VerificationService(db, service)
+            # Synchronous mode: no timeout — the status must ship with this
+            # response. Otherwise keep the 3s cap and let the frontend poll.
+            timeout = None if settings.AI_VERIFICATION_SYNCHRONOUS else 3.0
             verification = await asyncio.wait_for(
                 verification_svc.verify(
                     question=request.content,
@@ -345,7 +353,7 @@ async def send_message(
                     original_provider=provider,
                     message_id=assistant_msg.id,
                 ),
-                timeout=3.0,
+                timeout=timeout,
             )
             verification_data = _verification_to_dict(verification)
         except asyncio.TimeoutError:

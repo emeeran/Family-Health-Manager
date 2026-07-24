@@ -62,7 +62,8 @@ export const SmartReportCard = memo(function SmartReportCard({
               report: reportObj,
               provider_used: e.provider as string,
               generated_at: (e.generated_at as string) ?? new Date().toISOString(),
-              verification: null,
+              verification:
+                (e.verification as GeneratedInsight["verification"] | undefined) ?? null,
             };
             setReport(result);
             setStreamStage("");

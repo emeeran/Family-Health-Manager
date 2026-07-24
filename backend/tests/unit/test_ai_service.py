@@ -268,12 +268,19 @@ async def test_generate_transcription_report_uses_ai(ai_service):
     ai_report = "## Medical Records Transcription Report\n\nAI-generated body."
     with patch.object(
         ai_service, "_call_ai", new_callable=AsyncMock, return_value=(ai_report, "mock-provider")
+    ), patch.object(
+        ai_service,
+        "_verify_transcription_report",
+        new_callable=AsyncMock,
+        return_value={"status": "verified"},
     ):
-        result = await ai_service.generate_transcription_report(
+        report, verification = await ai_service.generate_transcription_report(
             _report_extracted_data(), _report_member_ctx(), _report_provider_ctx()
         )
-    assert "Medical Records Transcription Report" in result
-    assert "AI-generated body." in result
+    assert "Medical Records Transcription Report" in report
+    assert "AI-generated body." in report
+    # Second-model verification result ships with the report.
+    assert verification == {"status": "verified"}
 
 
 @pytest.mark.asyncio
@@ -285,17 +292,19 @@ async def test_generate_transcription_report_falls_back_to_template(ai_service):
         new_callable=AsyncMock,
         side_effect=RuntimeError("all providers down"),
     ):
-        result = await ai_service.generate_transcription_report(
+        report, verification = await ai_service.generate_transcription_report(
             _report_extracted_data(), _report_member_ctx(), _report_provider_ctx()
         )
     # Institution header is the provider name.
-    assert result.startswith("# Dr. Sangeetha S")
-    assert "Medical Records Transcription Report" in result
-    assert "Mrs. Jenitha" in result
-    assert "KF2446" in result
+    assert report.startswith("# Dr. Sangeetha S")
+    assert "Medical Records Transcription Report" in report
+    assert "Mrs. Jenitha" in report
+    assert "KF2446" in report
     # Medications + lab tables are populated from structured data.
-    assert "Doxycycline" in result
-    assert "Haemoglobin" in result
+    assert "Doxycycline" in report
+    assert "Haemoglobin" in report
+    # Template path is deterministic (not AI) — no verification attached.
+    assert verification is None
 
 
 def test_build_template_transcription_report_omits_empty_sections():

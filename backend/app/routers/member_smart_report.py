@@ -66,12 +66,13 @@ async def generate_smart_report(
         logger.error("Smart Report generation failed: %s", exc)
         raise HTTPException(status_code=502, detail="AI service unavailable. Please try again.")
 
-    # Fire-and-forget cross-verification, matching the streamed/insights path.
+    # Synchronous second-model validation — verification status ships with the
+    # response (never 'pending'); falls back to fire-and-forget if configured.
     try:
-        from app.services.insight_service import spawn_insight_verification_task
+        from app.services.insight_service import verify_insight_inline
 
         context = await ai_service._build_member_context(member_id, comprehensive=True)
-        spawn_insight_verification_task(insight.id, context)
+        await verify_insight_inline(db, ai_service, insight, context, member_id)
     except Exception:
         logger.debug("Smart Report verification skipped")
 

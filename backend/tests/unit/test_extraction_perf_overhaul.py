@@ -358,6 +358,10 @@ async def test_no_data_result_NOT_cached_when_providers_were_pruned(monkeypatch)
     from app.services.ai.document_extractor import ExtractionResult
     from app.schemas.health_record import ExtractedFields
 
+    # This tests the prune↔negative-cache interaction, not routing — disable the
+    # router so the plan matches from_config (groq present, then pruned).
+    monkeypatch.setattr("app.services.ai.task_router.router_enabled", lambda: False)
+
     # groq confirmed dead → pruned from the default chain → providers_were_pruned=True.
     ph.clear()
     ph._state["result"] = {"groq": False}

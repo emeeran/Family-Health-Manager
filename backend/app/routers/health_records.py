@@ -2,7 +2,7 @@
 
 import asyncio
 import logging
-from datetime import date, datetime, time, timezone
+from datetime import date, datetime, time
 from uuid import UUID
 from fastapi import (
     APIRouter,
@@ -115,6 +115,8 @@ async def extract_from_document(
 
     ai_service = AIService(db, household_id=household.id)
     transcription = None
+    extracted = ExtractedFields()
+    extraction_ok = False
     try:
         async with plaintext_path(staged_path, encrypted=True) as plain_path:
             result = await ai_service.extract_medical_data(
@@ -124,20 +126,29 @@ async def extract_from_document(
             )
         extracted = result.extracted
         transcription = result.transcription
+        extraction_ok = True
     except Exception as exc:
         logger.error("AI extraction failed: %s", exc)
-        extracted = ExtractedFields()
 
-    # Verification is intentionally omitted on the single-file path: it added a
-    # full AI round-trip to every upload and the result is unused by the RecordForm
-    # (mergeExtracted only consumes extracted/transcription). Batch upload still
-    # verifies via extract_batch.
+    # Second-model validation on every successful single-file extraction
+    # (verify-all) — previously omitted on this path.
+    verification = None
+    if extraction_ok:
+        try:
+            from app.services.verification_service import VerificationService
+
+            verification = await VerificationService(db, ai_service).verify_extraction(
+                extracted.model_dump(), original_provider=""
+            )
+        except Exception as exc:
+            logger.debug("Single-file verification skipped: %s", exc)
+
     return ExtractionResponse(
         staging_file_id=unique_filename,
         original_file_name=file.filename,
         extracted=extracted,
         confidence=extraction_confidence(extracted),
-        verification=None,
+        verification=verification,
         transcription=transcription,
     )
 
@@ -244,6 +255,17 @@ async def extract_from_document_stream(
                 elif kind == "done":
                     result = payload
                     extracted = result.extracted
+                    # Verify-all: second-model pass on the streamed single-file
+                    # path too (mirrors /extract and the batch stream).
+                    verification = None
+                    try:
+                        from app.services.verification_service import VerificationService
+
+                        verification = await VerificationService(db, ai_service).verify_extraction(
+                            extracted.model_dump(), original_provider=""
+                        )
+                    except Exception as exc:
+                        logger.debug("Stream single-file verification skipped: %s", exc)
                     yield sse(
                         {
                             "stage": "complete",
@@ -252,7 +274,7 @@ async def extract_from_document_stream(
                             "extracted": extracted.model_dump(mode="json"),
                             "transcription": result.transcription,
                             "confidence": extraction_confidence(extracted),
-                            "verification": None,
+                            "verification": verification,
                         }
                     )
                     break
@@ -320,25 +342,6 @@ async def get_staging_file(
         media_type=mime,
         headers={"Content-Disposition": f'inline; filename="{staging_file_id}"'},
     )
-
-
-def _auto_verified_result() -> dict:
-    """Synthetic verification result for high-confidence extractions.
-
-    When ``extraction_confidence`` rates an extraction "high" (strong field
-    coverage), the second AI verification pass adds latency without much value,
-    so we short-circuit it. The synthetic ``auto_verified`` status still surfaces
-    a badge (distinct from a real cross-check) so the UI shows something on every
-    item instead of silently omitting verification.
-    """
-    return {
-        "status": "auto_verified",
-        "claims_checked": 0,
-        "warnings": [],
-        "summary": "High extraction confidence — auto-verified (no second AI pass required).",
-        "verifier_provider": "heuristic",
-        "verified_at": datetime.now(timezone.utc).isoformat(),
-    }
 
 
 async def _extract_single_file(
@@ -468,26 +471,21 @@ async def extract_batch_stream(
                         ai = AIService(pdb, household_id=household.id)
                         item = await _extract_single_file(file, ai, member_id)
                         if item.extracted and not item.error:
-                            # High-coverage extractions skip the second AI
-                            # verification pass (roughly halving per-file latency
-                            # on CPU-only Ollama) and get a synthetic
-                            # auto_verified badge instead. Lower-confidence
-                            # extractions still get a real cross-check.
-                            if extraction_confidence(item.extracted) == "high":
-                                item.verification = _auto_verified_result()
-                            else:
-                                try:
-                                    verification_svc = VerificationService(pdb, ai)
-                                    item.verification = await verification_svc.verify_extraction(
-                                        item.extracted.model_dump(),
-                                        original_provider="",
-                                    )
-                                except Exception as exc:
-                                    logger.debug(
-                                        "Batch verification skipped for %s: %s",
-                                        item.filename,
-                                        exc,
-                                    )
+                            # Every extraction gets a real second-model pass —
+                            # high-confidence included (no heuristic short-circuit),
+                            # so all extracted content is cross-validated.
+                            try:
+                                verification_svc = VerificationService(pdb, ai)
+                                item.verification = await verification_svc.verify_extraction(
+                                    item.extracted.model_dump(),
+                                    original_provider="",
+                                )
+                            except Exception as exc:
+                                logger.debug(
+                                    "Batch verification skipped for %s: %s",
+                                    item.filename,
+                                    exc,
+                                )
                 except Exception as exc:  # safety net — never exit without enqueuing
                     logger.error("Batch stream producer failed for %s: %s", file.filename, exc)
                     item = BatchExtractionItemSchema(
@@ -728,14 +726,19 @@ async def _generate_transcription_report_background(record_id: UUID, household_i
             provider_ctx = _provider_report_context(record.provider)
 
             ai_service = AIService(db, household_id=household_id)
-            report = await ai_service.generate_transcription_report(
+            report, verification = await ai_service.generate_transcription_report(
                 extracted_data, member_ctx, provider_ctx
             )
             if report:
                 await db.execute(
                     update(HealthRecord)
                     .where(HealthRecord.id == record_id)
-                    .values(transcription_report=report)
+                    .values(
+                        transcription_report=report,
+                        transcription_verification=json.dumps(verification)
+                        if verification
+                        else None,
+                    )
                 )
                 await db.commit()
                 await cache.invalidate_async(f"household_records:{household_id}")
@@ -1650,12 +1653,16 @@ async def regenerate_transcription_report(
 
     ai_service = AIService(db, household_id=household.id)
     try:
-        report = await ai_service.generate_transcription_report(
+        report, verification = await ai_service.generate_transcription_report(
             extracted_data, member_ctx, provider_ctx
         )
     except Exception as exc:
         raise HTTPException(status_code=502, detail=f"Report generation failed: {exc}")
 
     record_service = HealthRecordService(db)
-    record = await record_service.update_record(record_id, transcription_report=report)
+    record = await record_service.update_record(
+        record_id,
+        transcription_report=report,
+        transcription_verification=json.dumps(verification) if verification else None,
+    )
     return record

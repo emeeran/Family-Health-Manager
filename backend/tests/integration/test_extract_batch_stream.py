@@ -106,12 +106,12 @@ async def test_batch_stream_emits_start_per_file_then_done(
     assert {e["index"] for e in file_events} == {0, 1}
 
 
-async def test_batch_stream_auto_verifies_high_confidence_extractions(
+async def test_batch_stream_verifies_high_confidence_extractions(
     auth_client, monkeypatch, stub_verification
 ):
-    """High-coverage extractions skip the second AI verify pass and get an
-    auto_verified badge. The stubbed verify_extraction returns 'verified', so
-    seeing 'auto_verified' proves it was never called (the gate short-circuited).
+    """High-coverage extractions are verified too (verify-all). The stubbed
+    verify_extraction returns 'verified', so seeing 'verified' (not a heuristic
+    'auto_verified') proves the second-model pass actually ran.
     """
 
     async def fake_extract(self, file_path, mime_type, content_hash=None):
@@ -142,7 +142,7 @@ async def test_batch_stream_auto_verifies_high_confidence_extractions(
 
     file_events = [e for e in _data_events(lines) if e.get("stage") == "file_complete"]
     assert len(file_events) == 1
-    assert file_events[0]["item"]["verification"]["status"] == "auto_verified"
+    assert file_events[0]["item"]["verification"]["status"] == "verified"
 
 
 async def test_batch_stream_heartbeats_during_long_extract(

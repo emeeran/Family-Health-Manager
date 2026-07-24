@@ -71,7 +71,7 @@ class TestVerifyInsight:
         insight.response = "Patient has diabetes"
         insight.provider_used = "Ollama medgemma"
 
-        mock_ai_service._call_ai_excluding.return_value = (
+        mock_ai_service._call_validator.return_value = (
             '{"status": "verified", "claims_checked": 2, "warnings": [], "summary": "Accurate"}',
             "Cloud AI",
         )
@@ -100,7 +100,7 @@ class TestVerifyInsight:
                 "severity": "high",
             }
         ]
-        mock_ai_service._call_ai_excluding.return_value = (
+        mock_ai_service._call_validator.return_value = (
             json.dumps(
                 {
                     "status": "warnings",
@@ -125,11 +125,27 @@ class TestVerifyInsight:
         insight.response = "Some text"
         insight.provider_used = "Ollama medgemma"
 
-        mock_ai_service._call_ai_excluding.side_effect = RuntimeError("AI unavailable")
+        mock_ai_service._call_validator.side_effect = RuntimeError("AI unavailable")
 
         await service.verify_insight(insight, "context")
 
         assert insight.verification_status == "failed"
+        assert insight.verification_at is not None
+
+    @pytest.mark.asyncio
+    async def test_verify_insight_no_validator(self, service, mock_ai_service):
+        """No different-family validator available -> 'unvalidated' (content still shown)."""
+        insight = MagicMock()
+        insight.id = uuid4()
+        insight.response = "Some text"
+        insight.provider_used = "Ollama medgemma"
+
+        mock_ai_service._call_validator.return_value = None
+
+        await service.verify_insight(insight, "context")
+
+        assert insight.verification_status == "unvalidated"
+        assert insight.verification_verifier is None
         assert insight.verification_at is not None
 
 
@@ -138,7 +154,7 @@ class TestVerifyExtraction:
 
     @pytest.mark.asyncio
     async def test_verify_extraction_success(self, service, mock_ai_service):
-        mock_ai_service._call_ai_excluding.return_value = (
+        mock_ai_service._call_validator.return_value = (
             '{"status": "verified", "claims_checked": 3, "warnings": [], "summary": "Extraction looks good"}',
             "Cloud AI",
         )
@@ -154,9 +170,56 @@ class TestVerifyExtraction:
 
     @pytest.mark.asyncio
     async def test_verify_extraction_failure(self, service, mock_ai_service):
-        mock_ai_service._call_ai_excluding.side_effect = Exception("Service down")
+        mock_ai_service._call_validator.side_effect = Exception("Service down")
 
         result = await service.verify_extraction({}, "Ollama medgemma")
 
         assert result["status"] == "failed"
         assert result["claims_checked"] == 0
+
+    @pytest.mark.asyncio
+    async def test_verify_extraction_no_validator(self, service, mock_ai_service):
+        """No different-family validator available -> 'unvalidated'."""
+        mock_ai_service._call_validator.return_value = None
+
+        result = await service.verify_extraction({"medicine": "Metformin"}, "Ollama medgemma")
+
+        assert result["status"] == "unvalidated"
+        assert result["verifier_provider"] == ""
+
+
+class TestVerifyDrugInfo:
+    """Test verify_drug_info (flyout content cross-check)."""
+
+    @pytest.mark.asyncio
+    async def test_verify_drug_info_success(self, service, mock_ai_service):
+        mock_ai_service._call_validator.return_value = (
+            '{"status": "verified", "claims_checked": 3, "warnings": [], '
+            '"summary": "Content matches Metformin"}',
+            "Cloud AI",
+        )
+        result = await service.verify_drug_info(
+            "Metformin", {"indication": "type 2 diabetes", "adverse_events": ["nausea"]}
+        )
+        assert result["status"] == "verified"
+        assert result["verifier_provider"] == "Cloud AI"
+        assert "verified_at" in result
+
+    @pytest.mark.asyncio
+    async def test_verify_drug_info_wrong_drug_warning(self, service, mock_ai_service):
+        mock_ai_service._call_validator.return_value = (
+            '{"status": "warnings", "claims_checked": 2, "warnings": ['
+            '{"type": "wrong_drug", "claim": "indication is for diabetes", '
+            '"correction": "Metoprolol is a beta-blocker", "severity": "high"}], '
+            '"summary": "Wrong drug"}',
+            "Cloud AI",
+        )
+        result = await service.verify_drug_info("Metoprolol", {"indication": "diabetes"})
+        assert result["status"] == "warnings"
+        assert result["warnings"][0]["type"] == "wrong_drug"
+
+    @pytest.mark.asyncio
+    async def test_verify_drug_info_no_validator(self, service, mock_ai_service):
+        mock_ai_service._call_validator.return_value = None
+        result = await service.verify_drug_info("Metformin", {"indication": "diabetes"})
+        assert result["status"] == "unvalidated"

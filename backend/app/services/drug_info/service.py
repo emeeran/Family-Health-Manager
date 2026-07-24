@@ -15,39 +15,14 @@ import time
 from app.core.config import get_settings
 from app.services.drug_info.base import get_drug_info_client
 from app.services.drug_info.providers import abdm, drugbank, openfda, rxnorm
+from app.services.drug_info.providers import local_catalog
+from app.services.drug_info.composition import (
+    _DOSAGE_RE,
+    _FORM_WORDS,
+    ingredient_names,
+)
 
 logger = logging.getLogger(__name__)
-
-# Tokens to drop when guessing a generic name from free text. Covers the South-
-# Asian prescription forms used elsewhere in the app (Tab/Cap/Syp/Inj/…) plus
-# common units, so "Warfarin 5mg" / "Tab Metformin 500 mg" → "warfarin"/"metformin".
-_DOSAGE_RE = re.compile(r"\b\d+(?:\.\d+)?\s*(?:mg|mcg|ug|ml|gm|g|iu|meq|%|units?)\b", re.I)
-_FORM_WORDS = {
-    "tab",
-    "tabs",
-    "tablet",
-    "tablets",
-    "cap",
-    "caps",
-    "capsule",
-    "capsules",
-    "syp",
-    "syrup",
-    "inj",
-    "injection",
-    "drops",
-    "drop",
-    "cream",
-    "ointment",
-    "gel",
-    "inhaler",
-    "puff",
-    "spray",
-    "suspension",
-    "susp",
-    "strip",
-    "sachet",
-}
 
 # brand→generic resolved by the AI fallback (when RxNorm + heuristic can't map a
 # name). Cached so each brand costs at most one AI round-trip; negatives cached
@@ -167,7 +142,15 @@ class DrugInfoService:
         return list(seen.values())
 
     async def label(self, medicine_name: str) -> dict | None:
-        """FDA prescribing label for a single med (key sections, text-only)."""
+        """Prescribing label for a single med (local catalog, else openFDA)."""
+        # Local catalog first — brand-keyed, richer and accurate for Indian brands.
+        if self.db is not None:
+            try:
+                row = await local_catalog.find(self.db, medicine_name)
+            except Exception:  # noqa: BLE001
+                row = None
+            if row:
+                return self._local_label(row)
         generic = await self._resolve_generic(medicine_name)
         if not generic:
             return None
@@ -179,7 +162,14 @@ class DrugInfoService:
             return None
 
     async def adverse_events(self, medicine_name: str) -> list[dict]:
-        """Top reported adverse reactions for a single med."""
+        """Adverse reactions for a single med (local catalog, else openFAERS)."""
+        if self.db is not None:
+            try:
+                row = await local_catalog.find(self.db, medicine_name)
+            except Exception:  # noqa: BLE001
+                row = None
+            if row and row.side_effect:
+                return self._local_adverse_events(row)
         generic = await self._resolve_generic(medicine_name)
         if not generic:
             return []
@@ -208,8 +198,18 @@ class DrugInfoService:
             return []
 
     async def indication(self, medicine_name: str) -> dict | None:
-        """Indian-context indication/contraindication (ABDM) for a single med."""
-        if not medicine_name or not medicine_name.strip() or not abdm.is_configured():
+        """Indication/contraindication for a single med (local catalog, else ABDM)."""
+        if not medicine_name or not medicine_name.strip():
+            return None
+        # Local catalog first.
+        if self.db is not None:
+            try:
+                row = await local_catalog.find(self.db, medicine_name)
+            except Exception:  # noqa: BLE001
+                row = None
+            if row:
+                return self._local_indication(row)
+        if not abdm.is_configured():
             return None
         client = await get_drug_info_client()
         try:
@@ -236,6 +236,66 @@ class DrugInfoService:
             logger.warning("ABDM indication failed for %r", medicine_name, exc_info=True)
             return None
 
+    # ── local-catalog shaping helpers ──────────────────────────────────
+
+    def _local_label(self, row: "LocalDrug") -> dict:  # noqa: F821
+        """Shape a catalog row into the openFDA-label return form."""
+        sections: dict[str, str] = {}
+        usage = " ".join(p for p in [row.introduction, row.benefits] if p).strip()
+        if usage:
+            sections["indications_and_usage"] = usage
+        if row.safety_advise:
+            sections["warnings_and_precautions"] = row.safety_advise
+        if row.how_to_use:
+            sections["dosage_and_administration"] = row.how_to_use
+        if row.side_effect:
+            sections["adverse_reactions"] = row.side_effect
+        if row.drug_drug_interaction:
+            sections["drug_interactions"] = row.drug_drug_interaction
+        names = ingredient_names(row.composition or "")
+        return {
+            "generic_name": ", ".join(names) or None,
+            "brand_name": row.product_name,
+            "drug_class": row.primary_use,
+            "sections": sections,
+            "source": "local",
+        }
+
+    def _local_indication(self, row: "LocalDrug") -> dict:  # noqa: F821
+        """Shape a catalog row into the ABDM-indication return form."""
+        indication = " ".join(p for p in [row.introduction, row.benefits] if p).strip()
+        contra = " ".join(
+            p for p in [
+                row.pregnancy_interaction,
+                row.liver_interaction,
+                row.kidney_interaction,
+                row.safety_advise,
+            ]
+            if p
+        ).strip()
+        return {
+            "indication": indication,
+            "contraindication": contra,
+            "dose_form": row.product_form or "",
+            "routes": [],
+            "source": "local",
+        }
+
+    def _local_adverse_events(self, row: "LocalDrug") -> list[dict]:  # noqa: F821
+        """Split the local side-effect prose into reaction terms (no FAERS counts)."""
+        seen: set[str] = set()
+        out: list[dict] = []
+        for term in re.split(r"[;,\n]|\.\s+", row.side_effect or ""):
+            term = term.strip().strip(".,;:")
+            key = term.lower()
+            if not term or key in seen:
+                continue
+            seen.add(key)
+            out.append({"term": term, "count": 0})
+            if len(out) >= 12:
+                break
+        return out
+
     # ── name normalization ─────────────────────────────────────────────
 
     async def _resolve_generics(self, names: list[str]) -> list[str]:
@@ -261,6 +321,15 @@ class DrugInfoService:
             return None
         if client is None:
             client = await get_drug_info_client()
+        # Local catalog first — authoritative brand→ingredient for curated
+        # Indian brands (and keeps combination drugs' primary ingredient).
+        if self.db is not None:
+            try:
+                local = await local_catalog.resolve(self.db, name)
+                if local and local.get("name"):
+                    return local["name"]
+            except Exception:  # noqa: BLE001 — fall through to ABDM/RxNorm/AI
+                logger.debug("Local catalog resolve failed for %r; falling through", name)
         # ABDM first when configured — it knows Indian brands RxNorm doesn't.
         if abdm.is_configured():
             try:
@@ -292,16 +361,37 @@ class DrugInfoService:
         return _heuristic_generic(name)
 
     async def _ai_resolve(self, name: str, client) -> str | None:
-        """AI brand→generic, validated against openFDA existence. None if unsure."""
+        """AI brand→generic, verified against openFDA's known brands. None if unverified.
+
+        The AI can hallucinate a *real* but *wrong* drug (e.g. "Parktidine" →
+        "ranitidine" — fooled by the ``-tidine`` suffix), which a bare existence
+        check would accept. So we require the input name to actually appear among
+        the proposed generic's known brand names (or be the generic itself); an
+        unverifiable guess is rejected (→ no data) rather than shown as the wrong
+        drug.
+        """
         candidate = await _ai_generic_name(self.db, name)
         if not candidate:
             return None
         try:
-            if await openfda.label_exists(client, candidate):
-                return candidate
-            logger.debug("AI generic %r for %r not in openFDA; rejecting", candidate, name)
+            brands, generics = await openfda.brands_for_generic(client, candidate)
         except Exception:  # noqa: BLE001 — treat a failed probe as unresolvable
-            logger.debug("openFDA existence check failed for AI generic %r", candidate)
+            logger.debug("openFDA brand check failed for AI generic %r", candidate)
+            return None
+        if not brands and not generics:
+            return None  # generic not in openFDA → reject
+        # Strip dosage/form from the input (e.g. "Ropark 1mg" -> "ropark") so it
+        # can match a brand name, then require it to actually be a known brand of
+        # the proposed generic (or the generic itself).
+        norm = (_heuristic_generic(name) or "").strip().lower() or _ai_cache_key(name)
+        known = set(brands) | set(generics)
+        known.add((candidate or "").strip().lower())
+        if norm in known:
+            return candidate
+        logger.debug(
+            "AI generic %r for %r not confirmed among its brands (%d); rejecting",
+            candidate, name, len(brands),
+        )
         return None
 
 

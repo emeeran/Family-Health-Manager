@@ -82,7 +82,11 @@ export function applyStreamEvent(
           response: prev.fullText,
           provider_used: (event.provider as string) ?? "",
           generated_at: now.toISOString(),
-          verification: null,
+          // Verification now ships synchronously in the complete frame (second
+          // model validates inline before completion). Fall back to null so the
+          // polling hook can still resolve it when synchronous mode is off.
+          verification:
+            (event.verification as GeneratedInsight["verification"] | undefined) ?? null,
           sections: (event.sections as GeneratedInsight["sections"]) ?? null,
         },
       };

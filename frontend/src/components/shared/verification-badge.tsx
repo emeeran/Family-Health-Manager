@@ -63,6 +63,13 @@ export function VerificationBadge({
       label: "Auto-Verified",
       titleColor: "text-sky-700",
     },
+    unvalidated: {
+      icon: XCircle,
+      color: "text-muted-foreground",
+      bg: "bg-muted/50",
+      label: "Unvalidated",
+      titleColor: "text-muted-foreground",
+    },
   }[status] ?? {
     icon: XCircle,
     color: "text-muted-foreground",

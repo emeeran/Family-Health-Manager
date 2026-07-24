@@ -43,8 +43,8 @@ frontend/dist/
 backend/data/
 backend/openapi.json
 
-# Scripts
-scripts/
+# Scripts (repo-root deploy/sync helpers — NOT backend/app/scripts/ importers)
+/scripts/
 
 # Trash
 trash2review/

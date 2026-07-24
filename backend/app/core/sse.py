@@ -48,8 +48,18 @@ def make_sse_stream(
                 yield f"data: {data}\n\n"
             # Flush pending changes; get_db dependency will handle the final commit+close
             await db.flush()
-            # Fire-and-forget verification after flush
-            if insight_id:
+            # Async-fallback verification: only when synchronous inline
+            # verification is OFF (when ON, generate_insight_stream already
+            # validated before emitting the complete frame). Also gated by the
+            # global enable flag.
+            from app.core.config import get_settings
+
+            _settings = get_settings()
+            if (
+                insight_id
+                and _settings.AI_VERIFICATION_ENABLED
+                and not _settings.AI_VERIFICATION_SYNCHRONOUS
+            ):
                 try:
                     from app.services.insight_service import spawn_insight_verification_task
 

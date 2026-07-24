@@ -223,6 +223,24 @@ class Settings(BaseSettings):
     DRUG_GENERIC_AI_FALLBACK: bool = True
     OPENFDA_BASE_URL: str = "https://api.fda.gov"
     RXNORM_BASE_URL: str = "https://rxnav.nlm.nih.gov/REST"
+    # Local drug catalog CSV (Indian brand→composition + metadata). Gitignored —
+    # each deployment keeps its copy here; seed once via
+    # `uv run python -m app.scripts.seed_drug_catalog`. Empty = no local catalog
+    # (the drug-info service degrades to ABDM/RxNorm/openFDA/AI as before).
+    DRUG_CATALOG_CSV: str = ""
+    # Bulk Indian-medicine dataset (junioralive/Indian-Medicine-Dataset) raw CSV
+    # — no auth. Seeded via seed_drug_catalog_github.
+    INDIAN_MED_DATASET_URL: str = (
+        "https://raw.githubusercontent.com/junioralive/Indian-Medicine-Dataset/"
+        "main/DATA/indian_medicine_data.csv"
+    )
+    # parse.bot drugs.com API (rich monographs). Key-gated; empty = importer off.
+    PARSE_BOT_API_KEY: str = ""
+    PARSE_BOT_BASE_URL: str = "https://api.parse.bot/scraper/da04495a-c550-40b2-91b6-6a686616952d"
+    # Kaggle drugs.com review dataset — token-gated. KAGGLE_API_TOKEN is read
+    # from the env (never commit it). Dataset slug is configurable.
+    KAGGLE_API_TOKEN: str = ""
+    KAGGLE_DRUG_REVIEW_DATASET: str = "matiflatif/drugs-review-dataset"
     # ABDM Drug Registry (Ayushman Bharat Digital Mission — India's national drug
     # catalog). OAuth client_credentials: register on the ABDM sandbox to receive
     # a clientId/Secret, then set both here to enable Indian brand→generic
@@ -281,6 +299,28 @@ class Settings(BaseSettings):
 
     # AI Verification
     AI_VERIFICATION_ENABLED: bool = True
+    # Run the second-model check synchronously (inline, before the response is
+    # finalized so its status always ships with the content). When False, fall
+    # back to the older fire-and-forget background check (status arrives later).
+    AI_VERIFICATION_SYNCHRONOUS: bool = True
+    # Validator selection: prefer a cloud provider from a DIFFERENT family than
+    # the generator, and only use local Ollama as validator when no cloud
+    # candidate is available (never Ollama-validating-Ollama).
+    AI_VALIDATOR_CLOUD_PREFERRED: bool = True
+    # Preferred validator family: when set (default "gemini"), the second-model
+    # validator tries this family first within the cloud group, regardless of
+    # provider order — so Groq-generated content is validated by Google even if
+    # OpenRouter/OpenAI sit earlier in a household's list. Empty = honor order.
+    AI_VALIDATOR_PREFERRED_FAMILY: str = "gemini"
+    # Dynamic task router: when on, AI calls declare a task type and the router
+    # (app/services/ai/task_router.py) picks the cheapest model meeting the task's
+    # accuracy floor, escalating on low confidence. Off = today's ordered_providers.
+    AI_ROUTER_ENABLED: bool = True
+    AI_ROUTER_ESCALATION_ENABLED: bool = True
+    # Result confidence below which a non-streaming task retries on a stronger
+    # model. extraction_confidence maps high=1.0 / medium=0.5 / low=0.25 / none=0.0;
+    # 0.3 escalates only clearly-low-confidence (data-present) results, not medium.
+    AI_ROUTER_CONFIDENCE_THRESHOLD: float = 0.3
 
     # Email notifications were removed (email_service.py is parked in
     # trash2review). Re-add an EMAIL_* block here if email is revived.
