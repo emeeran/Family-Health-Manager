@@ -81,10 +81,22 @@ class SmartRecommendation(BaseModel):
     reasoning: str | None = None
 
 
+class ChronicCondition(BaseModel):
+    """An existing/chronic condition surfaced from the full visit history."""
+
+    model_config = ConfigDict(extra="allow", coerce_numbers_to_str=True)
+    name: str | None = None
+    # active | resolved | monitoring
+    status: str | None = None
+    since: str | None = None
+    note: str | None = None
+
+
 class SmartReportData(BaseModel):
     """Top-level Smart Report payload."""
 
     model_config = ConfigDict(extra="allow")
+    chronic_conditions: list[ChronicCondition] = Field(default_factory=list)
     systems_at_a_glance: list[SystemGlance] = Field(default_factory=list)
     organ_details: list[OrganDetail] = Field(default_factory=list)
     parameters_in_focus: list[ParameterInFocus] = Field(default_factory=list)

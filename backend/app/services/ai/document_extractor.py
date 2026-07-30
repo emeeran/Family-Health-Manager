@@ -461,15 +461,12 @@ def _load_extraction_prompt() -> str:
     ``consultation_summary.md`` / ``transcription_report.md``. Falls back to a
     minimal directive if the file is absent so extraction still runs.
     """
-    prompt_path = (
-        Path(__file__).resolve().parent.parent.parent.parent.parent
-        / "prompts"
-        / "extraction.md"
-    )
+    from app.services.ai.prompts import load_prompt
+
     try:
-        return prompt_path.read_text().strip()
+        return load_prompt("extraction.md").strip()
     except FileNotFoundError:
-        logger.warning("extraction.md not found at %s; using fallback prompt", prompt_path)
+        logger.warning("extraction.md not found; using fallback prompt")
         return (
             "You are a medical document data extraction assistant. Extract "
             "record_type, record_date, provider_name, diagnosis, prescriptions, "

@@ -103,7 +103,11 @@ async def build_member_context(
         )
         .order_by(HealthRecord.record_date.desc())
     )
-    query = query.limit(20 if comprehensive else 5)
+    # Comprehensive reports (Smart Report, comprehensive insight) analyze the
+    # COMPLETE history — chronic conditions, every doctor visit, all labs — so
+    # include (effectively) all records, not just the recent slice. Brief stays
+    # small for speed.
+    query = query.limit(100 if comprehensive else 5)
 
     recent = await db.execute(query)
     records = list(recent.unique().scalars().all())
@@ -220,6 +224,52 @@ async def build_member_context(
         context += f"\n{attachment_summary}\n"
 
     return context
+
+
+async def build_member_provenance(
+    db: AsyncSession, member_id: UUID, comprehensive: bool = False
+) -> dict:
+    """Return server-side provenance for a member-level AI insight.
+
+    Re-runs only the source-records query (the same one ``build_member_context``
+    uses) and returns ``{"sources", "freshness_as_of", "range_start"}`` — the
+    record ids/dates/types that fed the insight plus the date range. Built from
+    real rows, never from LLM output, so source citations can't be hallucinated.
+    ``freshness_as_of``/``range_start`` are ``date`` objects (or ``None``).
+    """
+    query = (
+        select(HealthRecord)
+        .where(
+            HealthRecord.family_member_id == member_id,
+            HealthRecord.is_deleted.is_(False),
+        )
+        .order_by(HealthRecord.record_date.desc())
+        .limit(100 if comprehensive else 5)
+    )
+    result = await db.execute(query)
+    records = list(result.scalars().all())
+
+    sources: list[dict] = []
+    for r in records:
+        summary = (
+            r.diagnosis.strip()
+            if r.diagnosis and r.diagnosis.strip()
+            else summarize_clinical_data(r.clinical_data)[:120] or r.record_type.value
+        )
+        sources.append(
+            {
+                "id": str(r.id),
+                "type": r.record_type.value,
+                "date": r.record_date.isoformat() if r.record_date else None,
+                "summary": summary,
+            }
+        )
+    dates = [r.record_date for r in records if r.record_date]
+    return {
+        "sources": sources,
+        "freshness_as_of": max(dates) if dates else None,
+        "range_start": min(dates) if dates else None,
+    }
 
 
 async def build_medication_summary(db: AsyncSession, member_id: UUID) -> str:

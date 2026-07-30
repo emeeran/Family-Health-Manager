@@ -264,6 +264,12 @@ export interface GeneratedInsight {
   raw_response?: string;
   /** Insights only — server-parsed markdown sections with stable keys. */
   sections?: InsightSection[] | null;
+  /** Provenance + freshness (member-level insights only). */
+  sources?:
+    | { id: string; type?: string | null; date?: string | null; summary?: string | null }[]
+    | null;
+  freshness_as_of?: string | null;
+  range_start?: string | null;
 }
 
 export type InsightMode = "comprehensive" | "brief";

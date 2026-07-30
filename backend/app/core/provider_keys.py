@@ -17,6 +17,7 @@ separate worker processes.
 
 from __future__ import annotations
 
+import json
 import logging
 import os
 import time
@@ -169,16 +170,63 @@ async def is_provider_configured(provider: str) -> bool:
 def gemini_adc_file_path() -> str:
     """Resolved ADC file path for Gemini.
 
-    Prefers the explicit ``GEMINI_ADC_FILE`` setting, then the standard
-    ``GOOGLE_APPLICATION_CREDENTIALS`` env var. Empty string when neither is set.
+    Resolution order (Google's own ADC convention):
+
+    1. explicit ``GEMINI_ADC_FILE`` setting
+    2. ``GOOGLE_APPLICATION_CREDENTIALS`` env var
+    3. the standard gcloud ADC location — ``$CLOUDSDK_CONFIG`` if set, else
+       ``~/.config/gcloud/application_default_credentials.json``
+
+    The gcloud fallback (3) lets ADC "just work" on any machine that has run
+    ``gcloud auth application-default login`` with no extra configuration —
+    important for the desktop app, which has no ``.env``. Callers gate on file
+    existence (``is_file`` / :func:`gemini_adc_configured`), so returning a path
+    that may not exist is safe.
     """
-    return get_settings().GEMINI_ADC_FILE or os.environ.get("GOOGLE_APPLICATION_CREDENTIALS", "")
+    settings = get_settings()
+    if settings.GEMINI_ADC_FILE:
+        return settings.GEMINI_ADC_FILE
+    env = os.environ.get("GOOGLE_APPLICATION_CREDENTIALS", "")
+    if env:
+        return env
+    cloudsdk = os.environ.get("CLOUDSDK_CONFIG", "")
+    if cloudsdk:
+        return os.path.join(cloudsdk, "application_default_credentials.json")
+    return os.path.join(
+        os.path.expanduser("~"), ".config", "gcloud", "application_default_credentials.json"
+    )
 
 
 def gemini_adc_configured() -> bool:
     """True if a readable Gemini ADC credentials file is configured."""
     path = gemini_adc_file_path()
     return bool(path) and Path(path).is_file()
+
+
+def gemini_vertex_project() -> str:
+    """Vertex AI project used when routing Gemini through ADC.
+
+    Returns the explicit ``VERTEX_PROJECT`` setting when set; otherwise infers it
+    from the ADC file's ``quota_project_id`` — an ``authorized_user`` ADC from
+    ``gcloud auth application-default login`` carries one, and that is the project
+    Vertex bills against. Empty string when neither is available.
+
+    Inference lets the desktop app (which has no ``.env`` / ``VERTEX_PROJECT``)
+    reach Gemini via Vertex whenever a gcloud ADC file is present.
+    """
+    explicit = get_settings().VERTEX_PROJECT
+    if explicit:
+        return explicit
+    path = gemini_adc_file_path()
+    if path and Path(path).is_file():
+        try:
+            data = json.loads(Path(path).read_text())
+            qp = data.get("quota_project_id")
+            if qp:
+                return str(qp)
+        except (OSError, ValueError):
+            return ""
+    return ""
 
 
 async def any_cloud_provider_configured() -> bool:

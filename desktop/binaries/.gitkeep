@@ -1,0 +1,3 @@
+# The PyInstaller-frozen backend sidecar is placed here by the build script as
+# health-manager-backend-<target-triple> (gitignored). Tauri's externalBin
+# mechanism resolves it at bundle time.

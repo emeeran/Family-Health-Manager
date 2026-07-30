@@ -1,11 +1,11 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, Suspense } from "react";
 import { useSearchParams } from "react-router-dom";
 import { AiToolsSubPage } from "@/components/ai-tools/ai-tools-layout";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Eye, Loader2, Sparkles, RefreshCw } from "lucide-react";
 import { listRecords, backfillSummaries, regenerateSummary } from "@/lib/api/records";
-import { simpleMarkdown } from "@/lib/markdown";
+import { MarkdownRenderer } from "@/components/shared/lazy-markdown";
 import { RECORD_TYPE_LABELS } from "@/lib/constants";
 import { formatDate } from "@/lib/utils";
 import type { HealthRecordResponse } from "@/lib/types/health-record";
@@ -144,10 +144,11 @@ export default function AiToolsSummariesPage() {
                   </Button>
                 </summary>
                 <div className="px-4 pb-3 border-t">
-                  <div
-                    className="text-xs text-muted-foreground leading-relaxed prose prose-sm max-w-none prose-table:text-[11px] prose-th:px-1.5 prose-th:py-0.5 prose-td:px-1.5 prose-td:py-0.5 prose-th:bg-muted/50"
-                    dangerouslySetInnerHTML={{ __html: simpleMarkdown(record.summary || "") }}
-                  />
+                  <div className="text-xs text-muted-foreground leading-relaxed prose prose-sm max-w-none prose-table:text-[11px] prose-th:px-1.5 prose-th:py-0.5 prose-td:px-1.5 prose-td:py-0.5 prose-th:bg-muted/50">
+                    <Suspense fallback={null}>
+                      <MarkdownRenderer content={record.summary || ""} />
+                    </Suspense>
+                  </div>
                 </div>
               </details>
             ))}

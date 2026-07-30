@@ -1,7 +1,7 @@
-import { forwardRef, useMemo } from "react";
+import { forwardRef, useMemo, Suspense } from "react";
 import type { HealthRecordResponse } from "@/lib/types/health-record";
 import type { FamilyMemberResponse } from "@/lib/types/member";
-import { simpleMarkdown } from "@/lib/markdown";
+import { MarkdownRenderer } from "@/components/shared/lazy-markdown";
 import { formatDate } from "@/lib/utils";
 
 /**
@@ -178,12 +178,13 @@ function buildTemplateMarkdown(
 
 export const TranscriptionReportView = forwardRef<HTMLDivElement, TranscriptionReportViewProps>(
   function TranscriptionReportView({ record, member, compact, documentStyle, className }, ref) {
-    const html = useMemo(() => {
-      const md = record.transcription_report?.trim()
-        ? record.transcription_report
-        : buildTemplateMarkdown(record, member);
-      return simpleMarkdown(md);
-    }, [record, member]);
+    const md = useMemo(
+      () =>
+        record.transcription_report?.trim()
+          ? record.transcription_report
+          : buildTemplateMarkdown(record, member),
+      [record, member]
+    );
 
     const color = documentStyle
       ? "text-black prose-headings:text-black prose-strong:text-black prose-th:bg-gray-100"
@@ -202,8 +203,11 @@ export const TranscriptionReportView = forwardRef<HTMLDivElement, TranscriptionR
         ]
           .filter(Boolean)
           .join(" ")}
-        dangerouslySetInnerHTML={{ __html: html }}
-      />
+      >
+        <Suspense fallback={null}>
+          <MarkdownRenderer content={md} />
+        </Suspense>
+      </div>
     );
   }
 );

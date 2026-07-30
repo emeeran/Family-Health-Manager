@@ -332,6 +332,11 @@ export interface MemberDetailResponse {
     } | null;
     report?: SmartReportData | null;
     raw_response?: string;
+    sources?:
+      | { id: string; type?: string | null; date?: string | null; summary?: string | null }[]
+      | null;
+    freshness_as_of?: string | null;
+    range_start?: string | null;
   } | null;
   recent_records: {
     id: string;

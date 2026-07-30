@@ -6,7 +6,8 @@ import { SystemStatusGrid } from "@/components/members/reports/system-status-gri
 import { ParameterTable } from "@/components/members/reports/parameter-table";
 import { FocusCard } from "@/components/members/reports/focus-card";
 import { RecommendationList } from "@/components/members/reports/recommendation-list";
-import { ValidationFootnote } from "@/components/members/reports/validation-footnote";
+import { ReportFooter } from "@/components/shared/report-footer";
+import type { ReportMeta } from "@/lib/types/report-meta";
 import { InsightReport } from "@/components/members/insight-report-viewer";
 import { exportElementToPDF } from "@/lib/pdf-export";
 import type { VerificationResult } from "@/lib/types/message";
@@ -120,6 +121,7 @@ interface SmartReportViewerProps {
   onBack: () => void;
   report?: SmartReportData | null;
   rawResponse?: string | null;
+  meta?: ReportMeta | null;
 }
 
 export function SmartReportViewer({
@@ -131,6 +133,7 @@ export function SmartReportViewer({
   onBack,
   report,
   rawResponse,
+  meta,
 }: SmartReportViewerProps) {
   const articleRef = useRef<HTMLDivElement>(null);
   const parsed = useMemo(
@@ -179,6 +182,7 @@ export function SmartReportViewer({
     (d) => d.parameters && d.parameters.length > 0
   );
   const recs = reportData.recommendations ?? [];
+  const chronicConditions = reportData.chronic_conditions ?? [];
 
   const allParams = (reportData.organ_details ?? []).flatMap((d) => d.parameters ?? []);
   const outOfRange = allParams.filter(
@@ -291,6 +295,36 @@ export function SmartReportViewer({
               )}
             </ReportSection>
 
+            {chronicConditions.length > 0 && (
+              <ReportSection eyebrow="Chronic conditions">
+                <div className="space-y-2">
+                  {chronicConditions.map((c, i) => (
+                    <div
+                      key={i}
+                      className="flex flex-wrap items-start justify-between gap-x-3 gap-y-1 rounded-lg border border-gray-200 px-3 py-2"
+                    >
+                      <div className="min-w-0">
+                        <span className="text-[13px] font-semibold text-gray-900">{c.name}</span>
+                        {c.since && (
+                          <span className="ml-1.5 text-[11px] text-gray-500">since {c.since}</span>
+                        )}
+                        {c.note && (
+                          <p className="mt-0.5 text-[12px] leading-relaxed text-gray-600">
+                            {c.note}
+                          </p>
+                        )}
+                      </div>
+                      {c.status && (
+                        <span className="shrink-0 rounded-full bg-gray-100 px-2 py-0.5 text-[10px] font-medium uppercase tracking-wide text-gray-600">
+                          {c.status}
+                        </span>
+                      )}
+                    </div>
+                  ))}
+                </div>
+              </ReportSection>
+            )}
+
             {systems.length > 0 && (
               <ReportSection eyebrow="Your body systems">
                 <SystemStatusGrid systems={systems} />
@@ -301,7 +335,11 @@ export function SmartReportViewer({
               <ReportSection eyebrow="Parameters in detail">
                 <div className="space-y-3">
                   {details.map((d, i) => (
-                    <ParameterTable key={i} detail={d} />
+                    <ParameterTable
+                      key={i}
+                      detail={d}
+                      warnings={verification?.warnings ?? undefined}
+                    />
                   ))}
                 </div>
               </ReportSection>
@@ -326,10 +364,11 @@ export function SmartReportViewer({
               </ReportSection>
             )}
 
-            <ValidationFootnote
+            <ReportFooter
               provider={provider}
               verification={verification}
               generatedAt={generatedAt}
+              meta={meta}
             />
           </div>
 

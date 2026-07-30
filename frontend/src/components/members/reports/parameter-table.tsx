@@ -1,4 +1,4 @@
-import { CheckCircle2 } from "lucide-react";
+import { CheckCircle2, AlertTriangle } from "lucide-react";
 import {
   Table,
   TableHeader,
@@ -8,6 +8,7 @@ import {
   TableCell,
 } from "@/components/ui/table";
 import type { LabParameter, OrganDetail } from "@/lib/types/smart-report";
+import type { VerificationWarning } from "@/lib/types/message";
 import { cn } from "@/lib/utils";
 
 /**
@@ -43,7 +44,32 @@ function pastValue(p: LabParameter): string {
   return prev[prev.length - 1].value ?? "—";
 }
 
-export function ParameterTable({ detail }: { detail: OrganDetail }) {
+/**
+ * Find a verification warning that disputes this parameter's value/date.
+ * Matches by parameter-name substring inside the warning's free-text ``claim``
+ * (the second-model check describes the disputed value, e.g. "Hemoglobin 7.0").
+ * Additive: a fuzzy miss just leaves the warning in the global footnote.
+ */
+function warningFor(
+  p: LabParameter,
+  warnings?: VerificationWarning[] | null
+): VerificationWarning | undefined {
+  if (!warnings || !p.name) return undefined;
+  const name = p.name.toLowerCase();
+  return warnings.find(
+    (w) =>
+      (w.type === "wrong_value" || w.type === "wrong_date" || w.type === "wrong_diagnosis") &&
+      w.claim?.toLowerCase().includes(name)
+  );
+}
+
+export function ParameterTable({
+  detail,
+  warnings,
+}: {
+  detail: OrganDetail;
+  warnings?: VerificationWarning[] | null;
+}) {
   const params = detail.parameters ?? [];
   if (params.length === 0) return null;
   const out = params.filter((p) => p.status === "out_of_range" || p.status === "critical").length;
@@ -85,11 +111,24 @@ export function ParameterTable({ detail }: { detail: OrganDetail }) {
         <TableBody>
           {params.map((p, i) => {
             const trend = p.trend ? TREND[p.trend] : undefined;
+            const warn = warningFor(p, warnings);
             return (
               <TableRow key={i} className="border-gray-100 text-[13px] text-gray-900">
                 <TableCell className="px-3 py-2">
                   <div className="flex items-center justify-between gap-2">
-                    <span className="font-medium">{p.name}</span>
+                    <span className="inline-flex items-center gap-1 font-medium">
+                      {p.name}
+                      {warn && (
+                        <span title={`Verification: ${warn.correction ?? ""}`.trim()}>
+                          <AlertTriangle
+                            className={cn(
+                              "h-3 w-3 shrink-0",
+                              warn.severity === "high" ? "text-red-500" : "text-amber-500"
+                            )}
+                          />
+                        </span>
+                      )}
+                    </span>
                     {trend && (
                       <span
                         className={cn(

@@ -2,11 +2,11 @@
 
 from __future__ import annotations
 from dataclasses import dataclass
-from datetime import datetime, timezone
+from datetime import date, datetime, timezone
 from uuid import UUID, uuid4
 from sqlalchemy import ForeignKey, Index
 from sqlalchemy.orm import Mapped, mapped_column, relationship
-from sqlalchemy.types import String, Text, DateTime, Integer
+from sqlalchemy.types import String, Text, DateTime, Integer, Date
 from app.models.base import Base
 
 
@@ -45,6 +45,14 @@ class AIInsight(Base):
     verification_verifier: Mapped[str | None] = mapped_column(String(50), nullable=True)
     verification_summary: Mapped[str | None] = mapped_column(String(500), nullable=True)
     verification_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+
+    # Provenance + freshness (themes 1 & 3): the source records + date range that
+    # fed a member-level insight, computed server-side from the member's records
+    # (never from LLM output, so citations can't be hallucinated). Null for
+    # non-member insights (chat, single-record).
+    sources_json: Mapped[str | None] = mapped_column(Text, nullable=True)
+    freshness_as_of: Mapped[date | None] = mapped_column(Date, nullable=True)
+    range_start: Mapped[date | None] = mapped_column(Date, nullable=True)
 
     health_record: Mapped["HealthRecord | None"] = relationship(back_populates="ai_insights")
     conversation: Mapped["Conversation | None"] = relationship(back_populates="ai_insights")

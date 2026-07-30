@@ -63,7 +63,15 @@ export interface SmartRecommendation {
   reasoning?: string | null;
 }
 
+export interface ChronicCondition {
+  name?: string | null;
+  status?: string | null;
+  since?: string | null;
+  note?: string | null;
+}
+
 export interface SmartReportData {
+  chronic_conditions?: ChronicCondition[];
   systems_at_a_glance?: SystemGlance[];
   organ_details?: OrganDetail[];
   parameters_in_focus?: ParameterInFocus[];

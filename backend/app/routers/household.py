@@ -30,7 +30,7 @@ from app.schemas.health_record import HealthRecordResponse
 from app.models.base import Household, FamilyMember, User
 from app.models.record import HealthRecord
 from app.core.cache import cache
-from app.core.provider_keys import gemini_adc_configured
+from app.core.provider_keys import gemini_adc_configured, gemini_vertex_project
 
 logger = logging.getLogger(__name__)
 
@@ -38,13 +38,12 @@ logger = logging.getLogger(__name__)
 def _adc_available() -> bool:
     """True when Gemini ADC is usable on this server (creds file + Vertex project).
 
-    Drives the frontend's ability to select the "ADC" auth option for Gemini.
-    ``get_settings`` is imported locally because this module already defines a
-    route handler of the same name.
+    Drives the frontend's ability to select the "ADC" auth option for Gemini. The
+    Vertex project may be explicit (VERTEX_PROJECT) or inferred from the ADC
+    file's quota_project_id, so ADC counts as available whenever a gcloud ADC
+    file exists — including the desktop app, which has no .env.
     """
-    from app.core.config import get_settings
-
-    return gemini_adc_configured() and bool(get_settings().VERTEX_PROJECT)
+    return gemini_adc_configured() and bool(gemini_vertex_project())
 
 router = APIRouter(prefix="/household", tags=["Household"])
 

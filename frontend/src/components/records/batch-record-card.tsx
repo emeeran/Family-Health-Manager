@@ -1,4 +1,4 @@
-import { useState, useRef, useEffect } from "react";
+import { useState, useRef, useEffect, Suspense } from "react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
@@ -21,7 +21,7 @@ import {
 import { RECORD_TYPE_LABELS } from "@/lib/constants";
 import { serializeClinicalData } from "@/lib/clinical-data";
 import { createRecord, regenerateSummary } from "@/lib/api/records";
-import { simpleMarkdown } from "@/lib/markdown";
+import { MarkdownRenderer } from "@/components/shared/lazy-markdown";
 import { computeMedicationDiff, applyMedicationSync } from "@/lib/api/members";
 import { MedicationSyncDialog } from "./medication-sync-dialog";
 import { VerificationBadge } from "@/components/shared/verification-badge";
@@ -386,10 +386,11 @@ export function BatchRecordCard({
               Consultation Summary
             </summary>
             <div className="px-3 py-2">
-              <div
-                className="text-xs text-gray-700 prose prose-sm max-w-none prose-table:text-xs prose-th:px-2 prose-th:py-1 prose-td:px-2 prose-td:py-1 prose-th:bg-gray-50"
-                dangerouslySetInnerHTML={{ __html: simpleMarkdown(summary) }}
-              />
+              <div className="text-xs text-gray-700 prose prose-sm max-w-none prose-table:text-xs prose-th:px-2 prose-th:py-1 prose-td:px-2 prose-td:py-1 prose-th:bg-gray-50">
+                <Suspense fallback={null}>
+                  <MarkdownRenderer content={summary} />
+                </Suspense>
+              </div>
               <div className="mt-2 pt-2 border-t border-gray-100 flex items-center gap-2">
                 {savedRecordId && (
                   <Button

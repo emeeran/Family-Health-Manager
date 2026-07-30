@@ -1,8 +1,7 @@
 """Pre-consultation notes router — generate and retrieve doctor visit discussion points."""
 
-import json
 import logging
-from datetime import date, datetime, timezone
+from datetime import date
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request
@@ -17,6 +16,7 @@ from app.models.ai import AIInsight
 from app.models.base import FamilyMember, Household, HealthRecord
 from app.models.provider import Provider
 from app.prompts.insight_prompts import PRE_CONSULT_PROMPT
+from app.schemas.insight_serializers import serialize_preconsultation_payload
 
 logger = logging.getLogger(__name__)
 
@@ -143,24 +143,7 @@ async def generate_pre_consultation_note(
         logger.error("Pre-consultation note generation failed: %s", exc)
         raise HTTPException(status_code=502, detail="AI service unavailable. Please try again.")
 
-    return {
-        "id": str(insight.id),
-        "response": insight.response,
-        "provider_used": insight.provider_used,
-        "generated_at": insight.generated_at.isoformat(),
-        "verification": {
-            "status": insight.verification_status,
-            "claims_checked": insight.verification_claims_checked,
-            "verifier_provider": insight.verification_verifier,
-            "summary": insight.verification_summary,
-            "warnings": json.loads(insight.verification_warnings_json)
-            if insight.verification_warnings_json
-            else None,
-            "verified_at": insight.verification_at.isoformat() if insight.verification_at else None,
-        }
-        if insight.verification_status != "pending" or insight.verification_at
-        else {"status": "pending"},
-    }
+    return serialize_preconsultation_payload(insight)
 
 
 @router.get("/{member_id}/pre-consultation-note/latest")
@@ -185,35 +168,7 @@ async def get_latest_pre_consultation_note(
     if not insight:
         return {"note": None}
 
-    return {
-        "note": {
-            "id": str(insight.id),
-            "response": insight.response,
-            "provider_used": insight.provider_used,
-            "generated_at": insight.generated_at.isoformat(),
-            "verification": {
-                "status": insight.verification_status,
-                "claims_checked": insight.verification_claims_checked,
-                "verifier_provider": insight.verification_verifier,
-                "summary": insight.verification_summary,
-                "warnings": json.loads(insight.verification_warnings_json)
-                if insight.verification_warnings_json
-                else None,
-                "verified_at": insight.verification_at.isoformat()
-                if insight.verification_at
-                else None,
-            }
-            if insight.verification_status != "pending" or insight.verification_at
-            else {
-                "status": "pending"
-                if (
-                    datetime.now(timezone.utc) - insight.generated_at.replace(tzinfo=timezone.utc)
-                ).total_seconds()
-                < 300
-                else "unverifiable"
-            },
-        },
-    }
+    return {"note": serialize_preconsultation_payload(insight)}
 
 
 @router.post("/{member_id}/pre-consultation-note/stream")

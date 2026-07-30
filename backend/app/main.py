@@ -556,3 +556,48 @@ async def health_detail(
         status_code=status_code,
         content={"status": overall, "checks": checks},
     )
+
+
+# ── Desktop mode: serve the built SPA from the backend (same-origin) ──────────
+# Enabled only when SERVE_FRONTEND is set (the Tauri desktop sidecar turns it on
+# via env). The server .deb keeps using Caddy, so this never mounts there.
+# Registered LAST so every /api/v1/* router and /health* route above takes
+# precedence; the catch-all only handles client-side SPA routing + static files.
+if settings.SERVE_FRONTEND:
+    import sys as _sys
+    from pathlib import Path as _Path
+
+    from fastapi import HTTPException as _HTTPException
+    from fastapi.responses import FileResponse as _FileResponse
+    from fastapi.staticfiles import StaticFiles as _StaticFiles
+
+    # Frozen (PyInstaller): the dist is bundled under sys._MEIPASS/frontend.
+    # Unfrozen: use FRONTEND_DIST (e.g. `python desktop_main.py` from backend/).
+    _meipass = getattr(_sys, "_MEIPASS", None)
+    if _meipass:
+        _fe_root = (_Path(_meipass) / "frontend").resolve()
+    elif settings.FRONTEND_DIST:
+        _fe_root = _Path(settings.FRONTEND_DIST).resolve()
+    else:
+        _fe_root = None
+    if _fe_root and (_fe_root / "index.html").is_file():
+        # Hashed Vite assets live under /assets/* (immutable). Other top-level
+        # static files (favicon, manifest, runtime-config.js) are served by the
+        # catch-all below.
+        _fe_assets = _fe_root / "assets"
+        if _fe_assets.is_dir():
+            app.mount("/assets", _StaticFiles(directory=_fe_assets), name="frontend-assets")
+
+        @app.get("/{full_path:path}")
+        async def _spa_fallback(full_path: str):
+            # Never shadow the API/health routes — an unmatched /api or /health
+            # path should 404 as JSON, not return the SPA shell.
+            if full_path.startswith(("api/", "health")):
+                raise _HTTPException(status_code=404)
+            candidate = (_fe_root / full_path).resolve()
+            # Serve a real static file if present and contained within the dist
+            # (guards against ../ traversal); otherwise fall back to index.html
+            # so react-router deep links (/login, /members/123, ...) resolve.
+            if candidate.is_file() and candidate.is_relative_to(_fe_root):
+                return _FileResponse(candidate)
+            return _FileResponse(_fe_root / "index.html")

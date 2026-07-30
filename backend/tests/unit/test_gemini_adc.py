@@ -71,6 +71,25 @@ def adc_file(tmp_path, monkeypatch):
     return path
 
 
+@pytest.fixture
+def no_adc(monkeypatch, tmp_path):
+    """Simulate 'no ADC configured anywhere'.
+
+    Clears the explicit file + env vars AND points ``$HOME`` at a temp dir so the
+    gcloud default-path fallback (``~/.config/gcloud/application_default_credentials.json``)
+    doesn't resolve to the developer's real credentials — which would otherwise
+    make ADC look "configured" on a machine that has run ``gcloud auth
+    application-default login``.
+    """
+    monkeypatch.setattr(gemini.settings, "GEMINI_ADC_FILE", "")
+    monkeypatch.setattr(gemini.settings, "VERTEX_PROJECT", "")
+    monkeypatch.delenv("GOOGLE_APPLICATION_CREDENTIALS", raising=False)
+    monkeypatch.delenv("CLOUDSDK_CONFIG", raising=False)
+    monkeypatch.setenv("HOME", str(tmp_path))
+    gemini._adc_cache["token"] = None
+    gemini._adc_cache["expires_at"] = 0.0
+
+
 # ── _gemini_generate routing ───────────────────────────────────────────────
 
 
@@ -92,11 +111,7 @@ async def test_routes_through_vertex_when_adc_configured(adc_file):
     assert sent["json"]["contents"][0]["role"] == "user"
 
 
-async def test_falls_back_to_genlang_api_key_when_no_adc(monkeypatch):
-    monkeypatch.setattr(gemini.settings, "GEMINI_ADC_FILE", "")
-    monkeypatch.delenv("GOOGLE_APPLICATION_CREDENTIALS", raising=False)
-    gemini._adc_cache["token"] = None
-
+async def test_falls_back_to_genlang_api_key_when_no_adc(no_adc):
     async def _key(provider):
         return "AIzaFAKEKEY" if provider == "gemini" else None
 
@@ -113,11 +128,7 @@ async def test_falls_back_to_genlang_api_key_when_no_adc(monkeypatch):
     assert sent["headers"]["x-goog-api-key"] == "AIzaFAKEKEY"
 
 
-async def test_returns_none_when_unconfigured(monkeypatch):
-    monkeypatch.setattr(gemini.settings, "GEMINI_ADC_FILE", "")
-    monkeypatch.delenv("GOOGLE_APPLICATION_CREDENTIALS", raising=False)
-    gemini._adc_cache["token"] = None
-
+async def test_returns_none_when_unconfigured(no_adc):
     async def _no_key(provider):
         return None
 
@@ -169,12 +180,8 @@ async def test_adc_auth_forces_vertex_when_available(adc_file):
     assert sent["headers"]["Authorization"] == "Bearer BearerTok"
 
 
-async def test_adc_auth_falls_back_to_key_when_not_configured(monkeypatch):
+async def test_adc_auth_falls_back_to_key_when_not_configured(no_adc):
     # User chose ADC but no ADC is configured -> must not hard-fail; fall back.
-    monkeypatch.setattr(gemini.settings, "GEMINI_ADC_FILE", "")
-    monkeypatch.delenv("GOOGLE_APPLICATION_CREDENTIALS", raising=False)
-    gemini._adc_cache["token"] = None
-
     client = _FakeClient()
     with (
         patch.object(gemini, "resolve_provider_api_key", _async("AIzaFAKEKEY")),

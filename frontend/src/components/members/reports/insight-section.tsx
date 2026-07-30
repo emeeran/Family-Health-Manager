@@ -12,7 +12,17 @@
  */
 
 import type { ReactNode } from "react";
-import { AlertTriangle, ShieldAlert, ShieldCheck, Activity } from "lucide-react";
+import {
+  AlertTriangle,
+  ShieldAlert,
+  ShieldCheck,
+  Activity,
+  HeartPulse,
+  FlaskConical,
+  Lightbulb,
+  CalendarClock,
+  FileText,
+} from "lucide-react";
 import type { InsightSection } from "@/lib/parse-sections";
 import {
   splitBlocks,
@@ -36,6 +46,18 @@ const KEY_ACCENT: Record<string, string> = {
   recommendations: "#06b6d4",
   follow_up: "#ec4899",
   other: "#737373",
+};
+
+// A distinct icon per section type so each block is visually identifiable at a
+// glance, rendered inside an accent-tinted chip in the eyebrow.
+const KEY_ICON: Record<string, typeof Activity> = {
+  overview: Activity,
+  conditions: HeartPulse,
+  labs: FlaskConical,
+  risk: ShieldAlert,
+  recommendations: Lightbulb,
+  follow_up: CalendarClock,
+  other: FileText,
 };
 
 const CARD_BASE =
@@ -104,14 +126,30 @@ function Prose({ text }: { text: string }) {
 
 /* ── eyebrow (uppercase, underlined — Apollo-style) ── */
 
-function Eyebrow({ index, title, accent }: { index: number; title: string; accent: string }) {
+function Eyebrow({
+  index,
+  title,
+  accent,
+  Icon,
+}: {
+  index: number;
+  title: string;
+  accent: string;
+  Icon: typeof Activity;
+}) {
   return (
-    <div className="mb-3.5 flex items-center gap-2.5">
-      <span className="text-[13px] font-bold leading-none tabular-nums" style={{ color: accent }}>
-        {String(index).padStart(2, "0")}
+    <div className="mb-4 flex items-center gap-2.5">
+      <span
+        className="flex h-7 w-7 shrink-0 items-center justify-center rounded-lg"
+        style={{ backgroundColor: `${accent}1a` }}
+      >
+        <Icon className="h-3.5 w-3.5" style={{ color: accent }} />
       </span>
       <h2 className="text-[13px] font-bold uppercase tracking-[0.08em] text-gray-900">{title}</h2>
       <span className="h-px flex-1 bg-gray-200" />
+      <span className="text-[11px] font-bold leading-none tabular-nums text-gray-300">
+        {String(index).padStart(2, "0")}
+      </span>
     </div>
   );
 }
@@ -413,10 +451,12 @@ export function InsightSectionBlock({
   id?: string;
   index?: number;
 }) {
-  const accent = KEY_ACCENT[section.key ?? "other"] ?? "#737373";
+  const key = section.key ?? "other";
+  const accent = KEY_ACCENT[key] ?? "#737373";
+  const Icon = KEY_ICON[key] ?? FileText;
   return (
     <section id={id} className="scroll-mt-28">
-      <Eyebrow index={index} title={section.title} accent={accent} />
+      <Eyebrow index={index} title={section.title} accent={accent} Icon={Icon} />
       {renderBody(section)}
     </section>
   );

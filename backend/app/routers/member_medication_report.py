@@ -21,7 +21,7 @@ from app.core.sse import make_sse_stream
 from app.models.ai import AIInsight
 from app.models.base import Household, FamilyMember
 from app.prompts.insight_prompts import MEDICATION_REPORT_PROMPT
-from app.schemas.insight_serializers import serialize_insight_payload
+from app.schemas.insight_serializers import serialize_medication_report_payload
 from app.services.drug_info import DrugInfoService
 from app.services.medication_service import MedicationService
 
@@ -104,8 +104,8 @@ async def _build_medication_context(member_id: UUID, db: AsyncSession) -> str:
 
 
 def _med_postprocess(full_response: str, insight: AIInsight) -> dict:
-    """Enrich the ``complete`` frame with the persisted report payload."""
-    payload = serialize_insight_payload(insight)
+    """Enrich the ``complete`` frame with the persisted medication-report payload."""
+    payload = serialize_medication_report_payload(insight)
     return {
         "id": str(insight.id),
         "generated_at": insight.generated_at.isoformat(),
@@ -166,4 +166,4 @@ async def get_latest_medication_report(
     insight = result.scalar_one_or_none()
     if not insight:
         return {"report": None}
-    return {"report": serialize_insight_payload(insight)}
+    return {"report": serialize_medication_report_payload(insight)}

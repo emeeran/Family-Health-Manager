@@ -158,6 +158,9 @@ export const OverviewTab = memo(function OverviewTab({ data }: OverviewTabProps)
           provider_used: latest_smart_report.provider_used,
           generated_at: latest_smart_report.generated_at,
           verification: latest_smart_report.verification as VerificationResult | null,
+          sources: latest_smart_report.sources,
+          freshness_as_of: latest_smart_report.freshness_as_of,
+          range_start: latest_smart_report.range_start,
         }
       : null
   );
@@ -340,6 +343,11 @@ ${histParts.length > 0 ? `<h2>Medical History</h2><div style="line-height:1.8;ma
         onBack={() => setShowSmartReport(false)}
         report={smartReport.report}
         rawResponse={smartReport.raw_response}
+        meta={{
+          sources: smartReport.sources ?? null,
+          freshness_as_of: smartReport.freshness_as_of ?? null,
+          range_start: smartReport.range_start ?? null,
+        }}
       />
     );
   }

@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect, useRef, Suspense } from "react";
 import { Link } from "react-router-dom";
 import { useNavigate } from "react-router-dom";
 import { Button } from "@/components/ui/button";
@@ -18,7 +18,7 @@ import {
   regenerateSummary,
   regenerateReport,
 } from "@/lib/api/records";
-import { simpleMarkdown } from "@/lib/markdown";
+import { MarkdownRenderer } from "@/components/shared/lazy-markdown";
 import { exportElementToPDF } from "@/lib/pdf-export";
 import { streamRequest } from "@/lib/api-client";
 import { toast } from "sonner";
@@ -408,10 +408,11 @@ export function RecordDetailContent({ record: initialRecord, member }: RecordDet
               </div>
             ) : (
               <div className="prose prose-sm dark:prose-invert max-w-none text-sm">
-                <div
-                  className="whitespace-pre-wrap leading-relaxed"
-                  dangerouslySetInnerHTML={{ __html: simpleMarkdown(record.summary) }}
-                />
+                <div className="whitespace-pre-wrap leading-relaxed">
+                  <Suspense fallback={null}>
+                    <MarkdownRenderer content={record.summary} />
+                  </Suspense>
+                </div>
               </div>
             )}
           </CardContent>

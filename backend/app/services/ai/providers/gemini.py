@@ -5,12 +5,15 @@ Two auth paths, picked automatically:
   ``gcloud auth application-default login``) carry the ``cloud-platform`` scope,
   which Vertex AI accepts. The Generative Language API needs a ``generative-
   language`` scope that gcloud will *not* grant, so ADC only reaches Gemini via
-  Vertex (project-scoped endpoints). Requires ``GEMINI_ADC_FILE`` +
-  ``VERTEX_PROJECT``.
+  Vertex (project-scoped endpoints). The ADC file is auto-detected
+  (``GEMINI_ADC_FILE``, else the standard gcloud location) and the Vertex
+  project defaults to ``VERTEX_PROJECT`` but is inferred from the ADC file's
+  ``quota_project_id`` when unset.
 - **API key → Generative Language API.** The fallback when no ADC is set; uses
   the ``x-goog-api-key`` header against ``generativelanguage.googleapis.com``.
 """
 
+import asyncio
 import json
 import logging
 import time
@@ -19,7 +22,7 @@ from pathlib import Path
 import httpx
 
 from app.core.config import get_settings
-from app.core.provider_keys import gemini_adc_file_path, resolve_provider_api_key
+from app.core.provider_keys import gemini_adc_file_path, gemini_vertex_project, resolve_provider_api_key
 from app.services.ai.base import get_cloud_client, retry_with_backoff
 
 settings = get_settings()
@@ -104,6 +107,11 @@ async def _gemini_generate(
     generation_config: dict = {"temperature": temperature}
     if max_output_tokens:
         generation_config["maxOutputTokens"] = max_output_tokens
+    # Gemini 2.5 "thinking" models reason before answering (~2x latency, no
+    # token progress during the wait). Disable it for fast deterministic output
+    # — mirrors OLLAMA_SUPPRESS_THINK. See GEMINI_SUPPRESS_THINK.
+    if settings.GEMINI_SUPPRESS_THINK:
+        generation_config["thinkingConfig"] = {"thinkingBudget": 0}
     payload = {
         # Vertex requires an explicit role on each content; the Gen Lang API
         # accepts it too, so it's included unconditionally.
@@ -111,8 +119,11 @@ async def _gemini_generate(
         "generationConfig": generation_config,
     }
 
-    token = _adc_access_token()
-    adc_ready = bool(token and settings.VERTEX_PROJECT)
+    token = await asyncio.to_thread(_adc_access_token)
+    # Vertex project: explicit VERTEX_PROJECT, else inferred from the ADC file's
+    # quota_project_id — so the desktop app (no .env) can use ADC unconfigured.
+    project = gemini_vertex_project()
+    adc_ready = bool(token and project)
 
     if gemini_auth == "api_key":
         use_adc = False
@@ -120,7 +131,7 @@ async def _gemini_generate(
         if not adc_ready:
             logger.warning(
                 "Gemini auth='adc' requested but ADC is not configured "
-                "(no readable credentials file or VERTEX_PROJECT set); "
+                "(no readable credentials file or resolvable Vertex project); "
                 "falling back to API key"
             )
         use_adc = adc_ready
@@ -130,7 +141,7 @@ async def _gemini_generate(
     if use_adc:
         url = (
             f"https://{settings.VERTEX_LOCATION}-aiplatform.googleapis.com/v1/projects/"
-            f"{settings.VERTEX_PROJECT}/locations/{settings.VERTEX_LOCATION}/"
+            f"{project}/locations/{settings.VERTEX_LOCATION}/"
             f"publishers/google/models/{model}:generateContent"
         )
         headers = {"Authorization": f"Bearer {token}", "Content-Type": "application/json"}

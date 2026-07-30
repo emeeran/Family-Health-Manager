@@ -3,7 +3,8 @@ import { Button } from "@/components/ui/button";
 import { VerificationBadge } from "@/components/shared/verification-badge";
 import { InsightSectionBlock } from "@/components/members/reports/insight-section";
 import { StreamingPreview } from "@/components/members/reports/streaming-preview";
-import { ValidationFootnote } from "@/components/members/reports/validation-footnote";
+import { ReportFooter } from "@/components/shared/report-footer";
+import type { ReportMeta } from "@/lib/types/report-meta";
 import { Hba1cTrendChart } from "@/components/members/reports/hba1c-trend-chart";
 import { exportElementToPDF } from "@/lib/pdf-export";
 import { parseSections, sectionKey } from "@/lib/parse-sections";
@@ -301,6 +302,7 @@ export function InsightReport({
   provider,
   generatedAt,
   verification,
+  meta,
   memberName,
   memberDob,
   memberGender,
@@ -317,6 +319,7 @@ export function InsightReport({
   provider: string;
   generatedAt: string;
   verification?: VerificationResult | null;
+  meta?: ReportMeta | null;
   memberName: string;
   memberDob: string;
   memberGender: string;
@@ -535,10 +538,11 @@ export function InsightReport({
               ))}
             </div>
 
-            <ValidationFootnote
+            <ReportFooter
               provider={provider}
               verification={verification ?? null}
               generatedAt={generatedAt}
+              meta={meta}
             />
           </div>
 
@@ -576,6 +580,32 @@ export function PreConsultationNoteViewer({
 }) {
   const noteRef = useRef<HTMLElement>(null);
   const sections = parseSections(response);
+  // Theme 2: the prompt now emits JSON. Parse it client-side for a structured
+  // render; old markdown notes (or a failed parse) fall back to `parseSections`.
+  let structured: { title: string; items: string[]; checkable?: boolean }[] | null = null;
+  try {
+    const d = JSON.parse(response) as Record<string, unknown>;
+    if (
+      d &&
+      typeof d === "object" &&
+      Array.isArray(d.questions ?? d.chief_complaints ?? d.medications ?? d.lab_anomalies)
+    ) {
+      const str = (v: unknown) => (Array.isArray(v) ? v.map((x) => String(x)).filter(Boolean) : []);
+      structured = [
+        {
+          title: "Hx — Medical History",
+          items: [...str(d.chronic_conditions), ...str(d.past_events)],
+        },
+        { title: "C/o — Chief Complaints", items: str(d.chief_complaints) },
+        { title: "Ix — Lab Anomalies (past 6 months)", items: str(d.lab_anomalies) },
+        { title: "Rx — Current Medications", items: str(d.medications) },
+        { title: "Q — Questions for Consultant", items: str(d.questions), checkable: true },
+      ].filter((s) => s.items.length > 0);
+      if (structured.length === 0) structured = null;
+    }
+  } catch {
+    structured = null;
+  }
   const dateStr = new Date(generatedAt).toLocaleDateString(undefined, {
     year: "numeric",
     month: "short",
@@ -641,22 +671,50 @@ export function PreConsultationNoteViewer({
           </div>
         </header>
         <div className="space-y-2.5">
-          {sections.map((section, i) => {
-            const isQSection = /q\s*\(|q\s*$|question/i.test(section.title.toLowerCase());
-            const accent = NOTE_ACCENT[sectionKey(section.title)] || "var(--muted-foreground)";
-            return (
-              <div
-                key={i}
-                className="rounded-md border border-border border-l-2 bg-card p-2.5 pl-3"
-                style={{ borderLeftColor: accent }}
-              >
-                <h2 className="mb-1 text-xs font-bold text-foreground">{section.title}</h2>
-                <div className="space-y-1">
-                  {renderNoteBody(section.body, { checkable: isQSection })}
+          {structured
+            ? structured.map((s, i) => (
+                <div
+                  key={i}
+                  className="rounded-md border border-border border-l-2 bg-card p-2.5 pl-3"
+                  style={{ borderLeftColor: "var(--primary)" }}
+                >
+                  <h2 className="mb-1.5 text-xs font-bold text-foreground">{s.title}</h2>
+                  <ul className="space-y-1.5">
+                    {s.items.map((item, j) => (
+                      <li
+                        key={j}
+                        className="flex items-start gap-2 text-[13px] leading-relaxed text-foreground/90"
+                      >
+                        {s.checkable ? (
+                          <input
+                            type="checkbox"
+                            className="mt-0.5 h-3.5 w-3.5 shrink-0 rounded border-border"
+                          />
+                        ) : (
+                          <span className="mt-1.5 h-1 w-1 shrink-0 rounded-full bg-muted-foreground/50" />
+                        )}
+                        <span>{item}</span>
+                      </li>
+                    ))}
+                  </ul>
                 </div>
-              </div>
-            );
-          })}
+              ))
+            : sections.map((section, i) => {
+                const isQSection = /q\s*\(|q\s*$|question/i.test(section.title.toLowerCase());
+                const accent = NOTE_ACCENT[sectionKey(section.title)] || "var(--muted-foreground)";
+                return (
+                  <div
+                    key={i}
+                    className="rounded-md border border-border border-l-2 bg-card p-2.5 pl-3"
+                    style={{ borderLeftColor: accent }}
+                  >
+                    <h2 className="mb-1 text-xs font-bold text-foreground">{section.title}</h2>
+                    <div className="space-y-1">
+                      {renderNoteBody(section.body, { checkable: isQSection })}
+                    </div>
+                  </div>
+                );
+              })}
         </div>
         <div className="mt-4 border-t border-border pt-2 text-[10px] text-muted-foreground">
           AI-generated · Review with your doctor

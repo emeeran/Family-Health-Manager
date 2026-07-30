@@ -174,12 +174,18 @@ class AIService:
         num_predict = 1400 if mode == "brief" else 4096
         response, provider = await self._call_ollama_insight(prompt, context, num_predict)
 
+        sources_json, freshness_as_of, range_start = await self._provenance_for(
+            member_id, comprehensive
+        )
         insight = AIInsight(
             health_record_id=health_record_id,
             conversation_id=conversation_id,
             prompt=prompt,
             response=response,
             provider_used=provider,
+            sources_json=sources_json,
+            freshness_as_of=freshness_as_of,
+            range_start=range_start,
         )
         self.db.add(insight)
         await self.db.flush()
@@ -329,12 +335,18 @@ class AIService:
 
         # Stage 3: Save
         yield sse({"stage": "context", "message": "Saving insight..."})
+        sources_json, freshness_as_of, range_start = await self._provenance_for(
+            member_id, comprehensive
+        )
         insight = AIInsight(
             health_record_id=health_record_id,
             conversation_id=conversation_id,
             prompt=prompt,
             response=full_response,
             provider_used=provider,
+            sources_json=sources_json,
+            freshness_as_of=freshness_as_of,
+            range_start=range_start,
         )
         self.db.add(insight)
         await self.db.flush()
@@ -856,7 +868,7 @@ class AIService:
         Uses the AI provider failover chain. Falls back to a basic template
         if all providers fail.
         """
-        from pathlib import Path
+        from app.services.ai.prompts import load_prompt
 
         # Build context from extracted data
         parts: list[str] = []
@@ -911,14 +923,10 @@ class AIService:
 
         context_str = "\n".join(parts)
 
-        # Load prompt template
-        prompt_path = (
-            Path(__file__).resolve().parent.parent.parent.parent
-            / "prompts"
-            / "consultation_summary.md"
-        )
+        # Load prompt template (frozen-aware: prompts/ under sys._MEIPASS when
+        # bundled, else repo-root prompts/).
         try:
-            prompt_template = prompt_path.read_text()
+            prompt_template = load_prompt("consultation_summary.md")
         except FileNotFoundError:
             prompt_template = (
                 "Generate a clear consultation summary from this medical data.\n\n{extracted_data}"
@@ -1027,20 +1035,15 @@ class AIService:
         disabled. Transcription runs as a background task, so the check always
         runs inline (not gated on ``AI_VERIFICATION_SYNCHRONOUS``).
         """
-        from pathlib import Path
+        from app.services.ai.prompts import load_prompt
 
         context_str = self._build_report_context(extracted_data, member_ctx, provider_ctx)
         if not context_str:
             return "", None
 
-        # Repo-root prompts/ dir (5 parents up from backend/app/services/ai/).
-        prompt_path = (
-            Path(__file__).resolve().parent.parent.parent.parent.parent
-            / "prompts"
-            / "transcription_report.md"
-        )
+        # Load the transcription-report prompt template (frozen-aware).
         try:
-            prompt_template = prompt_path.read_text()
+            prompt_template = load_prompt("transcription_report.md")
         except FileNotFoundError:
             prompt_template = (
                 "Produce a 'Medical Records Transcription Report' with these numbered "
@@ -1711,6 +1714,23 @@ class AIService:
         from app.services.ai.context_builder import build_member_context, fmt_date
 
         return await build_member_context(self.db, member_id, fmt_date, comprehensive=comprehensive)
+
+    async def _provenance_for(
+        self, member_id: UUID | None, comprehensive: bool
+    ) -> tuple[str | None, date | None, date | None]:
+        """Server-side provenance for a member-level insight.
+
+        Returns ``(sources_json, freshness_as_of, range_start)`` — the source
+        records + date range, computed from real rows (never from LLM output).
+        All ``None`` when there's no member (chat / single-record insights).
+        """
+        if not member_id:
+            return None, None, None
+        from app.services.ai.context_builder import build_member_provenance
+
+        prov = await build_member_provenance(self.db, member_id, comprehensive=comprehensive)
+        sources_json = json.dumps(prov["sources"]) if prov["sources"] else None
+        return sources_json, prov["freshness_as_of"], prov["range_start"]
 
     async def _build_household_context(self, household_id: UUID) -> str:
         from app.services.ai.context_builder import build_household_context, fmt_date

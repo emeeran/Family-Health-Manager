@@ -8,6 +8,8 @@ import {
 } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { MarkdownRenderer } from "@/components/shared/lazy-markdown";
+import { MedicationReportView } from "@/components/members/reports/medication-report-view";
+import type { MedicationReportData } from "@/lib/types/medication-report";
 import { streamRequest } from "@/lib/api-client";
 import { getLatestMedicationReport } from "@/lib/api/members";
 import { FileText, Sparkles, Loader2, RefreshCw, Download } from "lucide-react";
@@ -31,6 +33,7 @@ export function MedicationReportDialog({
   const [stage, setStage] = useState("");
   const [generatedAt, setGeneratedAt] = useState<string | null>(null);
   const [hasReport, setHasReport] = useState(false);
+  const [report, setReport] = useState<MedicationReportData | null>(null);
   const cancelRef = useRef<(() => void) | null>(null);
 
   const loadLatest = useCallback(async () => {
@@ -39,6 +42,9 @@ export function MedicationReportDialog({
       const res = await getLatestMedicationReport(memberId);
       if (res.report) {
         setText(res.report.response || "");
+        setReport(
+          (res.report as { medication_report?: MedicationReportData }).medication_report ?? null
+        );
         setGeneratedAt(res.report.generated_at);
         setHasReport(true);
         setPhase("done");
@@ -66,6 +72,7 @@ export function MedicationReportDialog({
   async function handleGenerate() {
     setPhase("streaming");
     setText("");
+    setReport(null);
     setStage("Loading medications & safety data...");
     let full = "";
     try {
@@ -80,11 +87,15 @@ export function MedicationReportDialog({
             setText(full);
           } else if (s === "complete") {
             // Server postprocess ships the persisted payload in `report`.
-            const payload = (e.report as { response?: string } | undefined) ?? undefined;
+            const payload =
+              (e.report as
+                | { response?: string; medication_report?: MedicationReportData }
+                | undefined) ?? undefined;
             if (payload?.response) {
               full = payload.response;
               setText(full);
             }
+            setReport(payload?.medication_report ?? null);
             setGeneratedAt((e.generated_at as string) ?? new Date().toISOString());
             setHasReport(true);
             setStage("");
@@ -179,12 +190,16 @@ export function MedicationReportDialog({
             {phase === "error" && (
               <p className="text-destructive">Failed to generate the report. Try again.</p>
             )}
-            {text && (
-              <Suspense
-                fallback={<pre className="whitespace-pre-wrap text-xs font-sans">{text}</pre>}
-              >
-                <MarkdownRenderer content={text} />
-              </Suspense>
+            {report ? (
+              <MedicationReportView report={report} />
+            ) : (
+              text && (
+                <Suspense
+                  fallback={<pre className="whitespace-pre-wrap text-xs font-sans">{text}</pre>}
+                >
+                  <MarkdownRenderer content={text} />
+                </Suspense>
+              )
             )}
           </div>
         </div>

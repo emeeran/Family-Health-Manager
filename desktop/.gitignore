@@ -1,0 +1,7 @@
+/target
+/binaries/*
+!/binaries/.gitkeep
+/gen
+# cargo-tauri-icon also emits mobile icon sets we don't ship
+/icons/android
+/icons/ios

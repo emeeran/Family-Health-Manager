@@ -615,8 +615,8 @@ function AIProvidersTab() {
             {!config.adc_available && (
               <span className="text-amber-600 dark:text-amber-400">
                 {" "}
-                · ADC is not configured on this server (no credentials file or Vertex project), so
-                it will fall back to the API key.
+                · ADC is not configured on this server (no credentials file or Vertex project). Auto
+                mode uses the API key instead if one is set; without a key, Gemini is unavailable.
               </span>
             )}
           </p>

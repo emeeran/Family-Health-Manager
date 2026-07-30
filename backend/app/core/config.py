@@ -288,6 +288,13 @@ class Settings(BaseSettings):
     # to the project that owns the ADC creds (e.g. gen-lang-client-0426752244).
     VERTEX_PROJECT: str = ""
     VERTEX_LOCATION: str = "us-central1"
+    # Gemini 2.5 models are "thinking" models: they reason before answering,
+    # which roughly doubles latency and (on the streaming Smart Report / insight
+    # path, where cloud output is fetched whole then burst as tokens) leaves the
+    # UI on "generating" with no token progress for the entire call. Disabling
+    # thinking (thinkingBudget=0) makes responses deterministic and ~2x faster —
+    # the Gemini equivalent of OLLAMA_SUPPRESS_THINK. Reversible without a rebuild.
+    GEMINI_SUPPRESS_THINK: bool = True
 
     # Storage
     STORAGE_PATH: str = "./data/attachments"
@@ -296,6 +303,16 @@ class Settings(BaseSettings):
     # embedded images are downsampled per PDF_OPTIMIZE_DPI. No-op if gs missing.
     OPTIMIZE_PDFS: bool = True
     PDF_OPTIMIZE_DPI: str = "ebook"  # screen(72) | ebook(150) | printer(300) | prepress
+
+    # Desktop mode (Tauri sidecar): serve the built frontend SPA from the
+    # backend itself so the webview loads the app same-origin
+    # (http://127.0.0.1:<port>) and the httpOnly auth cookies stay first-party
+    # (they can't be Secure over plain HTTP, so same-origin is required). Off by
+    # default — the server .deb keeps using Caddy for static serving. When frozen
+    # with PyInstaller, FRONTEND_DIST is ignored and the dist is read from
+    # sys._MEIPASS/frontend (see the mount in app/main.py).
+    SERVE_FRONTEND: bool = False
+    FRONTEND_DIST: str = ""
 
     # AI Verification
     AI_VERIFICATION_ENABLED: bool = True
