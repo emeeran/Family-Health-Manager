@@ -18,6 +18,15 @@ set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_ROOT="$(cd "${SCRIPT_DIR}/.." && pwd)"
 
+# Reproducibility: refuse to build from a dirty working tree unless explicitly
+# overridden (HM_ALLOW_DIRTY=1) — a .deb built from uncommitted edits can't be
+# traced back to a commit.
+if [ -z "${HM_ALLOW_DIRTY:-}" ] && ! git -C "$PROJECT_ROOT" diff-index --quiet HEAD --; then
+  echo "Error: dirty working tree — commit or stash first (or HM_ALLOW_DIRTY=1 to override)" >&2
+  git -C "$PROJECT_ROOT" status --short >&2
+  exit 1
+fi
+
 # ── Version (from backend/pyproject.toml) + host target triple ────────────────
 VERSION="$(sed -nE 's/^version[[:space:]]*=[[:space:]]*"([^"]+)".*/\1/p' \
     "${PROJECT_ROOT}/backend/pyproject.toml" | head -n1)"

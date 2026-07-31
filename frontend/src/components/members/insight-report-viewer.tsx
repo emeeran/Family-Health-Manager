@@ -584,7 +584,14 @@ export function PreConsultationNoteViewer({
   // render; old markdown notes (or a failed parse) fall back to `parseSections`.
   let structured: { title: string; items: string[]; checkable?: boolean }[] | null = null;
   try {
-    const d = JSON.parse(response) as Record<string, unknown>;
+    // Strip a wrapping ```json fence so a fenced payload still parses (matches
+    // the SmartReport viewer's client-side handling; backend strip_llm_noise
+    // usually already removes fences, but this is the robust second line).
+    const raw = response
+      .trim()
+      .replace(/^```(?:json)?\s*/i, "")
+      .replace(/\s*```\s*$/i, "");
+    const d = JSON.parse(raw) as Record<string, unknown>;
     if (
       d &&
       typeof d === "object" &&

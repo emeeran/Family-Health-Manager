@@ -203,6 +203,9 @@ def gemini_adc_configured() -> bool:
     return bool(path) and Path(path).is_file()
 
 
+_vertex_project_cache: dict[str, str | None] = {"resolved": False, "value": ""}
+
+
 def gemini_vertex_project() -> str:
     """Vertex AI project used when routing Gemini through ADC.
 
@@ -212,10 +215,16 @@ def gemini_vertex_project() -> str:
     Vertex bills against. Empty string when neither is available.
 
     Inference lets the desktop app (which has no ``.env`` / ``VERTEX_PROJECT``)
-    reach Gemini via Vertex whenever a gcloud ADC file is present.
+    reach Gemini via Vertex whenever a gcloud ADC file is present. The result is
+    memoized (VERTEX_PROJECT + the ADC file are fixed for a process lifetime) so
+    this stays off the per-call hot path.
     """
+    if _vertex_project_cache["resolved"]:
+        return _vertex_project_cache["value"] or ""
+    _vertex_project_cache["resolved"] = True
     explicit = get_settings().VERTEX_PROJECT
     if explicit:
+        _vertex_project_cache["value"] = explicit
         return explicit
     path = gemini_adc_file_path()
     if path and Path(path).is_file():
@@ -223,9 +232,11 @@ def gemini_vertex_project() -> str:
             data = json.loads(Path(path).read_text())
             qp = data.get("quota_project_id")
             if qp:
+                _vertex_project_cache["value"] = str(qp)
                 return str(qp)
         except (OSError, ValueError):
-            return ""
+            pass
+    _vertex_project_cache["value"] = ""
     return ""
 
 

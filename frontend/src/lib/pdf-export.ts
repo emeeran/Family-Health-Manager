@@ -9,7 +9,8 @@
  *
  * The element is rasterized once, then sliced into A4 pages. In the Tauri
  * desktop shell a native Save-As dialog writes the file; in a browser it falls
- * back to a blob download (→ Downloads).
+ * back to a blob download (→ Downloads). Failures are surfaced via a sonner
+ * toast and NOT re-thrown, so callers don't double-signal by opening print.
  */
 
 const PAGE_MARGIN_MM = 10;
@@ -22,10 +23,16 @@ function withPdfExt(filename: string): string {
   return filename.toLowerCase().endsWith(".pdf") ? filename : `${filename}.pdf`;
 }
 
+function errMsg(err: unknown): string {
+  return err instanceof Error ? `${err.name}: ${err.message}` : String(err);
+}
+
 async function renderToPDF(element: HTMLElement, filename: string): Promise<void> {
-  // Surface the actual failure (the desktop webview swallows console errors
-  // and the call-site catch falls back to a no-op window.print()).
   const { toast } = await import("sonner");
+
+  // 1. Render the element to a paginated PDF.
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  let pdf: any;
   try {
     const [{ default: html2canvas }, { jsPDF }] = await Promise.all([
       import("html2canvas-pro"),
@@ -39,13 +46,11 @@ async function renderToPDF(element: HTMLElement, filename: string): Promise<void
       backgroundColor: "#ffffff",
     });
 
-    const pdf = new jsPDF({ unit: "mm", format: "a4", orientation: "portrait" });
+    pdf = new jsPDF({ unit: "mm", format: "a4", orientation: "portrait" });
     const pageW = pdf.internal.pageSize.getWidth();
     const pageH = pdf.internal.pageSize.getHeight();
     const usableW = pageW - PAGE_MARGIN_MM * 2;
     const usableH = pageH - PAGE_MARGIN_MM * 2;
-
-    // Each page maps to a fixed vertical slice of the source canvas.
     const pxPerMm = canvas.width / usableW;
     const slicePx = Math.max(1, Math.floor(usableH * pxPerMm));
 
@@ -63,44 +68,48 @@ async function renderToPDF(element: HTMLElement, filename: string): Promise<void
       if (page > 0) pdf.addPage();
       pdf.addImage(imgData, "JPEG", PAGE_MARGIN_MM, PAGE_MARGIN_MM, usableW, sliceH / pxPerMm);
     }
-
-    // Save: native Save-As dialog in the Tauri desktop shell; browser blob
-    // download (to Downloads) elsewhere, or if the dialog/fs path is unavailable.
-    let saved = false;
-    let cancelled = false;
-    try {
-      const isTauri = (await import("@tauri-apps/api/core")).isTauri();
-      if (isTauri) {
-        const [{ save }, { writeFile }] = await Promise.all([
-          import("@tauri-apps/plugin-dialog"),
-          import("@tauri-apps/plugin-fs"),
-        ]);
-        const path = await save({
-          defaultPath: withPdfExt(filename),
-          filters: [{ name: "PDF", extensions: ["pdf"] }],
-        });
-        if (path) {
-          await writeFile(path, new Uint8Array(pdf.output("arraybuffer")));
-          saved = true;
-        } else {
-          cancelled = true;
-        }
-      }
-    } catch {
-      // Not Tauri, or dialog/fs unavailable — fall back to a blob download below.
-    }
-    if (saved) {
-      toast.success("PDF saved");
-    } else if (!cancelled) {
-      pdf.save(withPdfExt(filename));
-      toast.success(`PDF saved — "${withPdfExt(filename)}" is in your Downloads folder`, {
-        duration: 7000,
-      });
-    }
   } catch (err) {
-    const msg = err instanceof Error ? `${err.name}: ${err.message}` : String(err);
-    toast.error(`PDF export failed — ${msg}`);
-    throw err;
+    // Own the failure UX; do NOT re-throw — callers wrap this in
+    // `try { ... } catch { window.print() }` and a throw would double-signal.
+    toast.error(`PDF export failed — ${errMsg(err)}`);
+    return;
+  }
+
+  // 2. Save: native Save-As in the Tauri desktop shell; browser blob download
+  //    (→ Downloads) elsewhere, or if the Tauri APIs are unavailable.
+  try {
+    const isTauri = (await import("@tauri-apps/api/core")).isTauri();
+    if (isTauri) {
+      const [{ save }, { writeFile }] = await Promise.all([
+        import("@tauri-apps/plugin-dialog"),
+        import("@tauri-apps/plugin-fs"),
+      ]);
+      const path = await save({
+        defaultPath: withPdfExt(filename),
+        filters: [{ name: "PDF", extensions: ["pdf"] }],
+      });
+      if (!path) return; // user cancelled the dialog — silent
+      try {
+        await writeFile(path, new Uint8Array(pdf.output("arraybuffer")));
+        toast.success("PDF saved");
+      } catch (werr) {
+        // A real write failure (permissions, disk full) — don't silently dump
+        // to Downloads; tell the user the chosen location didn't work.
+        toast.error(`Couldn't write PDF to the chosen location — ${errMsg(werr)}`);
+      }
+      return;
+    }
+  } catch {
+    // Not Tauri, or the dialog/fs plugins are unavailable — fall back below.
+  }
+
+  try {
+    pdf.save(withPdfExt(filename));
+    toast.success(`PDF saved — "${withPdfExt(filename)}" is in your Downloads folder`, {
+      duration: 7000,
+    });
+  } catch (err) {
+    toast.error(`PDF export failed — ${errMsg(err)}`);
   }
 }
 

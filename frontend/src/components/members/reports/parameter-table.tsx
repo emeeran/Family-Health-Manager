@@ -55,11 +55,13 @@ function warningFor(
   warnings?: VerificationWarning[] | null
 ): VerificationWarning | undefined {
   if (!warnings || !p.name) return undefined;
-  const name = p.name.toLowerCase();
+  // Match the param name on word boundaries (not a bare substring) so "Hb"
+  // doesn't match "HbA1c" and a disputed value lands on the correct row.
+  const re = new RegExp(`\\b${p.name.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}\\b`, "i");
   return warnings.find(
     (w) =>
       (w.type === "wrong_value" || w.type === "wrong_date" || w.type === "wrong_diagnosis") &&
-      w.claim?.toLowerCase().includes(name)
+      re.test(w.claim ?? "")
   );
 }
 

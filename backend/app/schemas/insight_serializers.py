@@ -33,9 +33,8 @@ logger = logging.getLogger(__name__)
 
 # A verification still "pending" after this long is treated as unverifiable.
 _PENDING_TIMEOUT_SECONDS = 300
-_JSON_OBJECT_RE = re.compile(r"\{.*\}", re.DOTALL)
 # qwen3 "thinking" wrappers — stripped before JSON extraction so stray braces in
-# a reasoning trace can't mislead _JSON_OBJECT_RE into grabbing the wrong span.
+# a reasoning trace can't poison the brace-balanced object scan below.
 _REASONING_BLOCK_RE = re.compile(
     r"<(?:think|thinking|reflection)>.*?</(?:think|thinking|reflection)>",
     re.DOTALL | re.IGNORECASE,
@@ -45,9 +44,10 @@ _REASONING_OPEN_RE = re.compile(r"<(?:think|thinking|reflection)>.*", re.DOTALL 
 
 def _pending_status(insight: "AIInsight") -> str:
     """Resolve a still-pending verification to ``pending`` or ``unverifiable``."""
-    age = (
-        datetime.now(timezone.utc) - insight.generated_at.replace(tzinfo=timezone.utc)
-    ).total_seconds()
+    gen = insight.generated_at
+    if gen.tzinfo is None:
+        gen = gen.replace(tzinfo=timezone.utc)  # naive DB timestamp — assume UTC
+    age = (datetime.now(timezone.utc) - gen).total_seconds()
     return "pending" if age < _PENDING_TIMEOUT_SECONDS else "unverifiable"
 
 
@@ -129,6 +129,39 @@ def _try_load_json(text: str) -> dict | None:
     return data if isinstance(data, dict) else None
 
 
+def _extract_first_object(text: str) -> str | None:
+    """First brace-balanced ``{...}`` substring, respecting JSON string literals.
+
+    Replaces a greedy ``\\{.*\\}`` regex that spanned from the first ``{`` to the
+    last ``}`` across surrounding prose and could grab the wrong span.
+    """
+    start = text.find("{")
+    if start < 0:
+        return None
+    depth = 0
+    in_str = False
+    escaped = False
+    for i in range(start, len(text)):
+        c = text[i]
+        if in_str:
+            if escaped:
+                escaped = False
+            elif c == "\\":
+                escaped = True
+            elif c == '"':
+                in_str = False
+            continue
+        if c == '"':
+            in_str = True
+        elif c == "{":
+            depth += 1
+        elif c == "}":
+            depth -= 1
+            if depth == 0:
+                return text[start : i + 1]
+    return None
+
+
 def _extract_json_object(raw: str) -> dict | None:
     """Tolerantly pull the first JSON object out of an LLM response.
 
@@ -146,9 +179,9 @@ def _extract_json_object(raw: str) -> dict | None:
         inner = inner.rsplit("```", 1)[0].strip()
         data = _try_load_json(inner)
     if data is None:
-        match = _JSON_OBJECT_RE.search(text)
-        if match:
-            data = _try_load_json(match.group(0))
+        obj = _extract_first_object(text)
+        if obj is not None:
+            data = _try_load_json(obj)
     return data
 
 

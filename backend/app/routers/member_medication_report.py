@@ -139,6 +139,7 @@ async def generate_medication_report_stream(
     return make_sse_stream(
         ai_service.generate_insight_stream(
             prompt=prompt,
+            member_id=member_id,
             postprocess=_med_postprocess,
         ),
         db,

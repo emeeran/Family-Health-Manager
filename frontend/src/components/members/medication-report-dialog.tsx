@@ -148,7 +148,13 @@ export function MedicationReportDialog({
                 variant="ghost"
                 size="sm"
                 className="h-7 text-xs"
-                onClick={() => download(text, memberId)}
+                onClick={() =>
+                  download(
+                    report ? JSON.stringify(report, null, 2) : text,
+                    memberId,
+                    report ? ".json" : ".md"
+                  )
+                }
               >
                 <Download className="h-3 w-3 mr-1" /> Save
               </Button>
@@ -208,12 +214,14 @@ export function MedicationReportDialog({
   );
 }
 
-function download(text: string, memberId: string): void {
-  const blob = new Blob([text], { type: "text/markdown" });
+function download(content: string, memberId: string, ext: ".md" | ".json"): void {
+  const blob = new Blob([content], {
+    type: ext === ".json" ? "application/json" : "text/markdown",
+  });
   const url = URL.createObjectURL(blob);
   const a = document.createElement("a");
   a.href = url;
-  a.download = `medication-report-${memberId}.md`;
+  a.download = `medication-report-${memberId}${ext}`;
   a.click();
   URL.revokeObjectURL(url);
 }

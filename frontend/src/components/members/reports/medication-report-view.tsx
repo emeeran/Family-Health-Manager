@@ -3,6 +3,7 @@
  * parsed the AI JSON payload; the dialog falls back to markdown `response` when
  * this is absent. Light-document palette to match the other report viewers.
  */
+import type { ReactNode } from "react";
 import { Pill, AlertTriangle, ShieldAlert, CalendarClock, Lightbulb, Info } from "lucide-react";
 import type {
   MedicationReportData,
@@ -21,7 +22,7 @@ function Section({
   icon: typeof Pill;
   title: string;
   accent: string;
-  children: React.ReactNode;
+  children: ReactNode;
 }) {
   return (
     <section>
