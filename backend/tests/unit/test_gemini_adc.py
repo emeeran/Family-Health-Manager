@@ -68,6 +68,10 @@ def adc_file(tmp_path, monkeypatch):
     monkeypatch.setattr(gemini.settings, "VERTEX_LOCATION", "us-central1")
     gemini._adc_cache["token"] = None
     gemini._adc_cache["expires_at"] = 0.0
+    # Reset the memoized vertex-project cache so this fixture's VERTEX_PROJECT
+    # is re-resolved (the cache otherwise persists across tests, leaking the
+    # first test's empty value into later tests — a CI-only failure).
+    provider_keys._vertex_project_cache.update({"resolved": False, "value": ""})
     return path
 
 
@@ -88,6 +92,7 @@ def no_adc(monkeypatch, tmp_path):
     monkeypatch.setenv("HOME", str(tmp_path))
     gemini._adc_cache["token"] = None
     gemini._adc_cache["expires_at"] = 0.0
+    provider_keys._vertex_project_cache.update({"resolved": False, "value": ""})
 
 
 # ── _gemini_generate routing ───────────────────────────────────────────────

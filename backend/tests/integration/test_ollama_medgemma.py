@@ -2,6 +2,7 @@
 
 import json
 import os
+import socket
 import time
 
 import httpx
@@ -9,6 +10,23 @@ import pytest
 
 OLLAMA_URL = "http://localhost:11434"
 MODEL = "medgemma"
+
+
+def _ollama_reachable() -> bool:
+    """True when a local Ollama is accepting connections (else skip the file)."""
+    try:
+        with socket.create_connection(("localhost", 11434), timeout=2):
+            return True
+    except OSError:
+        return False
+
+
+# These tests need a live Ollama + the medgemma model. CI has neither, so skip
+# the whole module when Ollama isn't reachable (rather than failing on
+# httpx.ConnectError).
+pytestmark = pytest.mark.skipif(
+    not _ollama_reachable(), reason="Ollama not running at localhost:11434"
+)
 
 # ---------------------------------------------------------------------------
 # Helpers
