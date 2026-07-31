@@ -11,6 +11,11 @@ from httpx import ASGITransport, AsyncClient
 from sqlalchemy.ext.asyncio import AsyncSession, create_async_engine
 from sqlalchemy.orm import sessionmaker
 
+# CI / clean environments have no .env. SECRET_KEY is the only Settings field
+# without a default, so provide a test value before importing app.main (which
+# instantiates Settings at import) — keeps pytest collectable without a .env.
+os.environ.setdefault("SECRET_KEY", "test-secret-not-for-production")
+
 from app.main import app
 from app.core.database import get_db
 from app.models.base import Base  # noqa: F811 — models register on THIS Base
