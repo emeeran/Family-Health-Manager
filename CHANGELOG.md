@@ -46,6 +46,56 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
     handwritten/faded photos and can degrade clean digital text. Uploaded images
     still get the full pipeline. Eval-gated: verify with the golden F1 harness.
 
+## [1.3.0] - 2026-07-31
+
+### Added
+- **Native Save-As for PDF export.** Report PDFs (Smart Report, Health
+  Assessment, pre-consultation) now open a native Save-As dialog in the desktop
+  app and write the file to the chosen location (Tauri `dialog` + `fs` plugins);
+  the browser/dev path falls back to a Downloads blob download.
+- **Provenance + freshness on AI insights.** Member-level reports (Smart Report,
+  Health Assessment, Medication) now ship a server-side source-record list +
+  "Records as of {date}" line, rendered in a shared `ReportFooter`. Provenance is
+  computed from real records — never from LLM output. New `ai_insights` columns
+  `sources_json` / `freshness_as_of` / `range_start` (migration
+  `p1q2r3s4t5u6_insight_provenance`).
+- **Inline verification on Smart Report labs.** When the second-model check
+  disputes a lab value/date, a ⚠ icon appears on that parameter row (correction
+  in the tooltip) in addition to the global footnote.
+- **Chronic conditions section** in the Smart Report, and per-section accent
+  icons in the Health Assessment viewer.
+- **Structured Medication Report.** The medication report is now typed JSON
+  rendered as medicine cards, severity-colored interactions, schedule/adherence,
+  safety alerts, and priority recommendations (markdown fallback on parse
+  failure).
+
+### Changed
+- **Gemini-via-ADC, zero-config.** The backend auto-detects the standard gcloud
+  credentials file (`~/.config/gcloud/application_default_credentials.json`) and
+  infers the Vertex project from its `quota_project_id` — so the desktop app
+  reaches Gemini via Vertex with no `.env`/`VERTEX_PROJECT` set.
+- **Faster Gemini.** `GEMINI_SUPPRESS_THINK` (default on) sends
+  `thinkingConfig.thinkingBudget=0`, roughly halving Gemini-2.5-flash latency
+  (Smart Report ~27s → ~13s).
+- **Thorougher Smart Report.** Comprehensive reports now analyze the full history
+  (record cap 20 → 100) — every doctor visit, chronic condition, and lab.
+- **Unified markdown rendering** across report viewers (single `MarkdownRenderer`;
+  the hand-rolled `simpleMarkdown` was removed).
+- **Desktop hardening.** Content Security Policy enabled (`script-src 'self'`,
+  was `null`); the Save-As filesystem capability scoped to `$HOME/**` (was `**`).
+- Pre-consultation notes remain markdown (the JSON attempt rendered as raw text).
+
+### Fixed
+- **PDF export broken in the desktop webview.** Tailwind v4's `oklch()` colors
+  threw the old bundled `html2canvas`; switched to `html2canvas-pro` + `jspdf`.
+- **ADC token refresh** serialized (double-checked lock) and warn-once on failure
+  (was racing + log-spamming).
+- `_pending_status` now handles naive/aware `generated_at` correctly.
+- Tolerant JSON extraction now brace-balanced (was a greedy `\{.*\}` regex that
+  could grab the wrong span).
+- PDF export failure UX: the toast owns failures (no more double `window.print()`),
+  and a Tauri write-failure is surfaced instead of silently dumping to Downloads.
+
 ## [1.2.10] - 2026-07-20
 
 ### Changed

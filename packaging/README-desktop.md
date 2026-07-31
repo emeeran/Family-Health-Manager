@@ -42,6 +42,10 @@ bash packaging/build-desktop-deb.sh
 
 Output: `desktop/target/release/bundle/deb/health-manager-desktop_<ver>_amd64.deb`.
 
+The script refuses to build from a dirty working tree — commit or stash first,
+or prefix with `HM_ALLOW_DIRTY=1` to override — so a `.deb` always traces back
+to a commit.
+
 ## Install
 
 ```bash
@@ -84,6 +88,12 @@ ollama pull qwen3:4b          # the model the app uses by default
 The desktop app auto-starts `ollama serve` if it's installed but not running.
 Cloud providers (Groq / Google / OpenRouter / OpenAI) can also be configured in
 the app's **Settings → AI Providers** instead of — or in addition to — Ollama.
+
+**Google Gemini works zero-config** if you've run
+`gcloud auth application-default login`: the app auto-detects the standard gcloud
+credentials (`~/.config/gcloud/application_default_credentials.json`) and infers
+the Vertex project from them — no API key or `.env` needed. Exporting a report to
+PDF opens a native Save-As dialog.
 
 ## Troubleshooting
 
