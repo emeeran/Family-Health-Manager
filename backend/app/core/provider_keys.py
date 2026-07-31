@@ -203,7 +203,7 @@ def gemini_adc_configured() -> bool:
     return bool(path) and Path(path).is_file()
 
 
-_vertex_project_cache: dict[str, str | None] = {"resolved": False, "value": ""}
+_vertex_project_cache: dict[str, object] = {"resolved": False, "value": ""}
 
 
 def gemini_vertex_project() -> str:
@@ -220,7 +220,8 @@ def gemini_vertex_project() -> str:
     this stays off the per-call hot path.
     """
     if _vertex_project_cache["resolved"]:
-        return _vertex_project_cache["value"] or ""
+        cached = _vertex_project_cache["value"]
+        return cached if isinstance(cached, str) else ""
     _vertex_project_cache["resolved"] = True
     explicit = get_settings().VERTEX_PROJECT
     if explicit:
