@@ -16,6 +16,7 @@ Two auth paths, picked automatically:
 import asyncio
 import json
 import logging
+import threading
 import time
 from pathlib import Path
 
@@ -32,6 +33,17 @@ logger = logging.getLogger(__name__)
 # user-credentials are refreshed via Google's OAuth endpoint; the resulting
 # access token lives ~1h. Refreshed lazily ~60s before expiry.
 _adc_cache: dict[str, object] = {"token": None, "expires_at": 0.0}
+# The sync refresh runs via ``asyncio.to_thread``, so concurrent calls land on
+# multiple threads. The lock serializes refreshes (double-checked) and the
+# warn-once flags stop a persistently-broken ADC config from spamming the log.
+_adc_lock = threading.Lock()
+_adc_warned: dict[str, bool] = {}
+
+
+def _adc_warn_once(kind: str, msg: str, *args: object) -> None:
+    if not _adc_warned.get(kind):
+        _adc_warned[kind] = True
+        logger.warning(msg, *args)
 
 
 def _adc_access_token() -> str | None:
@@ -41,7 +53,7 @@ def _adc_access_token() -> str | None:
     Google's OAuth2 endpoint, and caches it. Returns ``None`` when no ADC file
     is configured, the file isn't an ``authorized_user`` credential, or the
     refresh fails. Synchronous (the refresh runs ~once per hour; the brief
-    blocking call is acceptable).
+    blocking call is acceptable). Refresh is serialized + warned-once.
     """
     now = time.time()
     cached = _adc_cache["token"]
@@ -52,33 +64,42 @@ def _adc_access_token() -> str | None:
     path = gemini_adc_file_path()
     if not path or not Path(path).is_file():
         return None
-    try:
-        adc = json.loads(Path(path).read_text())
-        if adc.get("type") != "authorized_user":
-            logger.warning(
-                "Gemini ADC: only 'authorized_user' credentials are supported (got %s)",
-                adc.get("type"),
+    # Serialize refreshes; re-check the cache under the lock so a concurrent
+    # refresh wins and we don't POST to Google's token endpoint twice.
+    with _adc_lock:
+        cached = _adc_cache["token"]
+        expires_at = _adc_cache["expires_at"]
+        if cached and isinstance(expires_at, (int, float)) and expires_at > time.time() + 60:
+            return cached  # type: ignore[return-value]
+        try:
+            adc = json.loads(Path(path).read_text())
+            if adc.get("type") != "authorized_user":
+                _adc_warn_once(
+                    "type",
+                    "Gemini ADC: only 'authorized_user' credentials are supported (got %s)",
+                    adc.get("type"),
+                )
+                return None
+            resp = httpx.post(
+                "https://oauth2.googleapis.com/token",
+                data={
+                    "client_id": adc["client_id"],
+                    "client_secret": adc["client_secret"],
+                    "refresh_token": adc["refresh_token"],
+                    "grant_type": "refresh_token",
+                },
+                timeout=15,
             )
+            resp.raise_for_status()
+            payload = resp.json()
+            token = payload["access_token"]
+            _adc_cache["token"] = token
+            _adc_cache["expires_at"] = now + int(payload.get("expires_in", 3600))
+            _adc_warned.clear()  # a transient failure may re-warn after a success
+            return token
+        except Exception as exc:
+            _adc_warn_once("refresh", "Gemini ADC token refresh failed: %s", exc)
             return None
-        resp = httpx.post(
-            "https://oauth2.googleapis.com/token",
-            data={
-                "client_id": adc["client_id"],
-                "client_secret": adc["client_secret"],
-                "refresh_token": adc["refresh_token"],
-                "grant_type": "refresh_token",
-            },
-            timeout=15,
-        )
-        resp.raise_for_status()
-        payload = resp.json()
-        token = payload["access_token"]
-        _adc_cache["token"] = token
-        _adc_cache["expires_at"] = now + int(payload.get("expires_in", 3600))
-        return token
-    except Exception as exc:
-        logger.warning("Gemini ADC token refresh failed: %s", exc)
-        return None
 
 
 async def _gemini_generate(
