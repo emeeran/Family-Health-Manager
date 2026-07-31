@@ -99,7 +99,11 @@ jobs:
     needs: build-deb
     runs-on: ubuntu-latest
     environment: production
-    if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+    # Opt-in: set the DEPLOY_ENABLED=true repo variable (and the DEPLOY_HOST /
+    # DEPLOY_USER / DEPLOY_KEY secrets) to enable SSH deploys on main pushes.
+    # Without it the deploy job is skipped so CI is green for repos with no
+    # deploy target.
+    if: github.ref == 'refs/heads/main' && github.event_name == 'push' && vars.DEPLOY_ENABLED == 'true'
     steps:
       - name: Download .deb artifact
         uses: actions/download-artifact@v4
