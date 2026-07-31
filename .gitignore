@@ -60,5 +60,5 @@ staging/
 .cache_ggshield
 .qwen/
 
-# Pipeline tooling artifacts (regenerable baselines/snapshots)
-.pipeline/*.tmp
+# Pipeline tooling artifacts (regenerable baselines/snapshots — all ephemeral)
+.pipeline/
