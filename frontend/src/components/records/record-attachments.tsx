@@ -13,6 +13,7 @@ import {
   getAttachmentBlob,
   getAttachmentThumbnailUrl,
 } from "@/lib/api/attachments";
+import { pickFiles } from "@/lib/file-picker";
 import { toast } from "sonner";
 import type { AttachmentBrief } from "@/lib/types/health-record";
 
@@ -35,11 +36,11 @@ export function RecordAttachments({
   compact,
   onAttachmentsChanged,
 }: RecordAttachmentsProps) {
-  const fileInputRef = useRef<HTMLInputElement>(null);
   const [uploading, setUploading] = useState(false);
 
-  async function handleUpload(e: React.ChangeEvent<HTMLInputElement>) {
-    const file = e.target.files?.[0];
+  async function onPickFile() {
+    const files = await pickFiles({ extensions: ["pdf", "jpg", "jpeg", "png", "webp"] });
+    const file = files[0];
     if (!file) return;
 
     setUploading(true);
@@ -51,8 +52,6 @@ export function RecordAttachments({
       toast.error("Failed to attach file");
     } finally {
       setUploading(false);
-      // Reset input so same file can be re-selected
-      if (fileInputRef.current) fileInputRef.current.value = "";
     }
   }
 
@@ -97,21 +96,13 @@ export function RecordAttachments({
             variant="outline"
             size="sm"
             className="w-full gap-1.5 text-xs"
-            onClick={() => fileInputRef.current?.click()}
+            onClick={onPickFile}
             disabled={uploading}
           >
             <Upload className="h-3 w-3" />
             {uploading ? "Uploading..." : "Attach Original"}
           </Button>
         )}
-
-        <input
-          ref={fileInputRef}
-          type="file"
-          accept="image/*,.pdf"
-          className="hidden"
-          onChange={handleUpload}
-        />
       </div>
     );
   }
@@ -135,21 +126,13 @@ export function RecordAttachments({
           variant="outline"
           size="sm"
           className="gap-1.5"
-          onClick={() => fileInputRef.current?.click()}
+          onClick={onPickFile}
           disabled={uploading}
         >
           <Upload className="h-3.5 w-3.5" />
           {uploading ? "Uploading..." : "Attach Original"}
         </Button>
       )}
-
-      <input
-        ref={fileInputRef}
-        type="file"
-        accept="image/*,.pdf"
-        className="hidden"
-        onChange={handleUpload}
-      />
     </div>
   );
 }

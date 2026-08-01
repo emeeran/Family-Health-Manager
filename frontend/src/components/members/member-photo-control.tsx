@@ -1,9 +1,10 @@
-import { useRef, useState } from "react";
+import { useState } from "react";
 import { useSWRConfig } from "swr";
 import { toast } from "sonner";
 import { Camera, Loader2, Trash2 } from "lucide-react";
 
 import { deleteMemberPhoto, uploadMemberPhoto } from "@/lib/api/members";
+import { pickFiles } from "@/lib/file-picker";
 import type { FamilyMemberResponse } from "@/lib/types/member";
 import { MemberAvatar } from "./member-avatar";
 
@@ -20,16 +21,15 @@ export function MemberPhotoControl({
   member: FamilyMemberResponse;
   size?: number;
 }) {
-  const inputRef = useRef<HTMLInputElement>(null);
   const [busy, setBusy] = useState(false);
   const { mutate } = useSWRConfig();
 
   const refresh = () =>
     Promise.all([mutate(`member-detail-${member.id}`), mutate("members"), mutate("dashboard")]);
 
-  async function handleFile(e: React.ChangeEvent<HTMLInputElement>) {
-    const file = e.target.files?.[0];
-    if (inputRef.current) inputRef.current.value = "";
+  async function onPickPhoto() {
+    const files = await pickFiles({ extensions: ["jpg", "jpeg", "png", "webp"] });
+    const file = files[0];
     if (!file) return;
     if (!ACCEPTED_TYPES.includes(file.type)) {
       toast.error("Photo must be a JPEG, PNG, or WebP image");
@@ -74,7 +74,7 @@ export function MemberPhotoControl({
 
       <button
         type="button"
-        onClick={() => inputRef.current?.click()}
+        onClick={onPickPhoto}
         disabled={busy}
         aria-label={member.has_photo ? "Change photo" : "Add photo"}
         title={member.has_photo ? "Change photo" : "Add photo"}
@@ -94,14 +94,6 @@ export function MemberPhotoControl({
           <Trash2 className="h-3 w-3" />
         </button>
       )}
-
-      <input
-        ref={inputRef}
-        type="file"
-        accept={ACCEPTED_TYPES.join(",")}
-        className="hidden"
-        onChange={handleFile}
-      />
     </div>
   );
 }

@@ -1,10 +1,11 @@
-import { useState, useRef, useCallback, useEffect } from "react";
+import { useState, useCallback, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
 import { Upload, Activity, Sparkles } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { MemberPicker } from "@/components/shared/member-picker";
 import { setPendingEntry } from "@/lib/pending-entry";
+import { pickFiles } from "@/lib/file-picker";
 import { toast } from "sonner";
 
 /**
@@ -21,7 +22,6 @@ interface SmartEntryBarProps {
 
 export function SmartEntryBar({ members }: SmartEntryBarProps) {
   const navigate = useNavigate();
-  const fileInputRef = useRef<HTMLInputElement>(null);
   const [input, setInput] = useState("");
   const [selectedMemberId, setSelectedMemberId] = useState("");
 
@@ -54,20 +54,17 @@ export function SmartEntryBar({ members }: SmartEntryBarProps) {
     launch(memberId, text);
   }, [input, selectedMemberId, activeMembers, launch]);
 
-  const handleFileChange = useCallback(
-    (e: React.ChangeEvent<HTMLInputElement>) => {
-      const file = e.target.files?.[0];
-      if (!file) return;
-      const memberId = selectedMemberId || activeMembers[0]?.id;
-      if (!memberId) {
-        toast.error("Please select a family member first");
-        return;
-      }
-      e.target.value = ""; // allow re-picking the same file later
-      launch(memberId, undefined, file);
-    },
-    [selectedMemberId, activeMembers, launch]
-  );
+  const onPickFile = useCallback(async () => {
+    const memberId = selectedMemberId || activeMembers[0]?.id;
+    if (!memberId) {
+      toast.error("Please select a family member first");
+      return;
+    }
+    const files = await pickFiles({ extensions: ["pdf", "jpg", "jpeg", "png", "webp"] });
+    const file = files[0];
+    if (!file) return;
+    launch(memberId, undefined, file);
+  }, [selectedMemberId, activeMembers, launch]);
 
   return (
     <div className="flex items-center gap-2 rounded-xl border shadow-sm bg-card p-2">
@@ -87,19 +84,12 @@ export function SmartEntryBar({ members }: SmartEntryBarProps) {
           onChange={(e) => setInput(e.target.value)}
           className="flex-1 h-9 text-sm focus-visible:ring-[var(--brand-accent)]/30"
         />
-        <input
-          ref={fileInputRef}
-          type="file"
-          accept="image/*,.pdf"
-          className="hidden"
-          onChange={handleFileChange}
-        />
         <Button
           type="button"
           variant="outline"
           size="sm"
           className="h-9 gap-1.5 shrink-0"
-          onClick={() => fileInputRef.current?.click()}
+          onClick={onPickFile}
         >
           <Upload className="h-3.5 w-3.5" />
           <span className="hidden sm:inline">Upload</span>

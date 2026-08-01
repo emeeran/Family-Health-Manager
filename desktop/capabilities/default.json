@@ -3,15 +3,27 @@
   "identifier": "default",
   "description": "Capabilities for the main Health Manager window",
   "windows": ["main"],
+  "remote": {
+    "urls": ["http://127.0.0.1:*", "http://localhost:*"]
+  },
   "permissions": [
     "core:default",
     "core:window:allow-show",
     "core:window:allow-set-focus",
     "shell:allow-execute",
     "dialog:allow-save",
+    "dialog:allow-open",
     {
       "identifier": "fs:allow-write-file",
       "allow": [{ "path": "$HOME/**" }]
+    },
+    {
+      "identifier": "fs:allow-read-file",
+      "allow": [{ "path": "**" }]
+    },
+    {
+      "identifier": "fs:allow-read-dir",
+      "allow": [{ "path": "**" }]
     }
   ]
 }

@@ -1,4 +1,4 @@
-import { useState, useMemo, useRef } from "react";
+import { useState, useMemo } from "react";
 import { Stepper } from "@/components/ui/stepper";
 import { StepTypeSelection } from "./step-type-selection";
 import { StepVisitDetails } from "./step-visit-details";
@@ -20,6 +20,7 @@ import { Label } from "@/components/ui/label";
 import { MedicationSyncDialog } from "@/components/records/medication-sync-dialog";
 import { useRecordFormState } from "@/components/records/use-record-form-state";
 import { timeAgo } from "@/components/records/record-form-utils";
+import { pickFiles } from "@/lib/file-picker";
 import type { RecordType } from "@/lib/types/enums";
 import type { ProviderResponse } from "@/lib/types/provider";
 import type { HealthRecordResponse } from "@/lib/types/health-record";
@@ -76,7 +77,6 @@ export function RecordFormWizard({
   const [currentStep, setCurrentStep] = useState(() => (defaultType ? 1 : 0));
   const [isDragOver, setIsDragOver] = useState(false);
   const [viewing, setViewing] = useState<{ stagingId: string; name: string } | null>(null);
-  const cameraInputRef = useRef<HTMLInputElement>(null);
 
   const {
     register,
@@ -151,10 +151,8 @@ export function RecordFormWizard({
     progress,
     uploadedFiles,
     stagingFileIds,
-    fileInputRef,
     recentBatches,
     allAutoFillBatches,
-    handleMultiFileExtract,
     handleFileDrop,
     handleTableAutoFill,
     handleRecentBatchClick,
@@ -164,6 +162,22 @@ export function RecordFormWizard({
     transcription,
     setTranscription,
   } = extraction;
+
+  // Click-to-upload opens the OS file dialog (Tauri: plugin-dialog; browser:
+  // <input type=file>). Drag-and-drop still flows through onDrop on the dropzone.
+  const onPickFiles = async () => {
+    if (extracting) return;
+    const files = await pickFiles({
+      multiple: true,
+      extensions: ["pdf", "jpg", "jpeg", "png", "webp"],
+    });
+    if (files.length) await handleFileDrop(files);
+  };
+  const onScan = async () => {
+    if (extracting) return;
+    const files = await pickFiles({ extensions: ["jpg", "jpeg", "png", "webp"] });
+    if (files.length) await handleFileDrop(files);
+  };
 
   const {
     nlText,
@@ -264,9 +278,9 @@ export function RecordFormWizard({
             variant="ghost"
             size="sm"
             className="h-7 text-xs"
-            onClick={() => cameraInputRef.current?.click()}
+            onClick={onScan}
             disabled={extracting}
-            title="Take a photo with your camera"
+            title="Add a photo"
           >
             <Camera className="h-3 w-3 mr-1" /> Scan
           </Button>
@@ -275,7 +289,7 @@ export function RecordFormWizard({
             variant="ghost"
             size="sm"
             className="h-7 text-xs"
-            onClick={() => fileInputRef.current?.click()}
+            onClick={onPickFiles}
             disabled={extracting}
           >
             <Plus className="h-3 w-3 mr-1" /> Add Files
@@ -283,40 +297,12 @@ export function RecordFormWizard({
         </div>
       </div>
 
-      {/* Dedicated camera input — image-only, rear camera, single shot */}
-      <input
-        ref={cameraInputRef}
-        type="file"
-        accept="image/*"
-        capture="environment"
-        disabled={extracting}
-        className="hidden"
-        onChange={() => {
-          const file = cameraInputRef.current?.files?.[0];
-          if (file) handleFileDrop([file]);
-          if (cameraInputRef.current) cameraInputRef.current.value = "";
-        }}
-      />
-
-      <input
-        ref={fileInputRef}
-        type="file"
-        accept=".pdf,image/jpeg,image/png,image/webp"
-        capture="environment"
-        multiple
-        disabled={extracting}
-        className="hidden"
-        onChange={() => {
-          if (fileInputRef.current?.files?.length) handleMultiFileExtract();
-        }}
-      />
-
       <div
         role="button"
         tabIndex={0}
-        onClick={() => fileInputRef.current?.click()}
+        onClick={onPickFiles}
         onKeyDown={(e) => {
-          if (e.key === "Enter" || e.key === " ") fileInputRef.current?.click();
+          if (e.key === "Enter" || e.key === " ") onPickFiles();
         }}
         onDragOver={(e) => {
           e.preventDefault();
@@ -506,7 +492,7 @@ export function RecordFormWizard({
             type="button"
             onClick={() => {
               setExtractError(null);
-              fileInputRef.current?.click();
+              onPickFiles();
             }}
             className="shrink-0 text-sm font-semibold text-primary hover:underline underline-offset-2"
           >

@@ -6,6 +6,7 @@ import { Progress } from "@/components/ui/progress";
 import { Badge } from "@/components/ui/badge";
 import { batchExtractStream, checkFilenames, createRecord } from "@/lib/api/records";
 import { MAX_FILE_SIZE, isAllowedUpload } from "@/lib/constants";
+import { pickFiles } from "@/lib/file-picker";
 import { chunkFilesForBatch } from "@/lib/batch-chunks";
 import {
   createBatchAccumulator,
@@ -94,8 +95,6 @@ export function BatchUploadQueue({ memberId, onComplete, initialFiles }: BatchUp
   const [skippedFiles, setSkippedFiles] = useState<string[]>([]);
   const [isDirectoryMode, setIsDirectoryMode] = useState(false);
 
-  const fileInputRef = useRef<HTMLInputElement>(null);
-  const dirInputRef = useRef<HTMLInputElement>(null);
   const mountedRef = useRef(true);
 
   // Cleanup on unmount
@@ -472,6 +471,27 @@ export function BatchUploadQueue({ memberId, onComplete, initialFiles }: BatchUp
     setActiveIndex(next >= 0 ? next : null);
   }
 
+  const onPickFiles = async () => {
+    const files = await pickFiles({
+      multiple: true,
+      extensions: ["pdf", "jpg", "jpeg", "png", "webp"],
+    });
+    if (files.length) {
+      setIsDirectoryMode(false);
+      addFiles(files);
+    }
+  };
+  const onPickFolder = async () => {
+    const files = await pickFiles({
+      directory: true,
+      extensions: ["pdf", "jpg", "jpeg", "png", "webp"],
+    });
+    if (files.length) {
+      setIsDirectoryMode(true);
+      addFiles(files);
+    }
+  };
+
   // ── Upload Phase ──
   if (phase === "upload") {
     return (
@@ -480,9 +500,9 @@ export function BatchUploadQueue({ memberId, onComplete, initialFiles }: BatchUp
         <div
           role="button"
           tabIndex={0}
-          onClick={() => fileInputRef.current?.click()}
+          onClick={onPickFiles}
           onKeyDown={(e) => {
-            if (e.key === "Enter" || e.key === " ") fileInputRef.current?.click();
+            if (e.key === "Enter" || e.key === " ") onPickFiles();
           }}
           onDragOver={(e) => {
             e.preventDefault();
@@ -524,8 +544,7 @@ export function BatchUploadQueue({ memberId, onComplete, initialFiles }: BatchUp
               size="sm"
               onClick={(e) => {
                 e.stopPropagation();
-                setIsDirectoryMode(false);
-                fileInputRef.current?.click();
+                onPickFiles();
               }}
             >
               <Upload className="h-3.5 w-3.5 mr-1.5" />
@@ -537,7 +556,7 @@ export function BatchUploadQueue({ memberId, onComplete, initialFiles }: BatchUp
               size="sm"
               onClick={(e) => {
                 e.stopPropagation();
-                dirInputRef.current?.click();
+                onPickFolder();
               }}
             >
               <FolderOpen className="h-3.5 w-3.5 mr-1.5" />
@@ -545,38 +564,6 @@ export function BatchUploadQueue({ memberId, onComplete, initialFiles }: BatchUp
             </Button>
           </div>
         </div>
-
-        {/* Hidden file inputs */}
-        <input
-          ref={fileInputRef}
-          type="file"
-          accept=".pdf,image/jpeg,image/png,image/webp"
-          multiple
-          className="hidden"
-          onChange={() => {
-            if (fileInputRef.current?.files?.length) {
-              setIsDirectoryMode(false);
-              addFiles(fileInputRef.current.files);
-              fileInputRef.current.value = "";
-            }
-          }}
-        />
-        <input
-          ref={dirInputRef}
-          type="file"
-          accept=".pdf,image/jpeg,image/png,image/webp"
-          multiple
-          className="hidden"
-          // @ts-expect-error webkitdirectory is non-standard but widely supported
-          webkitdirectory=""
-          onChange={() => {
-            if (dirInputRef.current?.files?.length) {
-              setIsDirectoryMode(true);
-              addFiles(dirInputRef.current.files);
-              dirInputRef.current.value = "";
-            }
-          }}
-        />
 
         {/* Validation errors */}
         {errors.length > 0 && (

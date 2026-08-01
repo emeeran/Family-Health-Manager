@@ -77,7 +77,6 @@ export function useFileExtraction({
     cloudReady: boolean;
     detail: string;
   } | null>(null);
-  const fileInputRef = useRef<HTMLInputElement>(null);
   const pendingExtractedFields = useRef<Record<string, string> | null>(null);
 
   const [recentBatches, setRecentBatches] = useState<
@@ -340,22 +339,6 @@ export function useFileExtraction({
     });
   }
 
-  async function handleMultiFileExtract() {
-    if (!memberId || !fileInputRef.current?.files?.length) return;
-    const files = Array.from(fileInputRef.current.files);
-    for (const file of files) {
-      if (!isAllowedUpload(file)) {
-        setExtractError(`Invalid file type: ${file.name}. Accepted: PDF, JPEG, PNG, WebP.`);
-        return;
-      }
-      if (file.size > MAX_FILE_SIZE) {
-        setExtractError(`File too large: ${file.name}. Maximum size is 25MB.`);
-        return;
-      }
-    }
-    await processFiles(files);
-  }
-
   async function handleFileDrop(files: File[]) {
     if (!memberId || !files.length) return;
     for (const file of files) {
@@ -439,7 +422,6 @@ export function useFileExtraction({
 
     setProgress({ step: "Complete", pct: 100, substeps: [], done: [] });
     setExtracting(false);
-    if (fileInputRef.current) fileInputRef.current.value = "";
   }
 
   // Restore extraction data from sessionStorage on mount
@@ -494,10 +476,8 @@ export function useFileExtraction({
     progress,
     uploadedFiles,
     stagingFileIds,
-    fileInputRef,
     recentBatches,
     allAutoFillBatches,
-    handleMultiFileExtract,
     handleFileDrop,
     handleTableAutoFill,
     handleRecentBatchClick,

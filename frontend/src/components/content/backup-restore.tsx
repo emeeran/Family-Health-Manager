@@ -1,4 +1,4 @@
-import { useState, useRef } from "react";
+import { useState } from "react";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
@@ -9,6 +9,7 @@ import {
   importBackup,
   cleanupStagedBackup,
 } from "@/lib/api/backup";
+import { pickFiles } from "@/lib/file-picker";
 import type {
   BackupValidationResponse,
   BackupImportResponse,
@@ -24,7 +25,6 @@ export function BackupRestoreSection() {
   const [mode, setMode] = useState<ImportMode>("merge");
   const [errorMsg, setErrorMsg] = useState("");
   const [downloading, setDownloading] = useState(false);
-  const fileInputRef = useRef<HTMLInputElement>(null);
 
   // ── Export ──────────────────────────────────────────────────
 
@@ -47,10 +47,7 @@ export function BackupRestoreSection() {
 
   // ── Import: validate ────────────────────────────────────────
 
-  async function handleFileSelected() {
-    const file = fileInputRef.current?.files?.[0];
-    if (!file) return;
-
+  async function handleFileSelected(file: File) {
     setStep("validating");
     setErrorMsg("");
     try {
@@ -98,7 +95,6 @@ export function BackupRestoreSection() {
     setImportResult(null);
     setErrorMsg("");
     setMode("merge");
-    if (fileInputRef.current) fileInputRef.current.value = "";
   }
 
   // ── Render ──────────────────────────────────────────────────
@@ -119,17 +115,16 @@ export function BackupRestoreSection() {
                 <Button onClick={handleExport} disabled={downloading} variant="outline">
                   {downloading ? "Preparing download..." : "Export Backup"}
                 </Button>
-                <Button onClick={() => fileInputRef.current?.click()} variant="outline">
+                <Button
+                  onClick={async () => {
+                    const files = await pickFiles({ extensions: ["zip"] });
+                    if (files[0]) handleFileSelected(files[0]);
+                  }}
+                  variant="outline"
+                >
                   Import Backup
                 </Button>
               </div>
-              <input
-                ref={fileInputRef}
-                type="file"
-                accept=".zip"
-                className="hidden"
-                onChange={handleFileSelected}
-              />
               <p className="text-xs text-muted-foreground">
                 Backups include all family members, health records, providers, attachments,
                 conversations, reminders, and notifications.
