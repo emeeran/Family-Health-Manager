@@ -18,9 +18,9 @@ cloud AI provider.
 ## ✨ Features
 
 - **AI document extraction** — privacy-first via [Ollama](https://ollama.com)
-  (local, default), with automatic cloud failover (OpenAI, Gemini, Groq,
-  OpenRouter) when you add a key. Adding any cloud key makes extraction ~30–60×
-  faster (cloud ~1–2s/doc vs CPU Ollama ~1–2min) with no other config.
+  (local by default). Add any cloud key (Groq, Gemini, OpenRouter, OpenAI) and
+  extraction becomes cloud-first automatically — ~30–60× faster (cloud ~1–2s/doc
+  vs CPU Ollama ~1–2min) with no other config.
 - **Structured health records** — medications, vaccinations, lab results, vitals,
   and consultations, organised per family member.
 - **Smart reports & insights** — health scores, abnormal-value flags, drug
@@ -32,7 +32,9 @@ cloud AI provider.
   optional TOTP two-factor authentication.
 - **Backup & restore** — scheduled, encrypted database backups with one-click
   restore.
-- **One-command deploy** — Debian `.deb` package with systemd + Caddy.
+- **Two ways to run** — a server `.deb` (systemd + Caddy) for always-on hosting,
+  and a native **desktop app** (Tauri) that installs and launches like any Linux
+  application. Gemini even works zero-config via gcloud ADC.
 
 ## 📸 Screenshots
 
@@ -42,7 +44,7 @@ cloud AI provider.
 ## 🚀 Quick Start
 
 ```bash
-git clone <repo-url> health-manager && cd health-manager
+git clone https://github.com/emeeran/Family-Health-Manager.git health-manager && cd health-manager
 cp backend/.env.example backend/.env     # then generate a SECRET_KEY
 ./dev.sh                                   # backend (:8000) + frontend (:3000)
 ```
@@ -82,6 +84,27 @@ sudo dpkg -i health-manager_*.deb  # install (generates secrets, enables service
 
 See [`docs/07-deployment/`](docs/07-deployment/) for the full deployment guide.
 
+### Desktop app (native)
+
+Prefer a native application to a hosted server? A **Tauri** desktop build wraps
+the same backend and frontend into a normal Linux desktop app — no browser,
+systemd, or Caddy. It spawns a PyInstaller-frozen backend sidecar on a local
+`127.0.0.1` port and serves the SPA same-origin (so cookie auth works over plain
+HTTP). It is a separate package (`health-manager-desktop`) and can coexist with
+the server `.deb`.
+
+```bash
+bash packaging/build-desktop-deb.sh                # build the desktop .deb
+sudo apt install ./health-manager-desktop_*.deb    # install (resolves deps)
+ollama pull qwen3:4b                               # optional: local AI model
+```
+
+Launch "Health Manager" from your application menu. Per-user data lives under
+`~/.local/share/com.dawnstar.healthmanager/`. **Google Gemini works zero-config**
+if you've run `gcloud auth application-default login` (the app auto-detects the
+standard gcloud credentials). See
+[`packaging/README-desktop.md`](packaging/README-desktop.md) for details.
+
 ## 🔒 Security
 
 This application stores sensitive personal health information. Read
@@ -104,7 +127,7 @@ limiting, and a hardened systemd unit (`NoNewPrivileges`, `ProtectSystem=strict`
 | Frontend  | React 19, Vite, SWR, shadcn/ui          |
 | Backend   | Python 3.11+, FastAPI, Pydantic v2      |
 | Database  | SQLite (dev) / PostgreSQL (prod)        |
-| AI        | Ollama (MedGemma) + cloud fallbacks     |
+| AI        | Ollama (`qwen3:4b`, default) + Groq/Gemini/OpenRouter/OpenAI |
 | Packaging | `uv` (Python) · Debian `.deb` (deploy)  |
 | Testing   | pytest, httpx · vitest, Playwright      |
 | Linting   | ruff, mypy · eslint, tsc                |
@@ -117,7 +140,8 @@ limiting, and a hardened systemd unit (`NoNewPrivileges`, `ProtectSystem=strict`
 | `frontend/`   | React/Vite SPA                                          |
 | `docs/`       | SDD artefacts (domain, requirements, spec, design)      |
 | `prompts/`    | Prompt templates for the AI extraction pipeline         |
-| `packaging/`  | Debian package, Caddyfile, systemd unit, deploy scripts |
+| `packaging/`  | Debian packages (server + desktop), Caddyfile, systemd  |
+| `desktop/`    | Tauri 2 shell + PyInstaller sidecar for the desktop .deb |
 | `scripts/`    | Deploy & sync helper scripts (gitignored)               |
 
 ## 🧪 SDD Pipeline

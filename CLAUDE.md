@@ -49,9 +49,10 @@ health-manager/
 │   │   └── types/           # TypeScript type definitions
 │   ├── vite.config.ts
 │   └── package.json
+├── desktop/                 # Tauri 2 shell + PyInstaller sidecar (desktop .deb)
 ├── docs/                    # SDD artefacts (domain, spec, design)
 ├── prompts/                 # Prompt templates for AI pipeline
-├── packaging/               # Debian pkg, Caddyfile, systemd deploy scripts
+├── packaging/               # Server + desktop .deb, Caddyfile, systemd, deploy scripts
 ├── scripts/                 # Deploy & sync helper scripts (gitignored)
 ├── dev.sh                   # One-command dev server startup
 ├── CLAUDE.md                # ← You are here
