@@ -242,7 +242,7 @@ export function ChatArea({
               value={input}
               onChange={(e) => setInput(e.target.value)}
               onKeyDown={handleKeyDown}
-              placeholder="Message Health Keeper..."
+              placeholder="Message Family Health Manager..."
               aria-label="Type your message"
               disabled={sending}
               rows={1}

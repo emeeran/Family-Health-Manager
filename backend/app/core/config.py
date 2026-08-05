@@ -40,7 +40,7 @@ class Settings(BaseSettings):
 
     # Application
     APP_ENV: str = "development"
-    APP_NAME: str = "DAWNSTAR Family Health Keeper"
+    APP_NAME: str = "DAWNSTAR Family Health Manager"
     APP_VERSION: str = _app_version()
     DEBUG: bool = False
     # Root log level (DEBUG/INFO/WARNING/ERROR/CRITICAL). Default WARNING keeps
