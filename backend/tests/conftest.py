@@ -1,6 +1,7 @@
 """Shared test fixtures for integration tests."""
 
 import asyncio
+import base64
 import os
 import tempfile
 from unittest.mock import patch
@@ -14,7 +15,12 @@ from sqlalchemy.orm import sessionmaker
 # CI / clean environments have no .env. SECRET_KEY is the only Settings field
 # without a default, so provide a test value before importing app.main (which
 # instantiates Settings at import) — keeps pytest collectable without a .env.
+# Set a dedicated ENCRYPTION_KEY too, so tests exercise the real encrypt/decrypt
+# path (not just the SECRET_KEY-derived legacy fallback) — matches production.
 os.environ.setdefault("SECRET_KEY", "test-secret-not-for-production")
+os.environ.setdefault(
+    "ENCRYPTION_KEY", base64.urlsafe_b64encode(bytes(32)).decode()
+)
 
 from app.main import app
 from app.core.database import get_db

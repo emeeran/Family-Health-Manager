@@ -4,8 +4,9 @@ import enum
 from datetime import datetime, timezone
 from uuid import uuid4
 
-from sqlalchemy import ForeignKey, String, Text, DateTime, Boolean, Index
+from sqlalchemy import ForeignKey, String, DateTime, Boolean, Index
 from sqlalchemy.orm import Mapped, mapped_column, relationship
+from app.db_types import EncryptedText
 from app.models.base import Base
 
 
@@ -44,11 +45,13 @@ class HealthAlert(Base):
     )
     alert_type: Mapped[AlertType] = mapped_column(String(20), nullable=False)
     severity: Mapped[AlertSeverity] = mapped_column(String(10), nullable=False)
-    title: Mapped[str] = mapped_column(String(200), nullable=False)
-    message: Mapped[str] = mapped_column(Text, nullable=False)
+    title: Mapped[str] = mapped_column(EncryptedText, nullable=False)
+    message: Mapped[str] = mapped_column(EncryptedText, nullable=False)
+    # test_name is a test-type label, left plaintext: used in GROUP BY dedup
+    # aggregation (health_alert_service.batch_check_duplicates) and not PHI alone.
     test_name: Mapped[str | None] = mapped_column(String(100), nullable=True)
-    value: Mapped[str | None] = mapped_column(String(50), nullable=True)
-    reference: Mapped[str | None] = mapped_column(String(100), nullable=True)
+    value: Mapped[str | None] = mapped_column(EncryptedText, nullable=True)
+    reference: Mapped[str | None] = mapped_column(EncryptedText, nullable=True)
     is_dismissed: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
     created_at: Mapped[datetime] = mapped_column(
         DateTime,

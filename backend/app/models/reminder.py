@@ -6,7 +6,8 @@ from datetime import datetime, timezone
 from uuid import UUID, uuid4
 from sqlalchemy import ForeignKey, Index
 from sqlalchemy.orm import Mapped, mapped_column, relationship
-from sqlalchemy.types import String, Text, Integer, DateTime, Boolean, Enum
+from sqlalchemy.types import Integer, DateTime, Boolean, Enum
+from app.db_types import EncryptedText
 from app.models.base import Base, ReminderType, ScheduleType
 
 
@@ -25,8 +26,8 @@ class Reminder(Base):
         ForeignKey("family_members.id"), nullable=True, index=True
     )
     reminder_type: Mapped[ReminderType] = mapped_column(Enum(ReminderType), nullable=False)
-    title: Mapped[str] = mapped_column(String(100), nullable=False)
-    description: Mapped[str | None] = mapped_column(Text, nullable=True)
+    title: Mapped[str] = mapped_column(EncryptedText, nullable=False)
+    description: Mapped[str | None] = mapped_column(EncryptedText, nullable=True)
     schedule_type: Mapped[ScheduleType] = mapped_column(Enum(ScheduleType), nullable=False)
     schedule_interval: Mapped[int | None] = mapped_column(Integer, nullable=True)
     start_datetime: Mapped[datetime] = mapped_column(DateTime, nullable=False)
@@ -59,8 +60,8 @@ class Notification(Base):
     household_id: Mapped[UUID] = mapped_column(
         ForeignKey("households.id"), nullable=False, index=True
     )
-    title: Mapped[str] = mapped_column(String(100), nullable=False)
-    message: Mapped[str] = mapped_column(Text, nullable=False)
+    title: Mapped[str] = mapped_column(EncryptedText, nullable=False)
+    message: Mapped[str] = mapped_column(EncryptedText, nullable=False)
     is_read: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
     created_at: Mapped[datetime] = mapped_column(
         DateTime,

@@ -11,6 +11,30 @@ import json
 from app.core.database import update_model
 from app.models.base import HealthRecord, RecordType
 
+# Fields searched by the free-text record search. These columns are
+# Fernet-encrypted at rest, so substring matching is done in Python after the
+# TypeDecorator transparently decrypts each row (the columns can't be ILIKE'd in
+# SQL once encrypted). Bounded per-household — acceptable at family scale.
+_SEARCH_FIELDS = ("clinical_data", "diagnosis", "prescription_text")
+
+
+def record_matches_text(record: HealthRecord, term: str | None) -> bool:
+    """Case-insensitive substring match across a record's searchable PHI text.
+
+    ``None``/empty *term* matches everything (no filtering).
+    """
+    if not term:
+        return True
+    needle = term.lower()
+    return any(
+        needle in (getattr(record, f, "") or "").lower() for f in _SEARCH_FIELDS
+    )
+
+
+def record_matches_any(record: HealthRecord, terms: list[str]) -> bool:
+    """True if *record* matches any of *terms* (case-insensitive substring)."""
+    return any(record_matches_text(record, t) for t in terms) if terms else True
+
 
 class HealthRecordService:
     """Health record management service."""
@@ -136,25 +160,40 @@ class HealthRecordService:
             query = query.where(HealthRecord.record_date >= date_from)
         if date_to:
             query = query.where(HealthRecord.record_date <= date_to)
-        if search:
-            escaped = search.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
-            query = query.where(HealthRecord.clinical_data.ilike(f"%{escaped}%", escape="\\"))
 
-        if cursor:
-            query = query.where(
-                tuple_(HealthRecord.record_date, HealthRecord.id)
-                < (cursor["record_date"], cursor["id"])
+        # Free-text search can't use SQL ILIKE once clinical_data is encrypted at
+        # rest — filter in Python after the TypeDecorator decrypts each row. When
+        # searching, materialize the full candidate set (bounded per-member),
+        # filter, then apply cursor + limit here instead of in SQL.
+        if search:
+            query = query.order_by(HealthRecord.record_date.desc(), HealthRecord.id.desc())
+            result = await self.db.execute(query)
+            records = [r for r in result.scalars().unique().all() if record_matches_text(r, search)]
+            if cursor:
+                records = [
+                    r
+                    for r in records
+                    if (r.record_date, r.id) < (cursor["record_date"], cursor["id"])
+                ]
+            has_more = len(records) > limit
+            items = records[:limit]
+        else:
+            if cursor:
+                query = query.where(
+                    tuple_(HealthRecord.record_date, HealthRecord.id)
+                    < (cursor["record_date"], cursor["id"])
+                )
+
+            query = query.order_by(HealthRecord.record_date.desc(), HealthRecord.id.desc()).limit(
+                limit + 1
             )
 
-        query = query.order_by(HealthRecord.record_date.desc(), HealthRecord.id.desc()).limit(
-            limit + 1
-        )
+            result = await self.db.execute(query)
+            records = list(result.scalars().unique().all())
 
-        result = await self.db.execute(query)
-        records = list(result.scalars().unique().all())
+            has_more = len(records) > limit
+            items = records[:limit]
 
-        has_more = len(records) > limit
-        items = records[:limit]
         next_cursor = (
             base64.b64encode(
                 json.dumps(

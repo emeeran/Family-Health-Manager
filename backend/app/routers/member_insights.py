@@ -4,7 +4,7 @@ import logging
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException, Request
-from sqlalchemy import select
+from sqlalchemy import or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.database import get_db
@@ -99,7 +99,10 @@ async def get_latest_insight(
     result = await db.execute(
         select(AIInsight)
         .where(
-            AIInsight.prompt.notlike("__drug_interactions__%"),
+            or_(
+                AIInsight.prompt_key.is_(None),
+                AIInsight.prompt_key.notlike("__drug_interactions__%"),
+            ),
         )
         .order_by(AIInsight.generated_at.desc())
         .limit(1)
