@@ -91,6 +91,9 @@ datas += [(str(REPO / "frontend" / "dist"), "frontend")]
 # runs `alembic upgrade head` on every SQLite start via script_location=%(here)s/alembic
 datas += [("alembic.ini", ".")]
 datas += [("alembic", "alembic")]
+# pyproject.toml -> _MEIPASS/pyproject.toml so Settings.APP_VERSION (read via
+# tomllib at import) resolves the real version in the frozen sidecar too.
+datas += [("pyproject.toml", ".")]
 
 # --- Modules to exclude (not in the runtime import path; trim the binary) -----
 excludes = [
