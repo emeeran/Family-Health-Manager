@@ -22,7 +22,7 @@ router = APIRouter(prefix="/members", tags=["Drug Interactions"])
 
 
 async def _generate_interactions(
-    db: AsyncSession, household: Household, medications: list[dict]
+    db: AsyncSession, household: Household, medications: list[dict], cloud_consent: bool = True
 ) -> list[dict]:
     """DrugBank-first, AI-fallback interactions, each tagged with ``source``.
 
@@ -30,7 +30,8 @@ async def _generate_interactions(
     yields nothing — no key, meds unresolvable, or genuinely no interactions —
     we fall back to the existing AI checker so behavior is unchanged for
     Ollama-only installs. Every returned interaction carries ``source`` =
-    ``"drugbank"`` or ``"ai"`` so the UI can badge it.
+    ``"drugbank"`` or ``"ai"`` so the UI can badge it. ``cloud_consent=False``
+    forces the AI fallback local-only (Ollama).
     """
     interactions = await DrugInfoService(db).ddi(medications)
 
@@ -38,7 +39,7 @@ async def _generate_interactions(
         from app.services.ai_service import AIService
 
         try:
-            ai_service = AIService(db, household_id=household.id)
+            ai_service = AIService(db, household_id=household.id).set_cloud_consent(cloud_consent)
             interactions = await ai_service.check_drug_interactions(medications)
         except Exception as exc:
             logger.error("Drug interaction check failed: %s", exc)
@@ -70,6 +71,7 @@ async def _verify_ddi_inline(
     insight: AIInsight,
     interactions: list[dict],
     medications: list[dict],
+    cloud_consent: bool = True,
 ) -> dict | None:
     """Synchronously validate AI-generated drug interactions with a second model.
 
@@ -96,9 +98,9 @@ async def _verify_ddi_inline(
         medications=med_list[:2000], interactions=insight.response
     )
     try:
-        await VerificationService(db, AIService(db, household_id=household.id)).verify_insight(
-            insight, prompt=prompt
-        )
+        await VerificationService(
+            db, AIService(db, household_id=household.id).set_cloud_consent(cloud_consent)
+        ).verify_insight(insight, prompt=prompt)
         await db.flush()
     except Exception as exc:
         logger.warning("DDI verification failed: %s", exc)
@@ -110,9 +112,10 @@ async def _generate_cache_and_verify(
     household: Household,
     member_id: UUID,
     medications: list[dict],
+    cloud_consent: bool = True,
 ) -> dict:
     """Generate interactions, cache as an AIInsight, validate inline, commit."""
-    interactions = await _generate_interactions(db, household, medications)
+    interactions = await _generate_interactions(db, household, medications, cloud_consent)
     cached_insight = AIInsight(
         prompt=f"__drug_interactions__{member_id}",
         response=json.dumps(interactions),
@@ -122,7 +125,7 @@ async def _generate_cache_and_verify(
     await db.flush()
 
     verification = await _verify_ddi_inline(
-        db, household, cached_insight, interactions, medications
+        db, household, cached_insight, interactions, medications, cloud_consent
     )
     try:
         await db.commit()
@@ -180,7 +183,8 @@ async def get_latest_drug_interactions(
         except (json.JSONDecodeError, ValueError):
             pass
 
-    return await _generate_cache_and_verify(db, household, member_id, medications)
+    cloud_consent = await MemberService(db).get_cloud_consent(member_id)
+    return await _generate_cache_and_verify(db, household, member_id, medications, cloud_consent)
 
 
 @router.get("/{member_id}/duplicate-therapy")
@@ -230,4 +234,5 @@ async def get_drug_interactions(
     if len(medications) < 2:
         return {"interactions": [], "medications_checked": len(medications)}
 
-    return await _generate_cache_and_verify(db, household, member_id, medications)
+    cloud_consent = await MemberService(db).get_cloud_consent(member_id)
+    return await _generate_cache_and_verify(db, household, member_id, medications, cloud_consent)

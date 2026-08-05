@@ -76,3 +76,33 @@ def test_member_model_defaults_to_consent_true():
     col = FamilyMember.__table__.c.cloud_ai_consent
     assert col.nullable is False
     assert col.default.arg is True
+
+
+# ── Extraction plan: consent restricts the provider chain to local ──────────
+
+
+def test_extraction_plan_local_only_drops_cloud():
+    """local_only() keeps Ollama and drops every cloud provider entry."""
+    from app.services.ai.document_extractor import ExtractionProviderPlan, _PlanItem
+
+    plan = ExtractionProviderPlan(
+        items=[
+            _PlanItem(provider_id="groq", model="llama", is_local=False),
+            _PlanItem(provider_id="gemini", model="flash", is_local=False),
+            _PlanItem(provider_id="ollama", model="qwen3", is_local=True),
+        ]
+    )
+    local = plan.local_only()
+    assert [it.provider_id for it in local.items] == ["ollama"]
+    assert all(it.is_local for it in local.items)
+
+
+def test_extraction_plan_local_only_preserves_already_local_plan():
+    """When the plan is already local-only, local_only() returns the same object."""
+    from app.services.ai.document_extractor import ExtractionProviderPlan, _PlanItem
+
+    plan = ExtractionProviderPlan(
+        items=[_PlanItem(provider_id="ollama", model="qwen3", is_local=True)]
+    )
+    assert plan.local_only() is plan
+

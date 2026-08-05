@@ -114,6 +114,22 @@ class MemberService:
             raise ValueError("Member not found")
         return member
 
+    async def get_cloud_consent(self, member_id: UUID | None) -> bool:
+        """Return a member's cloud-AI consent flag.
+
+        True when *member_id* is None (household-scoped AI keeps using cloud) or
+        when the member doesn't exist; otherwise the stored flag. Used by the
+        chat / drug-interaction / extraction routers to force local-only AI for
+        members who opted out of cloud egress.
+        """
+        if member_id is None:
+            return True
+        result = await self.db.execute(
+            select(FamilyMember.cloud_ai_consent).where(FamilyMember.id == member_id)
+        )
+        consent = result.scalar_one_or_none()
+        return True if consent is None else bool(consent)
+
     async def list_members(
         self, household_id: UUID, is_active: bool | None = None
     ) -> list[FamilyMember]:

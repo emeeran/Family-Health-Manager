@@ -376,6 +376,24 @@ class ExtractionProviderPlan:
         )
         return ExtractionProviderPlan(items=kept, gemini_auth=self.gemini_auth)
 
+    def local_only(self) -> "ExtractionProviderPlan":
+        """Return a copy retaining only local (Ollama) entries.
+
+        Used when a member has opted out of cloud AI — their PHI must not egress
+        to a cloud provider, so the extraction chain is restricted to local. May
+        be empty (no Ollama configured) when the member opted out of cloud and no
+        local model is available; the extraction chain handles an empty plan by
+        returning no data rather than sending to cloud.
+        """
+        local = [it for it in self.items if it.is_local]
+        if len(local) == len(self.items):
+            return self  # already local-only — no copy needed
+        return ExtractionProviderPlan(
+            items=local,
+            gemini_auth=self.gemini_auth,
+            fast_text_model=self.fast_text_model,
+        )
+
     def _entry(
         self,
         item: _PlanItem,

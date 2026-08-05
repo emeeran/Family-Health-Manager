@@ -767,6 +767,10 @@ class AIService:
         pruned_plan = plan.prune_known_dead()
         providers_were_pruned = pruned_plan is not plan
         plan = pruned_plan
+        # Per-member cloud-AI consent: restrict the chain to local (Ollama) so an
+        # opted-out member's PHI never egresses to a cloud extraction provider.
+        if not self.cloud_ai_consent:
+            plan = plan.local_only()
 
         cache_hit = False
         if content_hash:

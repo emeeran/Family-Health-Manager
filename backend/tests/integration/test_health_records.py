@@ -248,7 +248,7 @@ async def test_update_record_commits_before_background_task(auth_client, db_sess
 
     seen: dict = {}
 
-    async def _spy(record_id, household_id):
+    async def _spy(record_id, household_id, member_id):
         # The real task opens its OWN session; do the same on the test engine to
         # check what clinical_data it reads at task-run time.
         async with AsyncSession(db_session.bind, expire_on_commit=False) as fresh:
