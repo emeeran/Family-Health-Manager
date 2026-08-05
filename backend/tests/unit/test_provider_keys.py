@@ -13,6 +13,7 @@ from app.core import provider_keys
 from app.core.provider_keys import (
     invalidate_provider_cache,
     normalize_ollama_url,
+    ollama_url_block_reason,
     resolve_provider_value,
 )
 
@@ -112,3 +113,30 @@ async def test_resolve_does_not_touch_api_key_providers(monkeypatch):
     monkeypatch.setattr(provider_keys, "_load_from_db", AsyncMock(return_value="sk-somekey"))
     monkeypatch.setattr(provider_keys, "_fallback_from_env", lambda _p: None)
     assert await resolve_provider_value("openai") == "sk-somekey"
+
+
+# ── SSRF guard for the admin-configurable Ollama URL ─────────────────────────
+
+
+async def test_ollama_ssrf_blocks_cloud_metadata():
+    """Link-local + known metadata endpoints are blocked (the SSRF prize)."""
+    assert normalize_ollama_url("http://169.254.169.254/latest/meta-data/") is None
+    assert normalize_ollama_url("169.254.169.254:11434") is None
+    assert normalize_ollama_url("http://metadata.google.internal/computeMetadata/") is None
+    assert normalize_ollama_url("http://[fd00:ec2::254]/") is None
+    assert ollama_url_block_reason("http://169.254.169.254/") == "cloud metadata endpoint"
+
+
+async def test_ollama_ssrf_allows_localhost_and_lan():
+    """Localhost + private LAN ranges stay usable (Ollama on another box is legit)."""
+    assert normalize_ollama_url("localhost:11434") == "http://localhost:11434"
+    assert normalize_ollama_url("127.0.0.1:11434") == "http://127.0.0.1:11434"
+    assert normalize_ollama_url("192.168.1.20:11434") == "http://192.168.1.20:11434"
+    assert normalize_ollama_url("10.0.0.5:11434") == "http://10.0.0.5:11434"
+    assert normalize_ollama_url("ollama.home.arpa:11434") == "http://ollama.home.arpa:11434"
+    assert ollama_url_block_reason("http://192.168.1.20:11434") is None
+
+
+async def test_ollama_ssrf_blocks_unspecified_address():
+    assert normalize_ollama_url("0.0.0.0:11434") is None
+    assert ollama_url_block_reason("http://0.0.0.0/") == "unspecified address"

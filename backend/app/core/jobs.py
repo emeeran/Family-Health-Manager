@@ -19,7 +19,7 @@ from sqlalchemy.orm import selectinload
 
 from app.core.config import get_settings
 from app.core.database import SessionLocal
-from app.models.base import HealthRecord, RecordType
+from app.models.base import FamilyMember, HealthRecord, RecordType
 from app.services.reminder_service import ReminderService
 from app.services.health_alert_service import HealthAlertService
 from app.models.health_alert import AlertType, AlertSeverity
@@ -296,6 +296,94 @@ async def detect_anomalies():
             logger.exception("Failed to run anomaly detection")
 
 
+async def detect_lab_anomalies_for_record(db, record) -> int:
+    """Run the out-of-range lab check for a single record; create HealthAlerts.
+
+    Reuses the same parsing/threshold logic as the batch :func:`detect_anomalies`
+    job so a freshly-uploaded critical lab is flagged immediately instead of
+    waiting up to 6h for the sweep. Safe to call on any record — no-ops (returns
+    0) when the record isn't a lab/glucose record, has no structured data, or has
+    no out-of-range values. Alerts are added to *db*'s session and committed by
+    the caller's transaction. Never raises — anomaly detection must never block
+    or fail a record save.
+    """
+    if record.record_type not in (RecordType.LAB_REPORT, RecordType.BLOOD_GLUCOSE):
+        return 0
+    if not record.clinical_data:
+        return 0
+    try:
+        parsed = json.loads(record.clinical_data)
+        if parsed.get("_type") != "structured":
+            return 0
+        tests = parsed.get("lab_results") or parsed.get("tests") or []
+        if not tests:
+            return 0
+
+        # Resolve household_id via a one-column lookup — avoid touching the
+        # family_member relationship, which may not be loaded in the caller's
+        # session (lazy access raises MissingGreenlet under async SQLAlchemy).
+        household_id = (
+            await db.execute(
+                select(FamilyMember.household_id).where(
+                    FamilyMember.id == record.family_member_id
+                )
+            )
+        ).scalar_one_or_none()
+        if household_id is None:
+            return 0
+
+        alert_svc = HealthAlertService(db)
+        existing = await alert_svc.batch_check_duplicates(record.family_member_id)
+        created = 0
+        for test in tests:
+            test_name = test.get("test_name", "Unknown")
+            result_val = test.get("result", "")
+            ref_val = test.get("ref_value", "")
+            if not result_val or not ref_val:
+                continue
+            numeric = _extract_numeric(str(result_val))
+            if numeric is None:
+                continue
+            low, high = _parse_ref_range(str(ref_val))
+            direction = ""
+            if low is not None and numeric < low:
+                direction = "LOW"
+            elif high is not None and numeric > high:
+                direction = "HIGH"
+            if not direction:
+                continue
+            if (test_name, record.record_date) in existing:
+                continue
+            existing.add((test_name, record.record_date))
+            severity = (
+                AlertSeverity.CRITICAL if direction == "HIGH" else AlertSeverity.WARNING
+            )
+            await alert_svc.create_alert(
+                household_id=household_id,
+                member_id=record.family_member_id,
+                alert_type=AlertType.LAB_WARNING,
+                severity=severity,
+                title=f"{test_name} is {direction}: {result_val}",
+                message=(
+                    f"{test_name} value {result_val} is {direction} the reference "
+                    f"range ({ref_val}). Recorded on {record.record_date}."
+                ),
+                record_id=record.id,
+                test_name=test_name,
+                value=str(result_val),
+                reference=ref_val,
+            )
+            created += 1
+        if created:
+            logger.info(
+                "Real-time lab flag: %d alert(s) for record %s", created, record.id
+            )
+        return created
+    except Exception:
+        logger.exception("Real-time lab anomaly check failed for record %s", record.id)
+        return 0
+
+
 async def cleanup_staging_files():
     """Delete staging files older than 24 hours."""
     import time
@@ -533,8 +621,21 @@ def create_backup_archive() -> Path | None:
             else:
                 db_name = "health.sql"
                 _dump_postgres(db_url, tmp / db_name)
+            # Bundle the at-rest ENCRYPTION_KEY so an offsite restore onto fresh
+            # hardware can decrypt attachments/2FA secrets (the DB dump alone
+            # leaves them unrecoverable — see AUDIT.md). The tar already carries
+            # the plaintext DB, so a plaintext key bundle adds no new exposure.
+            from app.core.backup_crypto import bundle_app_key_plaintext
+
+            secrets_bundle = bundle_app_key_plaintext(
+                getattr(settings, "ENCRYPTION_KEY", "") or None
+            )
+            if secrets_bundle:
+                (tmp / "secrets.bundle").write_text(secrets_bundle)
             with tarfile.open(tmp_archive, "w:gz") as tar:
                 tar.add(tmp / db_name, arcname=db_name)
+                if secrets_bundle:
+                    tar.add(tmp / "secrets.bundle", arcname="secrets.bundle")
                 attachments_dir = Path(settings.STORAGE_PATH)
                 if attachments_dir.exists():
                     tar.add(attachments_dir, arcname="attachments")

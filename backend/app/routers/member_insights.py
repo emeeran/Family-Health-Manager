@@ -36,7 +36,7 @@ async def generate_member_insights(
     """Generate comprehensive AI health insights for a member."""
     from app.services.ai_service import AIService
 
-    ai_service = AIService(db, household_id=household.id)
+    ai_service = AIService(db, household_id=household.id).set_cloud_consent(member.cloud_ai_consent)
     prompt = _prompt_for(mode)
     try:
         insight = await ai_service.generate_insight(
@@ -56,7 +56,7 @@ async def generate_member_insights(
         context = await ai_service._build_member_context(member_id, comprehensive=True)
         await verify_insight_inline(db, ai_service, insight, context, member_id)
     except Exception:
-        logger.debug("Insight verification skipped")
+        logger.info("Insight verification skipped")
 
     return serialize_insight_payload(insight)
 
@@ -73,7 +73,7 @@ async def generate_member_insights_stream(
     """Stream comprehensive AI health insight generation with real-time progress (SSE)."""
     from app.services.ai_service import AIService
 
-    ai_service = AIService(db, household_id=household.id)
+    ai_service = AIService(db, household_id=household.id).set_cloud_consent(member.cloud_ai_consent)
     prompt = _prompt_for(mode)
 
     return make_sse_stream(
@@ -111,7 +111,7 @@ async def get_latest_insight(
 
     from app.services.ai_service import AIService
 
-    ai_service = AIService(db, household_id=household.id)
+    ai_service = AIService(db, household_id=household.id).set_cloud_consent(member.cloud_ai_consent)
     prompt = COMPREHENSIVE_INSIGHT_PROMPT
     try:
         insight = await ai_service.generate_insight(

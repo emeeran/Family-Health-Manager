@@ -72,6 +72,7 @@ async def create_member(
         height_cm=request.height_cm,
         weight_kg=request.weight_kg,
         notes=request.notes,
+        cloud_ai_consent=request.cloud_ai_consent,
     )
     await cache.invalidate_async(f"members:{household.id}")
     await cache.invalidate_async(f"dashboard_summary:{household.id}")

@@ -33,7 +33,7 @@ export default function EditMemberPage() {
     data: member,
     error,
     mutate: _revalidate,
-  } = useSWR(memberId ? `member-${memberId}` : null, async () => {
+  } = useSWR(memberId ? `member-edit-${memberId}` : null, async () => {
     return getMember(memberId!);
   });
 
@@ -81,10 +81,10 @@ export default function EditMemberPage() {
           phone: (formData.get("phone") as string) || null,
           address: (formData.get("address") as string) || null,
           notes: (formData.get("notes") as string) || null,
+          cloud_ai_consent: formData.get("cloud_ai_consent") !== "false",
         };
         await updateMember(memberId!, data);
-        mutate(`member-${memberId}`);
-        mutate(`member-dashboard-${memberId}`);
+        mutate(`member-detail-${memberId}`);
         mutate("dashboard");
         navigate(`/people/${memberId}`);
         return null;
@@ -140,6 +140,7 @@ export default function EditMemberPage() {
               phone: member.phone || "",
               address: member.address || "",
               notes: member.notes || "",
+              cloud_ai_consent: member.cloud_ai_consent,
               ...medicalFields,
             }}
           />

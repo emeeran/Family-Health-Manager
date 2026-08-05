@@ -48,6 +48,9 @@ class FamilyMemberCreate(BaseModel):
     phone: str | None = Field(None, max_length=30, description="Contact phone (report header)")
     address: str | None = Field(None, description="Primary address (report header)")
     notes: str | None = Field(None, description="General notes about the member")
+    cloud_ai_consent: bool = Field(
+        True, description="Allow this member's PHI to be sent to cloud AI providers"
+    )
     medical_history: MedicalHistoryQuestionnaire | None = Field(
         None, description="Initial medical history"
     )
@@ -80,6 +83,9 @@ class FamilyMemberUpdate(BaseModel):
     address: str | None = Field(None, description="Primary address (report header)")
     notes: str | None = Field(None, description="General notes about the member")
     is_active: bool | None = Field(None, description="Active status")
+    cloud_ai_consent: bool | None = Field(
+        None, description="Allow this member's PHI to be sent to cloud AI providers"
+    )
 
 
 class FamilyMemberResponse(BaseModel):
@@ -107,6 +113,7 @@ class FamilyMemberResponse(BaseModel):
     emergency_contact_phone: str | None = Field(None, description="Emergency contact phone")
     notes: str | None = Field(None, description="General notes about the member")
     is_active: bool = Field(..., description="Active status")
+    cloud_ai_consent: bool = Field(..., description="Allow this member's PHI to be sent to cloud AI")
     created_at: datetime = Field(..., description="Creation timestamp")
     photo_updated_at: datetime | None = Field(
         None, description="When the profile photo was last set (client cache-bust version)"

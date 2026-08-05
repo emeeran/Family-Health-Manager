@@ -21,6 +21,7 @@ def _base_member_kwargs():
         "gender": "female",
         "relationship_type": "self",
         "is_active": True,
+        "cloud_ai_consent": True,
         "created_at": "2024-01-01T00:00:00",
     }
 

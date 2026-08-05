@@ -6,7 +6,7 @@ import uuid
 from datetime import datetime, timezone
 from pathlib import Path
 
-from fastapi import APIRouter, Depends, HTTPException, UploadFile, File
+from fastapi import APIRouter, Body, Depends, HTTPException, Form, UploadFile, File
 from fastapi.responses import FileResponse, Response
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -33,13 +33,19 @@ MAX_BACKUP_SIZE = 500 * 1024 * 1024  # 500 MB
 
 @router.post("/export")
 async def export_backup(
+    passphrase: str | None = Body(None, embed=True),
     household: Household = Depends(get_household_from_token),
     db: AsyncSession = Depends(get_db),
 ):
-    """Export all household data as a downloadable ZIP archive."""
+    """Export all household data as a downloadable ZIP archive.
+
+    Supply ``{"passphrase": "..."}`` to produce a passphrase-encrypted archive
+    (structured PHI encrypted + the app at-rest key bundled for offsite restore).
+    Omit it for the legacy plaintext archive.
+    """
     service = BackupService(db)
     try:
-        zip_bytes = await service.export_backup(household.id)
+        zip_bytes = await service.export_backup(household.id, passphrase=passphrase)
     except ValueError as exc:
         raise HTTPException(status_code=404, detail=str(exc))
     except Exception as exc:
@@ -59,10 +65,15 @@ async def export_backup(
 @router.post("/validate", response_model=BackupValidationResponse)
 async def validate_backup(
     file: UploadFile = File(...),
+    passphrase: str | None = Form(None),
     household: Household = Depends(get_household_from_token),
     db: AsyncSession = Depends(get_db),
 ):
-    """Validate a backup archive and stage it for import."""
+    """Validate a backup archive and stage it for import.
+
+    Passphrase-encrypted archives require ``passphrase`` to decrypt the payload
+    during validation.
+    """
     # Save uploaded file to a temp location (bypassing storage validation for ZIP)
     staging_dir = Path(settings.STORAGE_PATH) / "backup-upload"
     staging_dir.mkdir(parents=True, exist_ok=True)
@@ -75,7 +86,7 @@ async def validate_backup(
 
     try:
         service = BackupService(db)
-        result = service.validate_backup(temp_path)
+        result = service.validate_backup(temp_path, passphrase=passphrase)
         return result
     except Exception as exc:
         logger.error("Backup validation failed: %s", exc)
@@ -93,7 +104,9 @@ async def import_backup(
     """Import a previously validated backup archive."""
     service = BackupService(db)
     try:
-        result = await service.import_backup(household.id, request.validation_id, request.mode)
+        result = await service.import_backup(
+            household.id, request.validation_id, request.mode, request.passphrase
+        )
         return result
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc))
@@ -179,7 +192,8 @@ async def delete_backup_archive(name: str, _user=Depends(require_admin)):
     try:
         path.unlink()
     except OSError as exc:
-        raise HTTPException(status_code=500, detail=f"Could not delete archive: {exc}")
+        logger.error("Could not delete backup archive %s: %s", name, exc)
+        raise HTTPException(status_code=500, detail="Could not delete the archive.")
 
 
 @router.post("/archives/{name}/restore", response_model=RestoreResponse, status_code=202)

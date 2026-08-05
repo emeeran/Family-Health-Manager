@@ -12,6 +12,12 @@ from uuid import UUID, uuid4
 from sqlalchemy import delete, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.core.backup_crypto import (
+    BackupCryptoError,
+    KeyBundle,
+    decrypt_payload,
+    encrypt_payload,
+)
 from app.core.config import get_settings
 from app.models.base import (
     AIInsight,
@@ -60,8 +66,16 @@ class BackupService:
 
     # ── Export ──────────────────────────────────────────────────────
 
-    async def export_backup(self, household_id: UUID) -> bytes:
-        """Build a ZIP archive containing all household data + attachments."""
+    async def export_backup(self, household_id: UUID, passphrase: str | None = None) -> bytes:
+        """Build a ZIP archive containing all household data + attachments.
+
+        When *passphrase* is supplied, the structured ``data.json`` payload is
+        encrypted (``data.json.enc`` + ``key.bundle``) and the app's at-rest
+        ``ENCRYPTION_KEY`` is bundled — wrapped under the passphrase — so the
+        archive is self-contained for an offsite restore onto fresh hardware
+        (attachments/2FA secrets stay recoverable). Without a passphrase the
+        legacy plaintext layout is produced.
+        """
         household = await self._get_household(household_id)
 
         # Load all entities
@@ -137,13 +151,27 @@ class BackupService:
             household_name=household.name,
             household_id=household.id,
             counts=counts,
+            encrypted=bool(passphrase),
         )
+
+        data_json = data.model_dump_json(indent=2)
 
         # Build ZIP in memory
         buf = io.BytesIO()
         with zipfile.ZipFile(buf, "w", zipfile.ZIP_DEFLATED) as zf:
-            zf.writestr("manifest.json", manifest.model_dump_json(indent=2))
-            zf.writestr("data.json", data.model_dump_json(indent=2))
+            if passphrase:
+                # Encrypt the structured PHI payload + bundle the app at-rest key
+                # so an offsite restore onto fresh hardware recovers attachments.
+                ciphertext, bundle = encrypt_payload(
+                    data_json.encode(), passphrase, settings.ENCRYPTION_KEY or None
+                )
+                manifest.encrypted = True
+                zf.writestr("manifest.json", manifest.model_dump_json(indent=2))
+                zf.writestr("data.json.enc", ciphertext)
+                zf.writestr("key.bundle", bundle.to_json())
+            else:
+                zf.writestr("manifest.json", manifest.model_dump_json(indent=2))
+                zf.writestr("data.json", data_json)
 
             # Add attachment files
             for att, att_backup in zip(attachments, attachment_backups):
@@ -154,13 +182,25 @@ class BackupService:
                     logger.warning("Attachment file missing on disk: %s", file_path)
 
         buf.seek(0)
-        logger.info("Backup exported for household %s: %s", household_id, counts)
+        logger.info(
+            "Backup exported for household %s: %s (encrypted=%s)",
+            household_id,
+            counts,
+            bool(passphrase),
+        )
         return buf.read()
 
     # ── Validate ───────────────────────────────────────────────────
 
-    def validate_backup(self, file_path: Path) -> BackupValidationResponse:
-        """Validate a backup archive and stage it for import."""
+    def validate_backup(
+        self, file_path: Path, passphrase: str | None = None
+    ) -> BackupValidationResponse:
+        """Validate a backup archive and stage it for import.
+
+        For a passphrase-encrypted archive, *passphrase* is required and is used
+        to decrypt the data payload here (so validation reports real contents,
+        not just "looks like a zip").
+        """
         validation_id = str(uuid4())
         warnings: list[str] = []
         errors: list[str] = []
@@ -177,7 +217,9 @@ class BackupService:
 
             if "manifest.json" not in names:
                 errors.append("Missing manifest.json")
-            if "data.json" not in names:
+            has_plain = "data.json" in names
+            has_enc = "data.json.enc" in names
+            if not has_plain and not has_enc:
                 errors.append("Missing data.json")
 
             if errors:
@@ -194,8 +236,40 @@ class BackupService:
             if manifest.version not in SUPPORTED_VERSIONS:
                 errors.append(f"Unsupported backup version: {manifest.version}")
 
-            # Parse data
-            data_raw = json.loads(zf.read("data.json"))
+            # Resolve the data payload — decrypting an encrypted archive first.
+            encrypted = manifest.encrypted or has_enc
+            if encrypted:
+                if not passphrase:
+                    errors.append("This backup is passphrase-protected — provide the passphrase")
+                    return BackupValidationResponse(
+                        validation_id=validation_id,
+                        valid=False,
+                        manifest=manifest,
+                        errors=errors,
+                    )
+                if "key.bundle" not in names:
+                    errors.append("Encrypted backup is missing key.bundle")
+                    return BackupValidationResponse(
+                        validation_id=validation_id,
+                        valid=False,
+                        manifest=manifest,
+                        errors=errors,
+                    )
+                try:
+                    bundle = KeyBundle.from_json(zf.read("key.bundle"))
+                    plaintext = decrypt_payload(zf.read("data.json.enc"), passphrase, bundle)
+                except BackupCryptoError as exc:
+                    errors.append(str(exc))
+                    return BackupValidationResponse(
+                        validation_id=validation_id,
+                        valid=False,
+                        manifest=manifest,
+                        errors=errors,
+                    )
+                data_raw = json.loads(plaintext)
+            else:
+                data_raw = json.loads(zf.read("data.json"))
+
             try:
                 data = BackupData.model_validate(data_raw)
             except Exception as exc:
@@ -241,6 +315,7 @@ class BackupService:
         household_id: UUID,
         staging_id: str,
         mode: str,
+        passphrase: str | None = None,
     ) -> BackupImportResponse:
         """Import a validated backup archive into the household."""
         staged_path = Path(settings.STORAGE_PATH) / "backup-staging" / staging_id
@@ -254,7 +329,25 @@ class BackupService:
 
         try:
             with zipfile.ZipFile(staged_path, "r") as zf:
-                data = BackupData.model_validate(json.loads(zf.read("data.json")))
+                names = zf.namelist()
+                manifest = BackupManifest.model_validate(
+                    json.loads(zf.read("manifest.json"))
+                )
+                if manifest.encrypted or "data.json.enc" in names:
+                    if not passphrase:
+                        raise ValueError(
+                            "This backup is passphrase-protected — provide the passphrase"
+                        )
+                    try:
+                        bundle = KeyBundle.from_json(zf.read("key.bundle"))
+                        plaintext = decrypt_payload(
+                            zf.read("data.json.enc"), passphrase, bundle
+                        )
+                    except BackupCryptoError as exc:
+                        raise ValueError(str(exc)) from exc
+                    data = BackupData.model_validate(json.loads(plaintext))
+                else:
+                    data = BackupData.model_validate(json.loads(zf.read("data.json")))
 
                 if mode == "replace":
                     await self._delete_household_data(household_id)
@@ -815,39 +908,49 @@ class BackupService:
         )
         return list(result.scalars().all())
 
+    async def _load_in_chunks(self, build_stmt, ids: set, chunk: int = 500) -> list:
+        """Run ``build_stmt(id_chunk)`` per chunk of *ids*, accumulating ORM rows.
+
+        SQLite caps host parameters at 999 by default; a household with >999
+        records would otherwise hit "too many SQL variables" on the
+        attachment/insight/etc. loaders (each filtered by a parent-id IN set).
+        """
+        id_list = list(ids)
+        if not id_list:
+            return []
+        out: list = []
+        for i in range(0, len(id_list), chunk):
+            result = await self.db.execute(build_stmt(id_list[i : i + chunk]))
+            out.extend(result.scalars().all())
+        return out
+
     async def _load_assignments(
         self, member_ids: set, provider_ids: set
     ) -> list[ProviderAssignment]:
-        if not member_ids:
-            return []
-        result = await self.db.execute(
-            select(ProviderAssignment).where(ProviderAssignment.family_member_id.in_(member_ids))
+        return await self._load_in_chunks(
+            lambda c: select(ProviderAssignment).where(
+                ProviderAssignment.family_member_id.in_(c)
+            ),
+            member_ids,
         )
-        return list(result.scalars().all())
 
     async def _load_records(self, member_ids: set) -> list[HealthRecord]:
-        if not member_ids:
-            return []
-        result = await self.db.execute(
-            select(HealthRecord).where(HealthRecord.family_member_id.in_(member_ids))
+        return await self._load_in_chunks(
+            lambda c: select(HealthRecord).where(HealthRecord.family_member_id.in_(c)),
+            member_ids,
         )
-        return list(result.scalars().all())
 
     async def _load_attachments(self, record_ids: set) -> list[Attachment]:
-        if not record_ids:
-            return []
-        result = await self.db.execute(
-            select(Attachment).where(Attachment.health_record_id.in_(record_ids))
+        return await self._load_in_chunks(
+            lambda c: select(Attachment).where(Attachment.health_record_id.in_(c)),
+            record_ids,
         )
-        return list(result.scalars().all())
 
     async def _load_insights(self, record_ids: set) -> list[AIInsight]:
-        if not record_ids:
-            return []
-        result = await self.db.execute(
-            select(AIInsight).where(AIInsight.health_record_id.in_(record_ids))
+        return await self._load_in_chunks(
+            lambda c: select(AIInsight).where(AIInsight.health_record_id.in_(c)),
+            record_ids,
         )
-        return list(result.scalars().all())
 
     async def _load_conversations(self, household_id: UUID) -> list[Conversation]:
         result = await self.db.execute(
@@ -856,10 +959,9 @@ class BackupService:
         return list(result.scalars().all())
 
     async def _load_messages(self, conv_ids: set) -> list[Message]:
-        if not conv_ids:
-            return []
-        result = await self.db.execute(select(Message).where(Message.conversation_id.in_(conv_ids)))
-        return list(result.scalars().all())
+        return await self._load_in_chunks(
+            lambda c: select(Message).where(Message.conversation_id.in_(c)), conv_ids
+        )
 
     async def _load_reminders(self, household_id: UUID) -> list[Reminder]:
         result = await self.db.execute(
@@ -868,9 +970,7 @@ class BackupService:
         return list(result.scalars().all())
 
     async def _load_notifications(self, reminder_ids: set) -> list[Notification]:
-        if not reminder_ids:
-            return []
-        result = await self.db.execute(
-            select(Notification).where(Notification.reminder_id.in_(reminder_ids))
+        return await self._load_in_chunks(
+            lambda c: select(Notification).where(Notification.reminder_id.in_(c)),
+            reminder_ids,
         )
-        return list(result.scalars().all())

@@ -18,7 +18,9 @@ class Household(Base):
 
     id: Mapped[UUID] = mapped_column(primary_key=True, default=uuid4)
     name: Mapped[str] = mapped_column(String(100), nullable=False)
-    primary_user_id: Mapped[UUID] = mapped_column(ForeignKey("users.id"), nullable=False)
+    primary_user_id: Mapped[UUID] = mapped_column(
+        ForeignKey("users.id"), nullable=False, index=True
+    )
     created_at: Mapped[datetime] = mapped_column(
         DateTime,
         default=lambda: datetime.now(timezone.utc),

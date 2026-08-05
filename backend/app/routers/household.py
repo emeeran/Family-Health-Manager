@@ -338,4 +338,6 @@ async def reset_database(
 
     except Exception as exc:
         logger.error("Database reset failed: %s", exc)
-        raise HTTPException(status_code=500, detail=f"Database reset failed: {exc}")
+        raise HTTPException(
+            status_code=500, detail="Database reset failed. Check server logs."
+        )

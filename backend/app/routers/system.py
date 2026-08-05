@@ -20,6 +20,7 @@ from app.core.provider_keys import (
     get_env_fallback,
     invalidate_provider_cache,
     normalize_ollama_url,
+    ollama_url_block_reason,
 )
 from app.models.app_secret import AppSecret
 from app.models.base import User
@@ -107,7 +108,17 @@ async def set_provider_key(
     """Store an encrypted credential. The DB becomes authoritative for that provider."""
     value = body.value
     if body.provider == "ollama":
-        value = normalize_ollama_url(value)
+        normalized = normalize_ollama_url(value)
+        # A non-empty input that normalizes to None was SSRF-blocked (link-local /
+        # cloud metadata). Surface a clear 400 rather than silently storing None.
+        if value and value.strip() and not normalized:
+            reason = ollama_url_block_reason(value) or "blocked"
+            raise HTTPException(
+                status_code=400,
+                detail=f"Ollama URL not allowed ({reason}). Link-local and cloud-"
+                "metadata addresses are blocked.",
+            )
+        value = normalized
     await _upsert(db, PROVIDER_SECRET_KEYS[body.provider], value)
     await db.flush()
     invalidate_provider_cache(body.provider)

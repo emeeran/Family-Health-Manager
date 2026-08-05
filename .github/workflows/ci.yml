@@ -31,7 +31,7 @@ jobs:
         run: uv run mypy app/
 
       - name: Test
-        run: uv run pytest tests/ -v --cov=app --cov-report=term-missing --cov-report=xml --cov-fail-under=40
+        run: uv run pytest tests/ -v --cov=app --cov-report=term-missing --cov-report=xml --cov-fail-under=50
 
       - name: Security scan
         run: uv run pip-audit
@@ -62,6 +62,15 @@ jobs:
 
       - name: Test
         run: npm test -- --coverage
+
+      - name: Security scan (advisory)
+        # Surfaces npm advisories every run. Advisory (non-blocking): the
+        # frontend has transitive vulns needing breaking major upgrades — e.g.
+        # react-router 7→8 for the RCE GHSA-49rj-9fvp-4h2h — that can't be
+        # fixed in-place here. Backend pip-audit stays a hard gate (few, easily
+        # upgradable deps); npm audit becomes hard once those upgrades land.
+        continue-on-error: true
+        run: npm audit --audit-level=high
 
       - name: Build
         run: npm run build

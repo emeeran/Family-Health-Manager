@@ -79,7 +79,14 @@ class HealthRecordService:
             )
             .where(HealthRecord.id == record.id)
         )
-        return loaded.unique().scalar_one()
+        record_out = loaded.unique().scalar_one()
+        # Real-time lab flag: a freshly-saved critical lab is alerted now rather
+        # than waiting for the 6h anomaly sweep. Adds alerts to this session;
+        # the caller's commit persists them with the record. Never raises.
+        from app.core.jobs import detect_lab_anomalies_for_record
+
+        await detect_lab_anomalies_for_record(self.db, record_out)
+        return record_out
 
     async def get_record(self, member_id: UUID, record_id: UUID) -> HealthRecord:
         """Get record by ID, ensuring member access."""
@@ -181,7 +188,15 @@ class HealthRecordService:
             .where(HealthRecord.id == record_id)
         )
         record = result.unique().scalar_one()
-        return await update_model(self.db, record, allowed_fields=allowed, **kwargs)
+        updated = await update_model(self.db, record, allowed_fields=allowed, **kwargs)
+        # Re-run the real-time lab flag when the clinical payload or type changes
+        # (e.g. an extraction backfill or manual lab edit) so new out-of-range
+        # values are caught immediately. No-op for non-lab records.
+        if "clinical_data" in kwargs or "record_type" in kwargs:
+            from app.core.jobs import detect_lab_anomalies_for_record
+
+            await detect_lab_anomalies_for_record(self.db, updated)
+        return updated
 
     async def soft_delete_record(self, member_id: UUID, record_id: UUID) -> None:
         """Soft-delete a health record and clean up associated attachment files."""

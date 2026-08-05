@@ -44,6 +44,7 @@ function createMemberClientAction(navigate: ReturnType<typeof useNavigate>) {
           blood_group: (formData.get("blood_group") as string) || null,
           family_history: (formData.get("family_history") as string) || null,
         },
+        cloud_ai_consent: formData.get("cloud_ai_consent") !== "false",
       };
       await createMember(data);
       mutate("dashboard");

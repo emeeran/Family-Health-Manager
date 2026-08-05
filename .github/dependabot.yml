@@ -1,0 +1,24 @@
+# Dependabot — keeps backend (uv/pip), frontend (npm), and CI actions pinned to
+# non-vulnerable versions. Weekly cadence keeps PR noise low while catching
+# security advisories promptly. Backend dependency ecosystem is "uv" (the
+# project's package manager); pip is the underlying resolver.
+version: 2
+updates:
+  - package-ecosystem: "uv"
+    directory: "/backend"
+    schedule:
+      interval: "weekly"
+    open-pull-requests-limit: 5
+
+  - package-ecosystem: "npm"
+    directory: "/frontend"
+    schedule:
+      interval: "weekly"
+    open-pull-requests-limit: 5
+
+  # Keep GitHub Actions current (checkout, setup-node, setup-uv, upload-artifact…).
+  - package-ecosystem: "github-actions"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+    open-pull-requests-limit: 5

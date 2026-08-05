@@ -7,6 +7,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Badge } from "@/components/ui/badge";
+import { Switch } from "@/components/ui/switch";
 import {
   Select,
   SelectContent,
@@ -148,6 +149,7 @@ const memberSchema = z.object({
   patient_id: z.string().optional(),
   phone: z.string().optional(),
   address: z.string().optional(),
+  cloud_ai_consent: z.boolean().optional(),
 });
 
 type MemberFormValues = z.infer<typeof memberSchema>;
@@ -162,6 +164,9 @@ export function MemberForm({ action, defaultValues, member }: MemberFormProps) {
   const [showMedical, setShowMedical] = useState(true);
   const [state, formAction, isPending] = useActionState<unknown, FormData>(action, null);
   const [allergyEntries, setAllergyEntries] = useState<AllergyEntry[]>(member?.allergies ?? []);
+  const [cloudAiConsent, setCloudAiConsent] = useState<boolean>(
+    member?.cloud_ai_consent ?? defaultValues?.cloud_ai_consent ?? true
+  );
 
   const {
     register,
@@ -510,6 +515,30 @@ export function MemberForm({ action, defaultValues, member }: MemberFormProps) {
             />
           </div>
         </div>
+      </div>
+
+      {/* Privacy — Cloud AI consent */}
+      <div className="space-y-3">
+        <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">
+          Privacy
+        </p>
+        <input type="hidden" name="cloud_ai_consent" value={cloudAiConsent ? "true" : "false"} />
+        <label className="flex items-start gap-3 cursor-pointer select-none">
+          <Switch
+            checked={cloudAiConsent}
+            onCheckedChange={(checked: boolean) => {
+              setCloudAiConsent(checked);
+              setValue("cloud_ai_consent", checked, { shouldDirty: true });
+            }}
+          />
+          <span className="space-y-1">
+            <span className="block text-sm font-medium">Allow cloud AI for this member</span>
+            <span className="block text-[11px] text-muted-foreground">
+              When off, this member's health data is processed only by local AI (Ollama) and never
+              sent to cloud providers. Use for sensitive members.
+            </span>
+          </span>
+        </label>
       </div>
 
       {/* Report / Patient Details — populate the transcription report header */}

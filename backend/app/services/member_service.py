@@ -60,6 +60,7 @@ class MemberService:
         height_cm: float | None = None,
         weight_kg: float | None = None,
         notes: str | None = None,
+        cloud_ai_consent: bool = True,
     ) -> FamilyMember:
         """Create family member with optional medical history."""
         member = FamilyMember(
@@ -77,6 +78,7 @@ class MemberService:
             phone=phone,
             address=address,
             notes=notes,
+            cloud_ai_consent=cloud_ai_consent,
         )
 
         if allergies:
@@ -112,6 +114,22 @@ class MemberService:
             raise ValueError("Member not found")
         return member
 
+    async def get_cloud_consent(self, member_id: UUID | None) -> bool:
+        """Return a member's cloud-AI consent flag.
+
+        True when *member_id* is None (household-scoped AI keeps using cloud) or
+        when the member doesn't exist; otherwise the stored flag. Used by the
+        chat / drug-interaction / extraction routers to force local-only AI for
+        members who opted out of cloud egress.
+        """
+        if member_id is None:
+            return True
+        result = await self.db.execute(
+            select(FamilyMember.cloud_ai_consent).where(FamilyMember.id == member_id)
+        )
+        consent = result.scalar_one_or_none()
+        return True if consent is None else bool(consent)
+
     async def list_members(
         self, household_id: UUID, is_active: bool | None = None
     ) -> list[FamilyMember]:
@@ -142,6 +160,7 @@ class MemberService:
             "medical_history_summary",
             "allergies_json",
             "notes",
+            "cloud_ai_consent",
         }
         result = await self.db.execute(select(FamilyMember).where(FamilyMember.id == member_id))
         member = result.scalar_one()

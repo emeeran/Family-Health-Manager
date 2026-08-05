@@ -51,6 +51,19 @@ from app.models.record import HealthRecord
 router = APIRouter(prefix="/members/{member_id}/records", tags=["Health Records"])
 logger = logging.getLogger(__name__)
 
+
+async def _ai_for_member(db: AsyncSession, household_id: UUID, member_id: UUID) -> AIService:
+    """AIService with the member's cloud-AI consent applied.
+
+    Every record-route AI call is scoped to the path ``member_id``; this enforces
+    the per-member consent toggle (opted-out members → local-only) for extraction,
+    summary, transcription, and insight alike.
+    """
+    from app.services.member_service import MemberService
+
+    consent = await MemberService(db).get_cloud_consent(member_id)
+    return AIService(db, household_id=household_id).set_cloud_consent(consent)
+
 # Max concurrent extractions within a batch upload (cloud providers). Bounds
 # fan-out to the AI providers while removing the old fixed batch-of-3 barrier so
 # a fast file no longer waits on a slow one sharing its chunk.
@@ -107,13 +120,12 @@ async def extract_from_document(
     db: AsyncSession = Depends(get_db),
 ):
     """Upload a medical document, extract data via AI, return structured fields."""
-    from app.services.ai_service import AIService
 
     validate_file(file)
     staged_path, unique_filename, content_hash = await save_staged_secured(file, member_id)
     logger.debug("Staged upload %s (content hash %s)", unique_filename, content_hash)
 
-    ai_service = AIService(db, household_id=household.id)
+    ai_service = await _ai_for_member(db, household.id, member_id)
     transcription = None
     extracted = ExtractedFields()
     extraction_ok = False
@@ -141,7 +153,7 @@ async def extract_from_document(
                 extracted.model_dump(), original_provider=""
             )
         except Exception as exc:
-            logger.debug("Single-file verification skipped: %s", exc)
+            logger.info("Single-file verification skipped: %s", exc)
 
     return ExtractionResponse(
         staging_file_id=unique_filename,
@@ -180,7 +192,7 @@ async def extract_from_document_stream(
     """
     validate_file(file)
     staged_path, unique_filename, content_hash = await save_staged_secured(file, member_id)
-    ai_service = AIService(db, household_id=household.id)
+    ai_service = await _ai_for_member(db, household.id, member_id)
     mime = file.content_type or "application/octet-stream"
     original_name = file.filename
 
@@ -265,7 +277,7 @@ async def extract_from_document_stream(
                             extracted.model_dump(), original_provider=""
                         )
                     except Exception as exc:
-                        logger.debug("Stream single-file verification skipped: %s", exc)
+                        logger.info("Stream single-file verification skipped: %s", exc)
                     yield sse(
                         {
                             "stage": "complete",
@@ -399,6 +411,7 @@ async def extract_batch_stream(
     files: list[UploadFile] = File(...),
     household: Household = Depends(get_household_from_token),
     _member: FamilyMember = Depends(require_member_in_household),
+    db: AsyncSession = Depends(get_db),
     request: Request = None,
 ):
     """Upload multiple medical documents and stream extraction over SSE.
@@ -449,6 +462,12 @@ async def extract_batch_stream(
     except Exception:  # noqa: BLE001
         logger.debug("Pre-flight batch provider probe skipped", exc_info=True)
 
+    # Resolve consent once on the request session (not the per-producer SessionLocal
+    # session, which may differ) so opted-out members' batch extraction stays local.
+    from app.services.member_service import MemberService
+
+    cloud_consent = await MemberService(db).get_cloud_consent(member_id)
+
     async def event_stream():
         def sse(payload: dict) -> str:
             return f"data: {json.dumps(payload, default=str)}\n\n"
@@ -468,7 +487,9 @@ async def extract_batch_stream(
                         # Per-producer session + AIService: extraction and
                         # verification never touch a session concurrently with a
                         # sibling coroutine (the latent extract_batch hazard).
-                        ai = AIService(pdb, household_id=household.id)
+                        ai = AIService(pdb, household_id=household.id).set_cloud_consent(
+                            cloud_consent
+                        )
                         item = await _extract_single_file(file, ai, member_id)
                         if item.extracted and not item.error:
                             # Every extraction gets a real second-model pass —
@@ -481,7 +502,7 @@ async def extract_batch_stream(
                                     original_provider="",
                                 )
                             except Exception as exc:
-                                logger.debug(
+                                logger.info(
                                     "Batch verification skipped for %s: %s",
                                     item.filename,
                                     exc,
@@ -592,7 +613,7 @@ async def list_records(
 
 
 async def _generate_summary_background(
-    record_id: UUID, extracted_data: dict, household_id: UUID
+    record_id: UUID, extracted_data: dict, household_id: UUID, member_id: UUID
 ) -> None:
     """Generate and persist the consultation summary after a record is created.
 
@@ -605,7 +626,7 @@ async def _generate_summary_background(
 
     try:
         async with SessionLocal() as db:
-            ai_service = AIService(db, household_id=household_id)
+            ai_service = await _ai_for_member(db, household_id, member_id)
             summary = await ai_service.generate_consultation_summary(extracted_data)
             if summary:
                 await db.execute(
@@ -694,7 +715,9 @@ def _provider_report_context(provider) -> dict:
     return ctx
 
 
-async def _generate_transcription_report_background(record_id: UUID, household_id: UUID) -> None:
+async def _generate_transcription_report_background(
+    record_id: UUID, household_id: UUID, member_id: UUID
+) -> None:
     """Generate and persist the 'Medical Records Transcription Report' after a
     doctor_visit / lab_report record is created or updated.
 
@@ -725,7 +748,7 @@ async def _generate_transcription_report_background(record_id: UUID, household_i
             member_ctx = _member_report_context(record.family_member)
             provider_ctx = _provider_report_context(record.provider)
 
-            ai_service = AIService(db, household_id=household_id)
+            ai_service = await _ai_for_member(db, household_id, member_id)
             report, verification = await ai_service.generate_transcription_report(
                 extracted_data, member_ctx, provider_ctx
             )
@@ -860,6 +883,7 @@ async def create_record(
             record.id,
             deferred_summary_data,
             household.id,
+            member_id,
         )
 
     # Generate the 'Medical Records Transcription Report' in the background for
@@ -868,7 +892,7 @@ async def create_record(
         if background_tasks is None:
             background_tasks = BackgroundTasks()
         background_tasks.add_task(
-            _generate_transcription_report_background, record.id, household.id
+            _generate_transcription_report_background, record.id, household.id, member_id
         )
 
     if staging_file_ids:
@@ -1034,7 +1058,7 @@ async def backfill_summaries(
             "message": "All records already have summaries",
         }
 
-    ai_service = AIService(db, household_id=household.id)
+    ai_service = await _ai_for_member(db, household.id, member_id)
     updated = 0
     errors = 0
 
@@ -1364,7 +1388,7 @@ async def update_record(
         if background_tasks is None:
             background_tasks = BackgroundTasks()
         background_tasks.add_task(
-            _generate_transcription_report_background, record.id, household.id
+            _generate_transcription_report_background, record.id, household.id, member_id
         )
 
     # Commit BEFORE returning. FastAPI runs BackgroundTasks during response send
@@ -1539,7 +1563,6 @@ async def regenerate_record_insight_stream(
     request: Request = None,
 ):
     """Stream AI insight generation with real-time progress (SSE)."""
-    from app.services.ai_service import AIService
     from app.services.insight_service import InsightService
 
     record_service = HealthRecordService(db)
@@ -1551,7 +1574,7 @@ async def regenerate_record_insight_stream(
     insight_svc = InsightService(db)
     prompt = insight_svc._build_prompt(record)
 
-    ai_service = AIService(db, household_id=household.id)
+    ai_service = await _ai_for_member(db, household.id, member_id)
 
     return make_sse_stream(
         ai_service.generate_insight_stream(
@@ -1612,11 +1635,14 @@ async def regenerate_summary(
     except (json.JSONDecodeError, ValueError):
         extracted_data["clinical_data"] = record.clinical_data
 
-    ai_service = AIService(db, household_id=household.id)
+    ai_service = await _ai_for_member(db, household.id, member_id)
     try:
         summary = await ai_service.generate_consultation_summary(extracted_data)
     except Exception as exc:
-        raise HTTPException(status_code=502, detail=f"Summary generation failed: {exc}")
+        logger.error("Summary generation failed for record %s: %s", record_id, exc)
+        raise HTTPException(
+            status_code=502, detail="Summary generation failed. Please try again."
+        )
 
     record = await record_service.update_record(record_id, summary=summary)
     return record
@@ -1651,7 +1677,7 @@ async def regenerate_transcription_report(
     member_ctx = _member_report_context(record.family_member)
     provider_ctx = _provider_report_context(record.provider)
 
-    ai_service = AIService(db, household_id=household.id)
+    ai_service = await _ai_for_member(db, household.id, member_id)
     try:
         report, verification = await ai_service.generate_transcription_report(
             extracted_data, member_ctx, provider_ctx

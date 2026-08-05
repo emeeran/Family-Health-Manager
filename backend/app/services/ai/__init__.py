@@ -139,6 +139,20 @@ class AIService:
         self.last_provider: str = ""
         self._last_provider_ref: list[str] = [""]
         self._provider_config: "AIProviderConfig | None" = None
+        # Per-member cloud-AI consent. When False, all cloud providers are
+        # dropped from the chain so that member's PHI stays local (Ollama only).
+        # Set per call via :meth:`set_cloud_consent` from the member-level
+        # routers. Defaults True (legacy behaviour) so existing installs are
+        # unchanged until a member explicitly opts out.
+        self.cloud_ai_consent: bool = True
+
+    def set_cloud_consent(self, consent: bool) -> "AIService":
+        """Restrict this service to local-only when the member opted out of cloud AI.
+
+        Returns ``self`` so the routers can chain it off the constructor.
+        """
+        self.cloud_ai_consent = bool(consent)
+        return self
 
     # ---- Insight generation (kept inline for test patching) ----
 
@@ -264,6 +278,11 @@ class AIService:
                 continue
             label = f"{PROVIDER_LABELS.get(prov.id, prov.id)} ({prov.model})"
             cloud_providers.append((provider_fn, label, prov.model))
+
+        # Per-member cloud-AI consent: opted-out members never egress to a cloud
+        # provider — drop the cloud chain so only local Ollama is used.
+        if not self.cloud_ai_consent:
+            cloud_providers = []
 
         from app.services.ai.task_router import TaskType
 
@@ -477,6 +496,11 @@ class AIService:
                 continue
             label = f"{PROVIDER_LABELS.get(prov.id, prov.id)} ({prov.model})"
             cloud_providers.append((provider_fn, label, prov.model))
+
+        # Per-member cloud-AI consent: opted-out members never egress to a cloud
+        # provider — drop the cloud chain so only local Ollama is used.
+        if not self.cloud_ai_consent:
+            cloud_providers = []
 
         from app.services.ai.task_router import TaskType
 
@@ -743,6 +767,10 @@ class AIService:
         pruned_plan = plan.prune_known_dead()
         providers_were_pruned = pruned_plan is not plan
         plan = pruned_plan
+        # Per-member cloud-AI consent: restrict the chain to local (Ollama) so an
+        # opted-out member's PHI never egresses to a cloud extraction provider.
+        if not self.cloud_ai_consent:
+            plan = plan.local_only()
 
         cache_hit = False
         if content_hash:
@@ -1628,6 +1656,11 @@ class AIService:
                 continue
             label = f"{PROVIDER_LABELS.get(prov.id, prov.id)} ({prov.model})"
             cloud_providers.append((provider_fn, label, prov.model))
+
+        # Per-member cloud-AI consent: opted-out members never egress to a cloud
+        # provider — drop the cloud chain so only local Ollama is used.
+        if not self.cloud_ai_consent:
+            cloud_providers = []
 
         from app.services.ai.task_router import TaskType
 

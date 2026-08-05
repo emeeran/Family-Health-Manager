@@ -231,7 +231,11 @@ async def send_message_stream(
     if not conversation:
         raise HTTPException(status_code=404, detail="Conversation not found")
 
-    service = AIService(db, household_id=household.id)
+    # Per-member cloud-AI consent: an opted-out member's chat stays local-only.
+    from app.services.member_service import MemberService
+
+    cloud_consent = await MemberService(db).get_cloud_consent(conversation.family_member_id)
+    service = AIService(db, household_id=household.id).set_cloud_consent(cloud_consent)
     stream = service.chat_stream(
         conversation_id=conversation_id,
         user_message=request.content,
@@ -280,7 +284,9 @@ async def send_message_stream(
                 async def _run_verification():
                     verify_db = SessionLocal()
                     try:
-                        verify_service = AIService(verify_db, household_id=household.id)
+                        verify_service = AIService(verify_db, household_id=household.id).set_cloud_consent(
+                            cloud_consent
+                        )
                         verification_svc = VerificationService(verify_db, verify_service)
                         await verification_svc.verify(
                             question=request.content,
@@ -324,7 +330,11 @@ async def send_message(
     if not conversation:
         raise HTTPException(status_code=404, detail="Conversation not found")
 
-    service = AIService(db, household_id=household.id)
+    # Per-member cloud-AI consent: an opted-out member's chat stays local-only.
+    from app.services.member_service import MemberService
+
+    cloud_consent = await MemberService(db).get_cloud_consent(conversation.family_member_id)
+    service = AIService(db, household_id=household.id).set_cloud_consent(cloud_consent)
 
     try:
         user_msg, assistant_msg, provider, health_context = await service.chat(

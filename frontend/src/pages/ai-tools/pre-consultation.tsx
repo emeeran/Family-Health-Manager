@@ -1,8 +1,9 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useCallback } from "react";
 import { useSearchParams } from "react-router-dom";
 import { AiToolsSubPage } from "@/components/ai-tools/ai-tools-layout";
 import { PreConsultationCard } from "@/components/members/pre-consultation-card";
 import { PreConsultationNoteViewer } from "@/components/members/insight-report-viewer";
+import { ErrorState } from "@/components/shared/error-state";
 import { getLatestPreConsultationNote, getMember } from "@/lib/api/members";
 import type { FamilyMemberResponse } from "@/lib/types/member";
 import type { GeneratedInsight } from "@/lib/api/members";
@@ -13,16 +14,50 @@ export default function AiToolsPreConsultPage() {
   const [note, setNote] = useState<GeneratedInsight | null>(null);
   const [showNote, setShowNote] = useState(false);
   const [member, setMember] = useState<FamilyMemberResponse | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  const [loading, setLoading] = useState(true);
+
+  const loadData = useCallback(() => {
+    if (!memberId) {
+      setLoading(false);
+      return;
+    }
+    setLoading(true);
+    setError(null);
+    Promise.all([getLatestPreConsultationNote(memberId), getMember(memberId)])
+      .then(([res, mem]) => {
+        setNote(res.note);
+        setMember(mem);
+      })
+      .catch(() => {
+        setError("Could not load — check your connection and retry");
+        setNote(null);
+        setMember(null);
+      })
+      .finally(() => setLoading(false));
+  }, [memberId]);
 
   useEffect(() => {
-    if (!memberId) return;
-    getLatestPreConsultationNote(memberId)
-      .then((res: { note: GeneratedInsight | null }) => setNote(res.note))
-      .catch(() => setNote(null));
-    getMember(memberId)
-      .then(setMember)
-      .catch(() => setMember(null));
-  }, [memberId]);
+    loadData();
+  }, [loadData]);
+
+  if (loading) {
+    return (
+      <AiToolsSubPage title="Pre-consultation Notes">
+        <div className="flex items-center justify-center py-8">
+          <div className="h-5 w-5 animate-spin rounded-full border-2 border-primary border-t-transparent" />
+        </div>
+      </AiToolsSubPage>
+    );
+  }
+
+  if (error) {
+    return (
+      <AiToolsSubPage title="Pre-consultation Notes">
+        <ErrorState message={error} onRetry={loadData} />
+      </AiToolsSubPage>
+    );
+  }
 
   if (showNote && note) {
     return (

@@ -145,7 +145,10 @@ class InsightService:
                 logger.warning("Record %s not found for insight generation", record_id)
                 return None
 
-            ai_service = AIService(db)
+            from app.services.member_service import MemberService
+
+            cloud_consent = await MemberService(db).get_cloud_consent(record.family_member_id)
+            ai_service = AIService(db).set_cloud_consent(cloud_consent)
             prompt = self._build_prompt(record)
 
             insight = await ai_service.generate_insight(
@@ -192,14 +195,20 @@ def spawn_insight_verification_task(
             if not insight or insight.verification_status != "pending":
                 return
 
-            ai_service = AIService(db)
+            from app.services.member_service import MemberService
+            from uuid import UUID as _UUID
+
+            # Per-member cloud-AI consent: the cross-verification second model
+            # respects the same toggle as the generator.
+            cloud_consent = await MemberService(db).get_cloud_consent(
+                _UUID(member_id) if member_id else None
+            )
+            ai_service = AIService(db).set_cloud_consent(cloud_consent)
 
             # Build rich context from member data when available
             ctx = health_context
             if member_id:
                 try:
-                    from uuid import UUID as _UUID
-
                     built = await ai_service._build_member_context(
                         _UUID(member_id), comprehensive=True
                     )

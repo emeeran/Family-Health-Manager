@@ -376,6 +376,24 @@ class ExtractionProviderPlan:
         )
         return ExtractionProviderPlan(items=kept, gemini_auth=self.gemini_auth)
 
+    def local_only(self) -> "ExtractionProviderPlan":
+        """Return a copy retaining only local (Ollama) entries.
+
+        Used when a member has opted out of cloud AI — their PHI must not egress
+        to a cloud provider, so the extraction chain is restricted to local. May
+        be empty (no Ollama configured) when the member opted out of cloud and no
+        local model is available; the extraction chain handles an empty plan by
+        returning no data rather than sending to cloud.
+        """
+        local = [it for it in self.items if it.is_local]
+        if len(local) == len(self.items):
+            return self  # already local-only — no copy needed
+        return ExtractionProviderPlan(
+            items=local,
+            gemini_auth=self.gemini_auth,
+            fast_text_model=self.fast_text_model,
+        )
+
     def _entry(
         self,
         item: _PlanItem,
@@ -831,7 +849,7 @@ async def extract_medical_data(
     # photos are commonly ~4000px / multi-MB) so neither call ships a huge
     # payload. Uses the b64 variant directly rather than the file-path wrapper
     # so the bytes are read + downscaled exactly once.
-    file_bytes = Path(file_path).read_bytes()
+    file_bytes = await asyncio.to_thread(Path(file_path).read_bytes)
     vision_bytes, vision_mime = await asyncio.to_thread(
         _downscale_for_vision, file_bytes, mime_type
     )
@@ -864,7 +882,7 @@ async def call_ocr(
         from app.schemas.ai_provider_config import default_provider_config
 
         plan = ExtractionProviderPlan.from_config(default_provider_config())
-    file_bytes = Path(file_path).read_bytes()
+    file_bytes = await asyncio.to_thread(Path(file_path).read_bytes)
     # Downscale raw uploads (phone photos are often ~4000px) before encoding so
     # the vision payload stays compact. PIL decode+resize is blocking, so it runs
     # in a worker thread; falls back to the original bytes if PIL can't decode.
