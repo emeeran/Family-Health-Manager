@@ -60,6 +60,7 @@ class MemberService:
         height_cm: float | None = None,
         weight_kg: float | None = None,
         notes: str | None = None,
+        cloud_ai_consent: bool = True,
     ) -> FamilyMember:
         """Create family member with optional medical history."""
         member = FamilyMember(
@@ -77,6 +78,7 @@ class MemberService:
             phone=phone,
             address=address,
             notes=notes,
+            cloud_ai_consent=cloud_ai_consent,
         )
 
         if allergies:
@@ -142,6 +144,7 @@ class MemberService:
             "medical_history_summary",
             "allergies_json",
             "notes",
+            "cloud_ai_consent",
         }
         result = await self.db.execute(select(FamilyMember).where(FamilyMember.id == member_id))
         member = result.scalar_one()

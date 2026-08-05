@@ -33,6 +33,7 @@ export interface FamilyMemberCreate {
   address?: string | null;
   medical_history?: MedicalHistoryQuestionnaire | null;
   notes?: string | null;
+  cloud_ai_consent?: boolean | null;
 }
 
 export interface FamilyMemberUpdate {
@@ -54,6 +55,7 @@ export interface FamilyMemberUpdate {
   address?: string | null;
   notes?: string | null;
   is_active?: boolean | null;
+  cloud_ai_consent?: boolean | null;
 }
 
 export interface FamilyMemberResponse {
@@ -79,6 +81,7 @@ export interface FamilyMemberResponse {
   bmi: number | null;
   bmi_category: string | null;
   is_active: boolean;
+  cloud_ai_consent: boolean;
   created_at: string;
   has_photo: boolean;
   photo_updated_at: string | null;
@@ -361,4 +364,15 @@ export interface MemberDetailResponse {
     notes: string | null;
   }[];
   preventive_recommendations: PreventiveRecommendation[];
+}
+
+/** One potential same-class duplicate-therapy flag (clinician review). */
+export interface DuplicateTherapyFinding {
+  therapeutic_class: string;
+  medications: string[];
+}
+
+export interface DuplicateTherapyResponse {
+  findings: DuplicateTherapyFinding[];
+  medications_checked: number;
 }

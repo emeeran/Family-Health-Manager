@@ -19,6 +19,8 @@ import { Button } from "@/components/ui/button";
 import { ConfirmDialog } from "@/components/shared/confirm-dialog";
 import { HealthScoreRing, scoreTextColor } from "@/components/ui/health-score-ring";
 import { ActiveMedicationsTable } from "@/components/members/active-medications-table";
+import { DuplicateTherapyAlert } from "@/components/members/duplicate-therapy-alert";
+import { VitalsTrendChart } from "@/components/members/vitals-trend-chart";
 import { MemberPhotoControl } from "@/components/members/member-photo-control";
 import { InsightCard } from "@/components/members/insight-card";
 import { PreConsultationCard } from "@/components/members/pre-consultation-card";
@@ -576,6 +578,9 @@ ${histParts.length > 0 ? `<h2>Medical History</h2><div style="line-height:1.8;ma
         </CardContent>
       </Card>
 
+      {/* Vitals trend chart (BP) */}
+      <VitalsTrendChart memberId={member.id} />
+
       {/* Vitals row */}
       <div className="grid grid-cols-3 sm:grid-cols-4 md:grid-cols-6 gap-2">
         {member.bmi && (
@@ -732,6 +737,7 @@ ${histParts.length > 0 ? `<h2>Medical History</h2><div style="line-height:1.8;ma
       )}
 
       {/* Medications */}
+      <DuplicateTherapyAlert memberId={member.id} />
       <ActiveMedicationsTable memberId={member.id} medications={active_medications ?? []} />
 
       <ConfirmDialog

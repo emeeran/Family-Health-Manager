@@ -123,7 +123,7 @@ async def generate_pre_consultation_note(
 
     prompt = await _build_preconsult_prompt(member_id, provider_id, None, household.id, db)
 
-    ai_service = AIService(db, household_id=household.id)
+    ai_service = AIService(db, household_id=household.id).set_cloud_consent(member.cloud_ai_consent)
     try:
         insight = await ai_service.generate_insight(
             prompt=prompt,
@@ -138,7 +138,7 @@ async def generate_pre_consultation_note(
             context = await ai_service._build_member_context(member_id, comprehensive=True)
             await verify_insight_inline(db, ai_service, insight, context, member_id)
         except Exception:
-            logger.debug("Pre-consultation verification skipped")
+            logger.info("Pre-consultation verification skipped")
     except Exception as exc:
         logger.error("Pre-consultation note generation failed: %s", exc)
         raise HTTPException(status_code=502, detail="AI service unavailable. Please try again.")
@@ -188,9 +188,11 @@ async def generate_pre_consultation_note_stream(
         prompt = await _build_preconsult_prompt(member_id, provider_id, symptoms, household.id, db)
     except Exception as exc:
         logger.error("Pre-consultation setup failed: %s", exc, exc_info=True)
-        raise HTTPException(status_code=500, detail=f"Setup failed: {type(exc).__name__}: {exc}")
+        raise HTTPException(
+            status_code=500, detail="Pre-consultation setup failed. Please try again."
+        )
 
-    ai_service = AIService(db, household_id=household.id)
+    ai_service = AIService(db, household_id=household.id).set_cloud_consent(member.cloud_ai_consent)
     return make_sse_stream(
         ai_service.generate_insight_stream(
             prompt=prompt,

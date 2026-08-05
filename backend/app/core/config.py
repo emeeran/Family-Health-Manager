@@ -356,6 +356,18 @@ class Settings(BaseSettings):
                     "HEALTH_CHECK_SECRET must be set in production! "
                     'Generate one with: python -c "import secrets; print(secrets.token_urlsafe(24))"'
                 )
+            # A dedicated at-rest ENCRYPTION_KEY is mandatory in production. The
+            # empty-string default falls back to a SECRET_KEY-derived Fernet —
+            # that conflates JWT-signing with file/secret encryption and means a
+            # JWT-key rotation (or a restored DB on fresh hardware without the
+            # key) bricks every encrypted attachment/2FA secret. The .deb postinst
+            # generates it; refuse to boot without it so the gap can't ship.
+            if not self.ENCRYPTION_KEY:
+                raise ValueError(
+                    "ENCRYPTION_KEY must be set in production! "
+                    'Generate one with: '
+                    '"python -c \'import base64, os; print(base64.urlsafe_b64encode(os.urandom(32)).decode())\'"'
+                )
             if not self.REDIS_URL:
                 logger.warning(
                     "REDIS_URL not set — rate limiting and cache will use "

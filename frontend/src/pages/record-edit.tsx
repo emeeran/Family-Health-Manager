@@ -66,7 +66,7 @@ export default function EditRecordPage() {
         await updateRecord(mid, rid, data);
 
         // Invalidate all relevant caches so the detail page shows fresh data
-        mutate(`member-dashboard-${mid}`);
+        mutate(`member-detail-${mid}`);
         mutate(["record", mid, rid]);
         mutate(["record-edit", mid, rid]);
         mutate("dashboard");

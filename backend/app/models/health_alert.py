@@ -40,7 +40,7 @@ class HealthAlert(Base):
         String(36), ForeignKey("family_members.id"), nullable=False
     )
     record_id: Mapped[str | None] = mapped_column(
-        String(36), ForeignKey("health_records.id"), nullable=True
+        String(36), ForeignKey("health_records.id"), nullable=True, index=True
     )
     alert_type: Mapped[AlertType] = mapped_column(String(20), nullable=False)
     severity: Mapped[AlertSeverity] = mapped_column(String(10), nullable=False)

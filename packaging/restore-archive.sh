@@ -31,6 +31,10 @@ APP_SVC="${APP_SVC-health-manager.service}"
 # ("Network error" / can't log in) after a successful DB swap.
 CADDY_SVC="${CADDY_SVC-health-manager-caddy.service}"
 APP_USER="${APP_USER:-health-manager}"
+# The app's EnvironmentFile (SECRET_KEY / ENCRYPTION_KEY / HEALTH_CHECK_SECRET).
+# Env-overridable so the bundled-key restore path can be exercised in tests
+# against a throwaway config. Production default is unchanged.
+CONFIG_ENV="${CONFIG_ENV:-/etc/health-manager/config.env}"
 FLAG="$DATA_DIR/.restore-request"
 RESULT="$DATA_DIR/.restore-result"
 
@@ -170,6 +174,27 @@ else
 fi
 
 chown -R "$APP_USER:$APP_USER" "$DATA_DIR"
+
+# ── Restore the bundled at-rest ENCRYPTION_KEY (if present) ──────────────────
+# Fresh-hardware restores need the source's ENCRYPTION_KEY to decrypt the
+# restored attachments/2FA secrets (the DB alone leaves them unrecoverable —
+# see AUDIT.md). The bundled secrets.bundle is a tiny JSON
+# {"encryption_key": "..."}. Write it into the app's config.env so the
+# restarted service decrypts the restored files. No-op when the archive has no
+# bundle (older backups) or CONFIG_ENV is absent (tests).
+if [ -f "$work/secrets.bundle" ] && [ -f "$CONFIG_ENV" ]; then
+    bundled_key="$(python3 -c 'import json,sys; print(json.load(open(sys.argv[1])).get("encryption_key",""))' "$work/secrets.bundle" 2>/dev/null || true)"
+    if [ -n "$bundled_key" ]; then
+        if grep -qE "^ENCRYPTION_KEY=" "$CONFIG_ENV"; then
+            sed -i "s|^ENCRYPTION_KEY=.*|ENCRYPTION_KEY=${bundled_key}|" "$CONFIG_ENV"
+        else
+            echo "ENCRYPTION_KEY=${bundled_key}" >> "$CONFIG_ENV"
+        fi
+        chmod 600 "$CONFIG_ENV"
+        chown "$APP_USER:$APP_USER" "$CONFIG_ENV" 2>/dev/null || true
+        echo "restore-archive: restored bundled ENCRYPTION_KEY into $CONFIG_ENV"
+    fi
+fi
 
 # ── Restart (ExecStartPre db-setup runs alembic upgrade head) ────────────────
 start_app

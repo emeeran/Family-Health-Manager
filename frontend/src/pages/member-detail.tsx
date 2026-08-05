@@ -5,6 +5,7 @@ import { MemberTabs } from "@/components/members/member-tabs";
 import { Link } from "react-router-dom";
 import { useEffect } from "react";
 import { PageLoader } from "@/components/shared/page-loader";
+import { Badge } from "@/components/ui/badge";
 
 export default function MemberDetailPage() {
   const { memberId } = useParams<{ memberId: string }>();
@@ -34,5 +35,16 @@ export default function MemberDetailPage() {
     );
   }
 
-  return <MemberTabs data={detail} />;
+  return (
+    <div className="space-y-2">
+      {detail.member.cloud_ai_consent === false && (
+        <div className="flex justify-end">
+          <Badge variant="secondary" className="bg-amber-100 text-amber-700 text-[10px]">
+            Local AI only
+          </Badge>
+        </div>
+      )}
+      <MemberTabs data={detail} />
+    </div>
+  );
 }

@@ -831,7 +831,7 @@ async def extract_medical_data(
     # photos are commonly ~4000px / multi-MB) so neither call ships a huge
     # payload. Uses the b64 variant directly rather than the file-path wrapper
     # so the bytes are read + downscaled exactly once.
-    file_bytes = Path(file_path).read_bytes()
+    file_bytes = await asyncio.to_thread(Path(file_path).read_bytes)
     vision_bytes, vision_mime = await asyncio.to_thread(
         _downscale_for_vision, file_bytes, mime_type
     )
@@ -864,7 +864,7 @@ async def call_ocr(
         from app.schemas.ai_provider_config import default_provider_config
 
         plan = ExtractionProviderPlan.from_config(default_provider_config())
-    file_bytes = Path(file_path).read_bytes()
+    file_bytes = await asyncio.to_thread(Path(file_path).read_bytes)
     # Downscale raw uploads (phone photos are often ~4000px) before encoding so
     # the vision payload stays compact. PIL decode+resize is blocking, so it runs
     # in a worker thread; falls back to the original bytes if PIL can't decode.

@@ -141,7 +141,7 @@ async def extract_from_document(
                 extracted.model_dump(), original_provider=""
             )
         except Exception as exc:
-            logger.debug("Single-file verification skipped: %s", exc)
+            logger.info("Single-file verification skipped: %s", exc)
 
     return ExtractionResponse(
         staging_file_id=unique_filename,
@@ -265,7 +265,7 @@ async def extract_from_document_stream(
                             extracted.model_dump(), original_provider=""
                         )
                     except Exception as exc:
-                        logger.debug("Stream single-file verification skipped: %s", exc)
+                        logger.info("Stream single-file verification skipped: %s", exc)
                     yield sse(
                         {
                             "stage": "complete",
@@ -481,7 +481,7 @@ async def extract_batch_stream(
                                     original_provider="",
                                 )
                             except Exception as exc:
-                                logger.debug(
+                                logger.info(
                                     "Batch verification skipped for %s: %s",
                                     item.filename,
                                     exc,
@@ -1616,7 +1616,10 @@ async def regenerate_summary(
     try:
         summary = await ai_service.generate_consultation_summary(extracted_data)
     except Exception as exc:
-        raise HTTPException(status_code=502, detail=f"Summary generation failed: {exc}")
+        logger.error("Summary generation failed for record %s: %s", record_id, exc)
+        raise HTTPException(
+            status_code=502, detail="Summary generation failed. Please try again."
+        )
 
     record = await record_service.update_record(record_id, summary=summary)
     return record

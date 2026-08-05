@@ -54,7 +54,7 @@ async def generate_smart_report(
 
     prompt = _build_smart_report_prompt(member_id)
 
-    ai_service = AIService(db, household_id=household.id)
+    ai_service = AIService(db, household_id=household.id).set_cloud_consent(member.cloud_ai_consent)
     try:
         insight = await ai_service.generate_insight(
             prompt=prompt,
@@ -74,7 +74,7 @@ async def generate_smart_report(
         context = await ai_service._build_member_context(member_id, comprehensive=True)
         await verify_insight_inline(db, ai_service, insight, context, member_id)
     except Exception:
-        logger.debug("Smart Report verification skipped")
+        logger.info("Smart Report verification skipped")
 
     return serialize_smart_report_payload(insight)
 
@@ -117,7 +117,7 @@ async def generate_smart_report_stream(
 
     prompt = _build_smart_report_prompt(member_id)
 
-    ai_service = AIService(db, household_id=household.id)
+    ai_service = AIService(db, household_id=household.id).set_cloud_consent(member.cloud_ai_consent)
     return make_sse_stream(
         ai_service.generate_insight_stream(
             prompt=prompt,

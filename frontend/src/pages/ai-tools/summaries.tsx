@@ -1,4 +1,4 @@
-import { useState, useEffect, Suspense } from "react";
+import { useState, useEffect, useCallback, Suspense } from "react";
 import { useSearchParams } from "react-router-dom";
 import { AiToolsSubPage } from "@/components/ai-tools/ai-tools-layout";
 import { Button } from "@/components/ui/button";
@@ -6,6 +6,7 @@ import { Badge } from "@/components/ui/badge";
 import { Eye, Loader2, Sparkles, RefreshCw } from "lucide-react";
 import { listRecords, backfillSummaries, regenerateSummary } from "@/lib/api/records";
 import { MarkdownRenderer } from "@/components/shared/lazy-markdown";
+import { ErrorState } from "@/components/shared/error-state";
 import { RECORD_TYPE_LABELS } from "@/lib/constants";
 import { formatDate } from "@/lib/utils";
 import type { HealthRecordResponse } from "@/lib/types/health-record";
@@ -17,17 +18,29 @@ export default function AiToolsSummariesPage() {
   const memberId = searchParams.get("memberId") || "";
   const [records, setRecords] = useState<HealthRecordResponse[]>([]);
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
   const [backfilling, setBackfilling] = useState(false);
   const [regenerating, setRegenerating] = useState<string | null>(null);
 
-  useEffect(() => {
-    if (!memberId) return;
+  const loadRecords = useCallback(() => {
+    if (!memberId) {
+      setLoading(false);
+      return;
+    }
     setLoading(true);
+    setError(null);
     listRecords(memberId)
       .then(setRecords)
-      .catch(() => setRecords([]))
+      .catch(() => {
+        setError("Could not load — check your connection and retry");
+        setRecords([]);
+      })
       .finally(() => setLoading(false));
   }, [memberId]);
+
+  useEffect(() => {
+    loadRecords();
+  }, [loadRecords]);
 
   async function handleBackfill() {
     setBackfilling(true);
@@ -96,7 +109,9 @@ export default function AiToolsSummariesPage() {
         </div>
 
         {/* Record summaries */}
-        {loading ? (
+        {error ? (
+          <ErrorState message={error} onRetry={loadRecords} />
+        ) : loading ? (
           <div className="flex items-center justify-center py-8">
             <div className="h-5 w-5 animate-spin rounded-full border-2 border-primary border-t-transparent" />
           </div>

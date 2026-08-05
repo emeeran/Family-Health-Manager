@@ -183,6 +183,35 @@ async def get_latest_drug_interactions(
     return await _generate_cache_and_verify(db, household, member_id, medications)
 
 
+@router.get("/{member_id}/duplicate-therapy")
+async def get_duplicate_therapy(
+    member_id: UUID,
+    household: Household = Depends(get_household_from_token),
+    db: AsyncSession = Depends(get_db),
+):
+    """Flag potential same-therapeutic-class medication overlap (clinician review).
+
+    Purely deterministic (curated class map) — no AI call. Returns classes where
+    the member is on ≥2 active meds from the same class (e.g. two statins, two
+    NSAIDs, ACE inhibitor + ARB). These are POTENTIAL duplicates for review, not
+    certain errors.
+    """
+    from app.services.duplicate_therapy_service import detect_duplicate_therapy
+
+    service = MemberService(db)
+    try:
+        await service.get_member(household.id, member_id)
+    except ValueError:
+        raise HTTPException(status_code=404, detail="Member not found")
+
+    medications = await service.get_active_medications(member_id)
+    findings = detect_duplicate_therapy(medications)
+    return {
+        "findings": [f.to_dict() for f in findings],
+        "medications_checked": len(medications),
+    }
+
+
 @router.get("/{member_id}/drug-interactions")
 async def get_drug_interactions(
     member_id: UUID,

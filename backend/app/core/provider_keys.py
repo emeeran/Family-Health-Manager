@@ -17,11 +17,13 @@ separate worker processes.
 
 from __future__ import annotations
 
+import ipaddress
 import json
 import logging
 import os
 import time
 from pathlib import Path
+from urllib.parse import urlparse
 
 from sqlalchemy import select
 
@@ -31,6 +33,19 @@ from app.core.encryption import decrypt_secret
 from app.models.app_secret import AppSecret
 
 logger = logging.getLogger(__name__)
+
+# Cloud-instance metadata endpoints — the highest-value SSRF targets. A
+# maliciously-configured Ollama URL pointed here would let the backend fetch
+# cloud creds (AWS/GCP/Azure IMDS) and surface responses to the attacker.
+_BLOCKED_METADATA_HOSTS = frozenset(
+    {
+        "169.254.169.254",  # AWS / Azure / GCP legacy IMDS
+        "metadata.google.internal",  # GCP IMDS (DNS)
+        "metadata",  # short form of the above
+        "100.100.100.200",  # Alibaba ECS metadata
+        "fd00:ec2::254",  # AWS IMDSv6
+    }
+)
 
 # Canonical secret name stored in app_secrets.key, keyed by provider id.
 PROVIDER_SECRET_KEYS: dict[str, str] = {
@@ -80,8 +95,40 @@ def get_env_fallback(provider: str) -> str | None:
     return _fallback_from_env(provider)
 
 
+def ollama_url_block_reason(url: str) -> str | None:
+    """Return why *url* is blocked as an Ollama base URL, or ``None`` if allowed.
+
+    SSRF guard for the admin-configurable Ollama URL. Blocks link-local
+    addresses (169.254.0.0/16, which covers all cloud metadata services) and
+    known metadata hostnames. Private LAN ranges (10/8, 172.16/12, 192.168/16)
+    are deliberately PERMITTED — running Ollama on another host on the home
+    network is a common, legitimate deployment for this self-hosted app.
+    """
+    try:
+        parsed = urlparse(url if "://" in url else f"http://{url}")
+    except ValueError:
+        return "invalid URL"
+    host = (parsed.hostname or "").lower().rstrip(".")
+    if not host:
+        return "no host"
+    if host in _BLOCKED_METADATA_HOSTS:
+        return "cloud metadata endpoint"
+    try:
+        ip = ipaddress.ip_address(host)
+    except ValueError:
+        # A DNS hostname (e.g. ollama.lan): allow. DNS-rebinding mitigation is
+        # out of scope for a single-operator self-hosted app; the operator is the
+        # only one setting this URL.
+        return None
+    if ip.is_link_local:
+        return "link-local/metadata address"
+    if ip.is_unspecified:
+        return "unspecified address"
+    return None
+
+
 def normalize_ollama_url(value: str | None) -> str | None:
-    """Ensure an Ollama base URL has an ``http(s)://`` scheme.
+    """Ensure an Ollama base URL has an ``http(s)://`` scheme and isn't SSRF-blocked.
 
     The admin Settings UI stores whatever is typed. A scheme-less entry such as
     ``localhost:11434`` is a natural way to type the URL but makes httpx reject
@@ -90,6 +137,11 @@ def normalize_ollama_url(value: str | None) -> str | None:
     (Ollama-only) install, so every extraction returns empty and the record form
     never auto-fills. Ollama serves plain HTTP on localhost, so a missing scheme
     defaults to ``http://``. Whitespace is trimmed.
+
+    Returns ``None`` for an SSRF-blocked URL (link-local / cloud metadata) so a
+    maliciously-stored value can never reach the fetch path — defense-in-depth at
+    resolve time; the admin write path (``PUT /provider-keys``) surfaces a clear
+    400 at store time.
     """
     if not value:
         return value
@@ -98,6 +150,9 @@ def normalize_ollama_url(value: str | None) -> str | None:
         return url
     if "://" not in url:
         url = f"http://{url}"
+    if ollama_url_block_reason(url):
+        logger.warning("Blocking SSRF Ollama URL: %s", value)
+        return None
     return url
 
 

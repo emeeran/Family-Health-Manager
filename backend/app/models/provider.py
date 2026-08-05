@@ -46,8 +46,12 @@ class ProviderAssignment(Base):
     __tablename__ = "provider_assignments"
 
     id: Mapped[UUID] = mapped_column(primary_key=True, default=uuid4)
-    provider_id: Mapped[UUID] = mapped_column(ForeignKey("providers.id"), nullable=False)
-    family_member_id: Mapped[UUID] = mapped_column(ForeignKey("family_members.id"), nullable=False)
+    provider_id: Mapped[UUID] = mapped_column(
+        ForeignKey("providers.id"), nullable=False, index=True
+    )
+    family_member_id: Mapped[UUID] = mapped_column(
+        ForeignKey("family_members.id"), nullable=False, index=True
+    )
     uhid: Mapped[str | None] = mapped_column(String(50), nullable=True)
     created_at: Mapped[datetime] = mapped_column(
         DateTime,

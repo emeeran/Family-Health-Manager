@@ -135,7 +135,7 @@ async def generate_medication_report_stream(
         logger.error("Medication report context build failed: %s", exc)
         raise HTTPException(status_code=502, detail="Could not load medication data.")
 
-    ai_service = AIService(db, household_id=household.id)
+    ai_service = AIService(db, household_id=household.id).set_cloud_consent(member.cloud_ai_consent)
     return make_sse_stream(
         ai_service.generate_insight_stream(
             prompt=prompt,

@@ -84,8 +84,7 @@ export function DedupDialog({ open, onOpenChange, memberId }: DedupDialogProps) 
       await mergeRecords(memberId, keeperId, loserIds);
       setMergedGroups((prev) => new Set([...prev, groupIndex]));
       // Refresh member detail data
-      mutate(`member-dashboard-${memberId}`);
-      mutate(`member-${memberId}`);
+      mutate(`member-detail-${memberId}`);
     } catch (e) {
       setError(e instanceof Error ? e.message : "Failed to merge records");
     } finally {
@@ -98,8 +97,7 @@ export function DedupDialog({ open, onOpenChange, memberId }: DedupDialogProps) 
     try {
       await deleteRecord(memberId, recordId);
       setDeletedIds((prev) => new Set([...prev, recordId]));
-      mutate(`member-dashboard-${memberId}`);
-      mutate(`member-${memberId}`);
+      mutate(`member-detail-${memberId}`);
     } catch (e) {
       setError(e instanceof Error ? e.message : "Failed to delete record");
     } finally {

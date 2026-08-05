@@ -60,6 +60,7 @@ export const HomeContent = memo(function HomeContent({ summary }: HomeContentPro
         bmi: m.bmi,
         bmi_category: null,
         is_active: m.is_active,
+        cloud_ai_consent: true,
         created_at: "",
         // The dashboard summary doesn't carry photo data, so the home family
         // strip falls back to initials (photos show on the People cards +

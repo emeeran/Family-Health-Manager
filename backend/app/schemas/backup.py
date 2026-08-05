@@ -158,6 +158,10 @@ class BackupManifest(BaseModel):
     household_name: str
     household_id: UUID
     counts: BackupCounts
+    # True when the archive's data payload is passphrase-encrypted (data.json.enc
+    # + key.bundle). Legacy archives omit the field (encrypted=False) and carry a
+    # plaintext data.json.
+    encrypted: bool = False
 
 
 class BackupData(BaseModel):
@@ -187,6 +191,8 @@ class BackupValidationResponse(BaseModel):
 class BackupImportRequest(BaseModel):
     validation_id: str
     mode: Literal["merge", "replace"]
+    # Required to import a passphrase-encrypted archive; ignored for plaintext.
+    passphrase: str | None = None
 
 
 class BackupImportResponse(BaseModel):

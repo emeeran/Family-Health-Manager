@@ -39,6 +39,10 @@ class FamilyMember(Base):
     emergency_contact_name: Mapped[str | None] = mapped_column(String(100), nullable=True)
     emergency_contact_phone: Mapped[str | None] = mapped_column(String(30), nullable=True)
     notes: Mapped[str | None] = mapped_column(Text, nullable=True)
+    # Per-member cloud-AI consent. When False, AI work for this member is forced
+    # local-only (Ollama) so their PHI never egresses to a cloud provider.
+    # Defaults True (legacy behaviour); opt out for sensitive members.
+    cloud_ai_consent: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
     is_active: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False, index=True)
     created_at: Mapped[datetime] = mapped_column(
         DateTime,

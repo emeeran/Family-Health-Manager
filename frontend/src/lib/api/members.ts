@@ -22,6 +22,7 @@ import type {
   Hba1cHistoryEntry,
   PreventiveRecommendation,
   BatchScoresResponse,
+  DuplicateTherapyResponse,
 } from "../types/member";
 import type { MedicationDiffResponse } from "../types/health-record";
 import type { VerificationResult } from "../types/message";
@@ -276,6 +277,11 @@ export type InsightMode = "comprehensive" | "brief";
 
 export function getHba1cHistory(memberId: string) {
   return apiRequest<Hba1cHistoryEntry[]>(`/members/${memberId}/hba1c-history`);
+}
+
+/** Potential same-class duplicate-therapy flags for clinician review (no AI call). */
+export function getDuplicateTherapy(memberId: string) {
+  return apiRequest<DuplicateTherapyResponse>(`/members/${memberId}/duplicate-therapy`);
 }
 
 export function createPreventiveReminder(

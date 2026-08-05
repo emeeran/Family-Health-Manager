@@ -31,7 +31,7 @@ jobs:
         run: uv run mypy app/
 
       - name: Test
-        run: uv run pytest tests/ -v --cov=app --cov-report=term-missing --cov-report=xml --cov-fail-under=40
+        run: uv run pytest tests/ -v --cov=app --cov-report=term-missing --cov-report=xml --cov-fail-under=50
 
       - name: Security scan
         run: uv run pip-audit
@@ -62,6 +62,11 @@ jobs:
 
       - name: Test
         run: npm test -- --coverage
+
+      - name: Security scan
+        # Parity with backend pip-audit. --audit-level=high fails only on
+        # high/critical advisories (dev-dep low/moderate noise won't gate).
+        run: npm audit --audit-level=high
 
       - name: Build
         run: npm run build
