@@ -614,7 +614,7 @@ const DoctorVisitDisplay = React.memo(function DoctorVisitDisplay({
           {/* Patient info bar */}
           <div className="flex items-center justify-between mb-4">
             <p className="text-xs text-muted-foreground/60">
-              DAWNSTAR Family Health Keeper
+              DAWNSTAR Family Health Manager
               {recordDate && ` · ${formatDate(recordDate)}`}
             </p>
             <div className="flex items-center gap-1.5 text-[11px] text-muted-foreground">
@@ -725,7 +725,7 @@ const ConsolidatedLabReport = React.memo(function ConsolidatedLabReport({
               Consolidated Lab Report
             </h2>
             <p className="text-[11px] text-muted-foreground mt-0.5">
-              DAWNSTAR Family Health Keeper
+              DAWNSTAR Family Health Manager
             </p>
           </div>
           <div className="text-right text-[11px] text-muted-foreground">
@@ -803,7 +803,7 @@ const ConsolidatedLabReport = React.memo(function ConsolidatedLabReport({
           professional.
         </p>
         <div className="flex items-center justify-between mt-2 text-xs text-muted-foreground/60">
-          <span>DAWNSTAR Family Health Keeper</span>
+          <span>DAWNSTAR Family Health Manager</span>
           <span>
             {reportId} &middot; {dateStr}
           </span>

@@ -1,6 +1,6 @@
 {
-  "name": "DAWNSTAR Family Health Keeper",
-  "short_name": "Health Keeper",
+  "name": "DAWNSTAR Family Health Manager",
+  "short_name": "Family Health Manager",
   "description": "Self-hosted family health records with AI-powered insights",
   "start_url": "/",
   "display": "standalone",

@@ -1,4 +1,4 @@
-"""Database maintenance CLI for DAWNSTAR Family Health Keeper.
+"""Database maintenance CLI for DAWNSTAR Family Health Manager.
 
 Usage:
     python -m scripts.db_maintenance <command>
@@ -272,7 +272,7 @@ _COMMANDS = {
 
 def main() -> None:
     parser = argparse.ArgumentParser(
-        description="DAWNSTAR Family Health Keeper — database maintenance utilities",
+        description="DAWNSTAR Family Health Manager — database maintenance utilities",
     )
     parser.add_argument(
         "command",

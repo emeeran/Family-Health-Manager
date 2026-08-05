@@ -1,4 +1,4 @@
-# Building DAWNSTAR Family Health Keeper: A Self-Hosted Health Record Manager
+# Building DAWNSTAR Family Health Manager: A Self-Hosted Health Record Manager
 
 Managing health records has become increasingly challenging, particularly for those caring for elderly family members with chronic conditions or young children who require frequent doctor visits. Between tracking prescriptions and organizing lab reports, maintaining these records and accessing them when needed can quickly become overwhelming. For some time, I have been planning to develop an application for managing my family's medical records. Finally built this app.
 
@@ -16,7 +16,7 @@ I needed a system that could:
 
 ## The Solution
 
-**DAWNSTAR Family Health Keeper** is a self-hosted, privacy-first family health record manager that checks every box above.
+**DAWNSTAR Family Health Manager** is a self-hosted, privacy-first family health record manager that checks every box above.
 
 **Document extraction is AI-powered and local-first.** You drag and drop a prescription PDF or lab report, and the app uses [Ollama](https://ollama.com) running on your own machine (with MedGemma by default) to extract structured data — medications, dosages, lab values, diagnoses, follow-up dates. No data leaves your machine. If you don't have a capable GPU, you can optionally configure cloud providers (OpenAI, Gemini, Groq, OpenRouter) as fallbacks — but that's entirely your choice.
 

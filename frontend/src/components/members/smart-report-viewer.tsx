@@ -251,7 +251,7 @@ export function SmartReportViewer({
             <div className="flex items-start justify-between gap-4">
               <div className="min-w-0">
                 <p className="text-[11px] font-semibold uppercase tracking-[0.2em] text-[#FF5722]">
-                  Family Health Keeper
+                  Family Health Manager
                 </p>
                 <p className="mt-1 text-[11px] text-gray-500">
                   Crafted with <span className="text-red-500">♥</span>
@@ -374,7 +374,7 @@ export function SmartReportViewer({
 
           {/* Footer */}
           <footer className="flex flex-wrap items-center justify-between gap-2 border-t border-gray-200 px-6 py-3 text-[11px] text-gray-500 sm:px-8">
-            <span className="font-semibold uppercase tracking-wide">Family Health Keeper</span>
+            <span className="font-semibold uppercase tracking-wide">Family Health Manager</span>
             <span>
               {memberName} · {dateStr}
             </span>

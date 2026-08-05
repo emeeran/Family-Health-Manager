@@ -11,7 +11,7 @@ import qrcode
 
 logger = logging.getLogger(__name__)
 
-ISSUER_NAME = "Health Keeper"
+ISSUER_NAME = "Family Health Manager"
 
 
 class TOTPService:

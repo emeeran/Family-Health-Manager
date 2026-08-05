@@ -33,7 +33,7 @@ _DRUG_INFO_TIMEOUT = 30.0  # seconds — these are fast JSON endpoints
 # NLM (RxNorm, MedlinePlus Connect) silently returns 200 + empty body for a
 # blank or curl/* User-Agent; identifying the client keeps responses populated
 # and follows NLM's "tell us who you are" guidance.
-_DRUG_INFO_UA = "FamilyHealthKeeper/1.1 (self-hosted family health record)"
+_DRUG_INFO_UA = "FamilyHealthManager/1.1 (self-hosted family health record)"
 
 _drug_info_client: httpx.AsyncClient | None = None
 _client_lock: asyncio.Lock | None = None

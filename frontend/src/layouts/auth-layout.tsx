@@ -10,7 +10,7 @@ export function AuthLayout() {
           <div className="flex flex-col leading-none">
             <span className="text-2xl font-extrabold tracking-tight text-white">DAWNSTAR</span>
             <span className="text-xs font-semibold tracking-widest text-amber-400 mt-0.5">
-              Family Health Keeper
+              Family Health Manager
             </span>
           </div>
           <DawnstarLogo variant="white" className="h-10 w-10 ml-0.5 -mb-1.5" />
@@ -57,7 +57,7 @@ export function AuthLayout() {
                 DAWNSTAR
               </span>
               <span className="text-[11px] font-semibold tracking-widest text-amber-600 mt-0.5">
-                Family Health Keeper
+                Family Health Manager
               </span>
             </div>
             <DawnstarLogo variant="gradient" className="h-8 w-8 ml-0.5 -mb-1" />
