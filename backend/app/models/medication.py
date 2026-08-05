@@ -7,6 +7,7 @@ from uuid import UUID, uuid4
 from sqlalchemy import ForeignKey, Index
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 from sqlalchemy.types import Text, DateTime, Date, Integer
+from app.db_types import EncryptedText
 from app.models.base import Base
 
 
@@ -23,19 +24,21 @@ class Medication(Base):
     health_record_id: Mapped[UUID | None] = mapped_column(
         ForeignKey("health_records.id", ondelete="SET NULL"), nullable=True
     )
-    medicine: Mapped[str] = mapped_column(Text, nullable=False)
+    medicine: Mapped[str] = mapped_column(EncryptedText, nullable=False)
+    # medicine_key is a normalized dedup key (not human-readable PHI), left
+    # plaintext: indexed (ix_medications_member_key) for medication dedup.
     medicine_key: Mapped[str] = mapped_column(Text, nullable=False)
-    type: Mapped[str] = mapped_column(Text, default="")
-    dosage: Mapped[str] = mapped_column(Text, default="")
-    timing: Mapped[str] = mapped_column(Text, default="")
-    duration: Mapped[str] = mapped_column(Text, default="")
+    type: Mapped[str] = mapped_column(EncryptedText, default="")
+    dosage: Mapped[str] = mapped_column(EncryptedText, default="")
+    timing: Mapped[str] = mapped_column(EncryptedText, default="")
+    duration: Mapped[str] = mapped_column(EncryptedText, default="")
     duration_days: Mapped[int] = mapped_column(Integer, default=30)
-    note: Mapped[str] = mapped_column(Text, default="")
+    note: Mapped[str] = mapped_column(EncryptedText, default="")
     start_date: Mapped[date | None] = mapped_column(Date, nullable=True)
     end_date: Mapped[date | None] = mapped_column(Date, nullable=True)
     status: Mapped[str] = mapped_column(Text, default="active")
     prescription_index: Mapped[int] = mapped_column(Integer, default=0)
-    provider_name: Mapped[str] = mapped_column(Text, default="")
+    provider_name: Mapped[str] = mapped_column(EncryptedText, default="")
     created_at: Mapped[datetime] = mapped_column(
         DateTime,
         default=lambda: datetime.now(timezone.utc),

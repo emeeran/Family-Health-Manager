@@ -6,7 +6,8 @@ from datetime import datetime, date, timezone
 from uuid import UUID, uuid4
 from sqlalchemy import ForeignKey
 from sqlalchemy.orm import Mapped, mapped_column, relationship
-from sqlalchemy.types import String, Text, DateTime, Boolean, Date, Enum, Float
+from sqlalchemy.types import String, DateTime, Boolean, Date, Enum, Float
+from app.db_types import EncryptedText
 from app.models.base import Base, Gender, Relationship
 
 
@@ -25,20 +26,20 @@ class FamilyMember(Base):
     date_of_birth: Mapped[date] = mapped_column(Date, nullable=False)
     gender: Mapped[Gender] = mapped_column(Enum(Gender), nullable=False)
     relationship_type: Mapped[Relationship] = mapped_column(Enum(Relationship), nullable=False)
-    medical_history_summary: Mapped[str | None] = mapped_column(Text, nullable=True)
+    medical_history_summary: Mapped[str | None] = mapped_column(EncryptedText, nullable=True)
     blood_group: Mapped[str | None] = mapped_column(String(10), nullable=True)
     # Demographics used to populate the patient-identification header of a
     # "Medical Records Transcription Report" (see prompts/transcription_report.md).
-    patient_id: Mapped[str | None] = mapped_column(String(50), nullable=True)
-    phone: Mapped[str | None] = mapped_column(String(30), nullable=True)
-    address: Mapped[str | None] = mapped_column(Text, nullable=True)
-    family_history: Mapped[str | None] = mapped_column(Text, nullable=True)
+    patient_id: Mapped[str | None] = mapped_column(EncryptedText, nullable=True)
+    phone: Mapped[str | None] = mapped_column(EncryptedText, nullable=True)
+    address: Mapped[str | None] = mapped_column(EncryptedText, nullable=True)
+    family_history: Mapped[str | None] = mapped_column(EncryptedText, nullable=True)
     height_cm: Mapped[float | None] = mapped_column(Float, nullable=True)
     weight_kg: Mapped[float | None] = mapped_column(Float, nullable=True)
-    allergies_json: Mapped[str | None] = mapped_column(Text, nullable=True)
-    emergency_contact_name: Mapped[str | None] = mapped_column(String(100), nullable=True)
-    emergency_contact_phone: Mapped[str | None] = mapped_column(String(30), nullable=True)
-    notes: Mapped[str | None] = mapped_column(Text, nullable=True)
+    allergies_json: Mapped[str | None] = mapped_column(EncryptedText, nullable=True)
+    emergency_contact_name: Mapped[str | None] = mapped_column(EncryptedText, nullable=True)
+    emergency_contact_phone: Mapped[str | None] = mapped_column(EncryptedText, nullable=True)
+    notes: Mapped[str | None] = mapped_column(EncryptedText, nullable=True)
     # Per-member cloud-AI consent. When False, AI work for this member is forced
     # local-only (Ollama) so their PHI never egresses to a cloud provider.
     # Defaults True (legacy behaviour); opt out for sensitive members.

@@ -6,7 +6,8 @@ from datetime import datetime, date, time, timezone
 from uuid import UUID, uuid4
 from sqlalchemy import ForeignKey, Index
 from sqlalchemy.orm import Mapped, mapped_column, relationship
-from sqlalchemy.types import Text, DateTime, Boolean, Date, Time, Enum
+from sqlalchemy.types import DateTime, Boolean, Date, Time, Enum
+from app.db_types import EncryptedText
 from app.models.base import Base, RecordType
 
 
@@ -26,17 +27,17 @@ class HealthRecord(Base):
     record_type: Mapped[RecordType] = mapped_column(Enum(RecordType), nullable=False, index=True)
     record_date: Mapped[date] = mapped_column(Date, nullable=False, index=True)
     record_time: Mapped[time | None] = mapped_column(Time, nullable=True)
-    clinical_data: Mapped[str] = mapped_column(Text, nullable=False)
-    diagnosis: Mapped[str | None] = mapped_column(Text, nullable=True)
-    prescription_text: Mapped[str | None] = mapped_column(Text, nullable=True)
-    summary: Mapped[str | None] = mapped_column(Text, nullable=True)
-    transcription_report: Mapped[str | None] = mapped_column(Text, nullable=True)
+    clinical_data: Mapped[str] = mapped_column(EncryptedText, nullable=False)
+    diagnosis: Mapped[str | None] = mapped_column(EncryptedText, nullable=True)
+    prescription_text: Mapped[str | None] = mapped_column(EncryptedText, nullable=True)
+    summary: Mapped[str | None] = mapped_column(EncryptedText, nullable=True)
+    transcription_report: Mapped[str | None] = mapped_column(EncryptedText, nullable=True)
     # JSON (Text) verification result from the second-model check on
     # ``transcription_report`` (status/verifier/warnings/summary). Null until the
     # report is generated and validated.
-    transcription_verification: Mapped[str | None] = mapped_column(Text, nullable=True)
+    transcription_verification: Mapped[str | None] = mapped_column(EncryptedText, nullable=True)
     next_review_date: Mapped[date | None] = mapped_column(Date, nullable=True)
-    tags: Mapped[str | None] = mapped_column(Text, nullable=True)
+    tags: Mapped[str | None] = mapped_column(EncryptedText, nullable=True)
     is_deleted: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False, index=True)
     created_at: Mapped[datetime] = mapped_column(
         DateTime,

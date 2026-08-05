@@ -90,7 +90,7 @@ async def get_latest_smart_report(
     result = await db.execute(
         select(AIInsight)
         .where(
-            AIInsight.prompt.like(f"__smartreport__{member_id}__%"),
+            AIInsight.prompt_key == f"__smartreport__{member_id}__",
             AIInsight.health_record_id.is_(None),
         )
         .order_by(AIInsight.generated_at.desc())

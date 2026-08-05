@@ -6,7 +6,7 @@ from datetime import date
 from fastapi import APIRouter, Depends, Query
 from pydantic import BaseModel, Field
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select, or_
+from sqlalchemy import select
 from sqlalchemy.orm import selectinload
 from app.core.database import get_db
 from app.core.deps import get_household_from_token
@@ -130,32 +130,18 @@ async def smart_search_records(
             except ValueError:
                 pass
 
-        if filters.get("keywords"):
-            esc_pct = "\\%"
-            esc_us = "\\_"
-            dbl_bs = "\\\\"
-            kw_clauses = [
-                HealthRecord.clinical_data.ilike(
-                    f"%{kw.replace(chr(92), dbl_bs).replace('%', esc_pct).replace('_', esc_us)}%",
-                    escape="\\",
-                )
-                for kw in filters["keywords"]
-            ]
-            if kw_clauses:
-                stmt = stmt.where(or_(*kw_clauses))
-    else:
-        # Fallback: simple ILIKE search
-        escaped = query.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
-        stmt = stmt.where(
-            or_(
-                HealthRecord.clinical_data.ilike(f"%{escaped}%", escape="\\"),
-                HealthRecord.diagnosis.ilike(f"%{escaped}%", escape="\\"),
-            )
-        )
+        # keywords are matched in Python below (clinical_data is encrypted at rest)
+    # Fallback term is also matched in Python below.
 
-    stmt = stmt.order_by(HealthRecord.record_date.desc()).limit(limit)
+    # clinical_data/diagnosis/prescription_text are Fernet-encrypted at rest, so
+    # keyword/term matching can't use SQL ILIKE — run it in Python after the
+    # TypeDecorator transparently decrypts each row (bounded per-household).
+    from app.services.health_record_service import record_matches_any
+
+    search_terms: list[str] = list(filters.get("keywords") or []) if ai_powered else [query]
+    stmt = stmt.order_by(HealthRecord.record_date.desc())
     result = await db.execute(stmt)
-    records = list(result.scalars().all())
+    records = [r for r in result.scalars().all() if record_matches_any(r, search_terms)][:limit]
 
     # Build response
     results = []

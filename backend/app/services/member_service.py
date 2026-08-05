@@ -666,7 +666,7 @@ class MemberService:
         result = await self.db.execute(
             select(AIInsight)
             .where(
-                AIInsight.prompt == f"__drug_interactions__{member_id}",
+                AIInsight.prompt_key == f"__drug_interactions__{member_id}",
                 AIInsight.generated_at >= cutoff,
             )
             .order_by(AIInsight.generated_at.desc())
@@ -694,9 +694,18 @@ class MemberService:
         result = await self.db.execute(
             select(AIInsight)
             .where(
-                AIInsight.prompt.notlike("__drug_interactions__%"),
-                AIInsight.prompt.notlike("__preconsult__%"),
-                AIInsight.prompt.notlike("__smartreport__%"),
+                or_(
+                    AIInsight.prompt_key.is_(None),
+                    AIInsight.prompt_key.notlike("__drug_interactions__%"),
+                ),
+                or_(
+                    AIInsight.prompt_key.is_(None),
+                    AIInsight.prompt_key.notlike("__preconsult__%"),
+                ),
+                or_(
+                    AIInsight.prompt_key.is_(None),
+                    AIInsight.prompt_key.notlike("__smartreport__%"),
+                ),
                 or_(
                     AIInsight.health_record_id.in_(member_record_ids),
                     AIInsight.conversation_id.in_(member_conv_ids),
@@ -714,7 +723,7 @@ class MemberService:
         result = await self.db.execute(
             select(AIInsight)
             .where(
-                AIInsight.prompt.like(f"__preconsult__{member_id}__%"),
+                AIInsight.prompt_key == f"__preconsult__{member_id}__",
                 AIInsight.health_record_id.is_(None),
             )
             .order_by(AIInsight.generated_at.desc())
@@ -729,7 +738,7 @@ class MemberService:
         result = await self.db.execute(
             select(AIInsight)
             .where(
-                AIInsight.prompt.like(f"__smartreport__{member_id}__%"),
+                AIInsight.prompt_key == f"__smartreport__{member_id}__",
                 AIInsight.health_record_id.is_(None),
             )
             .order_by(AIInsight.generated_at.desc())

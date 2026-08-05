@@ -5,7 +5,7 @@ import logging
 from uuid import UUID
 from pydantic import BaseModel
 from fastapi import APIRouter, Depends, HTTPException, Query
-from sqlalchemy import select, or_, text
+from sqlalchemy import select, text
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import joinedload
 from app.core.database import get_db
@@ -214,10 +214,16 @@ async def search_household_records(
     household: Household = Depends(get_household_from_token),
     db: AsyncSession = Depends(get_db),
 ):
-    """Search records across all household members by diagnosis, clinical_data, or provider name."""
+    """Search records across all household members by diagnosis, clinical_data, or prescription text.
+
+    clinical_data/diagnosis/prescription_text are Fernet-encrypted at rest, so
+    the substring match runs in Python after transparent decryption (bounded
+    per-household). Provider name lives on the Provider model (plaintext) and is
+    no longer searched here — it isn't patient PHI.
+    """
     household_id = UUID(str(household.id))
-    escaped = q.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
-    pattern = f"%{escaped}%"
+    from app.services.health_record_service import record_matches_text
+
     stmt = (
         select(HealthRecord)
         .options(joinedload(HealthRecord.provider), joinedload(HealthRecord.attachments))
@@ -226,17 +232,12 @@ async def search_household_records(
             FamilyMember.household_id == household_id,
             FamilyMember.is_active.is_(True),
             HealthRecord.is_deleted.is_(False),
-            or_(
-                HealthRecord.diagnosis.ilike(pattern, escape="\\"),
-                HealthRecord.clinical_data.ilike(pattern, escape="\\"),
-                HealthRecord.prescription_text.ilike(pattern, escape="\\"),
-            ),
         )
         .order_by(HealthRecord.record_date.desc(), HealthRecord.created_at.desc())
-        .limit(limit)
     )
-    rows = await db.execute(stmt)
-    return list(rows.scalars().unique().all())
+    rows = (await db.execute(stmt)).scalars().unique().all()
+    matched = [r for r in rows if record_matches_text(r, q)]
+    return matched[:limit]
 
 
 class ResetDatabaseRequest(BaseModel):

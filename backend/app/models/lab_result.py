@@ -7,6 +7,7 @@ from uuid import UUID, uuid4
 from sqlalchemy import ForeignKey, Index
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 from sqlalchemy.types import Text, DateTime, Date
+from app.db_types import EncryptedText
 from app.models.base import Base
 
 
@@ -23,11 +24,14 @@ class LabResult(Base):
     health_record_id: Mapped[UUID | None] = mapped_column(
         ForeignKey("health_records.id", ondelete="SET NULL"), nullable=True
     )
+    # test_name is a test-type label (e.g. "HbA1c"), left plaintext: it is used
+    # in GROUP BY aggregation / indexed (ix_lab_results_member_test), and is not
+    # patient PHI by itself.
     test_name: Mapped[str] = mapped_column(Text, nullable=False)
-    result: Mapped[str] = mapped_column(Text, nullable=False)
-    units: Mapped[str] = mapped_column(Text, default="")
-    ref_value: Mapped[str] = mapped_column(Text, default="")
-    note: Mapped[str] = mapped_column(Text, default="")
+    result: Mapped[str] = mapped_column(EncryptedText, nullable=False)
+    units: Mapped[str] = mapped_column(EncryptedText, default="")
+    ref_value: Mapped[str] = mapped_column(EncryptedText, default="")
+    note: Mapped[str] = mapped_column(EncryptedText, default="")
     record_date: Mapped[date | None] = mapped_column(Date, nullable=True)
     created_at: Mapped[datetime] = mapped_column(
         DateTime,

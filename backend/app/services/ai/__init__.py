@@ -17,6 +17,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.config import get_settings
 from app.models.base import AIInsight, Message, MessageRole
+from app.models.ai import cache_key_from_prompt
 from app.schemas.ai_provider_config import AIProviderConfig, ProviderConfigItem, ordered_providers
 
 if TYPE_CHECKING:
@@ -195,6 +196,7 @@ class AIService:
             health_record_id=health_record_id,
             conversation_id=conversation_id,
             prompt=prompt,
+            prompt_key=cache_key_from_prompt(prompt),
             response=response,
             provider_used=provider,
             sources_json=sources_json,
@@ -361,6 +363,7 @@ class AIService:
             health_record_id=health_record_id,
             conversation_id=conversation_id,
             prompt=prompt,
+            prompt_key=cache_key_from_prompt(prompt),
             response=full_response,
             provider_used=provider,
             sources_json=sources_json,
@@ -579,6 +582,7 @@ class AIService:
         insight = AIInsight(
             conversation_id=conversation_id,
             prompt=user_message,
+            prompt_key=cache_key_from_prompt(user_message),
             response=full_response,
             provider_used=provider,
         )
@@ -683,6 +687,7 @@ class AIService:
         insight = AIInsight(
             conversation_id=conversation_id,
             prompt=user_message,
+            prompt_key=cache_key_from_prompt(user_message),
             response=response_text,
             provider_used=provider,
         )

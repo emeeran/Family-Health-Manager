@@ -6,7 +6,8 @@ from datetime import datetime, timezone
 from uuid import UUID, uuid4
 from sqlalchemy import ForeignKey
 from sqlalchemy.orm import Mapped, mapped_column, relationship
-from sqlalchemy.types import String, Text, DateTime
+from sqlalchemy.types import String, DateTime
+from app.db_types import EncryptedText
 from app.models.base import Base
 
 
@@ -22,9 +23,11 @@ class Provider(Base):
     )
     name: Mapped[str] = mapped_column(String(100), nullable=False)
     provider_type: Mapped[str] = mapped_column(String(20), default="doctor", nullable=False)
-    speciality: Mapped[str | None] = mapped_column(String(100), nullable=True)
-    phone: Mapped[str | None] = mapped_column(String(20), nullable=True)
-    address: Mapped[str | None] = mapped_column(Text, nullable=True)
+    # name stays plaintext (used in ORDER BY for provider listings; a
+    # doctor/clinic name, not patient PHI). Contact fields are encrypted.
+    speciality: Mapped[str | None] = mapped_column(EncryptedText, nullable=True)
+    phone: Mapped[str | None] = mapped_column(EncryptedText, nullable=True)
+    address: Mapped[str | None] = mapped_column(EncryptedText, nullable=True)
     created_at: Mapped[datetime] = mapped_column(
         DateTime,
         default=lambda: datetime.now(timezone.utc),

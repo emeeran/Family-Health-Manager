@@ -14,8 +14,11 @@ def _fresh_settings(monkeypatch, **env):
     """Build a Settings instance from a clean env (bypassing the lru_cache)."""
     from app.core import config
 
-    # Clear module-level state so each test starts fresh.
-    monkeypatch.delenv("APP_ENV", raising=False)
+    # Clear module-level state so each test starts fresh — including the
+    # ENCRYPTION_KEY conftest sets for the rest of the suite, so a test that
+    # omits it truly exercises the "missing key" path.
+    for var in ("APP_ENV", "ENCRYPTION_KEY", "HEALTH_CHECK_SECRET", "SECRET_KEY"):
+        monkeypatch.delenv(var, raising=False)
     for k, v in env.items():
         monkeypatch.setenv(k, v)
     importlib.reload(config)

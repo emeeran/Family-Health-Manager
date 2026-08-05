@@ -19,6 +19,7 @@ from app.core.backup_crypto import (
     encrypt_payload,
 )
 from app.core.config import get_settings
+from app.models.ai import cache_key_from_prompt
 from app.models.base import (
     AIInsight,
     Attachment,
@@ -720,6 +721,7 @@ class BackupService:
                         health_record_id=record_id,
                         conversation_id=conv_id,
                         prompt=i.prompt,
+                        prompt_key=cache_key_from_prompt(i.prompt),
                         response=i.response,
                         provider_used=i.provider_used,
                         generated_at=i.generated_at,

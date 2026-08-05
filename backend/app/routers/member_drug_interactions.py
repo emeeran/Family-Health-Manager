@@ -118,6 +118,7 @@ async def _generate_cache_and_verify(
     interactions = await _generate_interactions(db, household, medications, cloud_consent)
     cached_insight = AIInsight(
         prompt=f"__drug_interactions__{member_id}",
+        prompt_key=f"__drug_interactions__{member_id}",
         response=json.dumps(interactions),
         provider_used="auto",
     )
@@ -162,7 +163,7 @@ async def get_latest_drug_interactions(
     result = await db.execute(
         select(AIInsight)
         .where(
-            AIInsight.prompt == cache_key,
+            AIInsight.prompt_key == cache_key,
             AIInsight.generated_at >= cutoff,
         )
         .order_by(AIInsight.generated_at.desc())

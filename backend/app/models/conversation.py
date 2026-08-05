@@ -6,7 +6,8 @@ from datetime import datetime, timezone
 from uuid import UUID, uuid4
 from sqlalchemy import ForeignKey
 from sqlalchemy.orm import Mapped, mapped_column, relationship
-from sqlalchemy.types import String, Text, DateTime, Enum
+from sqlalchemy.types import DateTime, Enum
+from app.db_types import EncryptedText
 from app.models.base import Base, MessageRole, ConversationScope
 
 
@@ -26,7 +27,7 @@ class Conversation(Base):
     scope: Mapped[ConversationScope] = mapped_column(
         Enum(ConversationScope), nullable=False, index=True
     )
-    title: Mapped[str | None] = mapped_column(String(200), nullable=True)
+    title: Mapped[str | None] = mapped_column(EncryptedText, nullable=True)
     created_at: Mapped[datetime] = mapped_column(
         DateTime,
         default=lambda: datetime.now(timezone.utc),
@@ -62,7 +63,7 @@ class Message(Base):
         ForeignKey("conversations.id"), nullable=False, index=True
     )
     role: Mapped[MessageRole] = mapped_column(Enum(MessageRole), nullable=False)
-    content: Mapped[str] = mapped_column(Text, nullable=False)
+    content: Mapped[str] = mapped_column(EncryptedText, nullable=False)
     created_at: Mapped[datetime] = mapped_column(
         DateTime,
         default=lambda: datetime.now(timezone.utc),
