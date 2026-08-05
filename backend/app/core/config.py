@@ -2,10 +2,31 @@
 
 import logging
 import os
+import tomllib
 from functools import lru_cache
+from pathlib import Path
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 logger = logging.getLogger(__name__)
+
+
+def _app_version() -> str:
+    """Single source of truth: read the version from ``backend/pyproject.toml``.
+
+    Keeps the app's reported version (``Settings.APP_VERSION``, surfaced in
+    /health, /ai/status, the desktop about) in lockstep with the packaged
+    version (the .deb build reads the same pyproject). Falls back to a literal
+    only if the file can't be read (e.g. an exotic non-frozen runtime without
+    the repo layout); the PyInstaller spec bundles pyproject.toml so the frozen
+    sidecar reads the real value.
+    """
+    try:
+        pyproject = Path(__file__).resolve().parents[2] / "pyproject.toml"
+        with open(pyproject, "rb") as f:
+            return tomllib.load(f)["project"]["version"]
+    except Exception as exc:  # noqa: BLE001 — never block boot over a version read
+        logger.debug("Could not read version from pyproject.toml: %s", exc)
+        return "1.3.0"
 
 
 class Settings(BaseSettings):
@@ -20,7 +41,7 @@ class Settings(BaseSettings):
     # Application
     APP_ENV: str = "development"
     APP_NAME: str = "DAWNSTAR Family Health Manager"
-    APP_VERSION: str = "1.2.17"
+    APP_VERSION: str = _app_version()
     DEBUG: bool = False
     # Root log level (DEBUG/INFO/WARNING/ERROR/CRITICAL). Default WARNING keeps
     # the journal quiet; raise it for diagnosis without a rebuild.
