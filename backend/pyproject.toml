@@ -25,7 +25,7 @@ dependencies = [
     "qrcode[pil]>=8.2",
     "redis[hiredis]>=5.0.0",
     "sqlalchemy>=2.0.48",
-    "uvicorn[standard]>=0.42.0",
+    "uvicorn[standard]>=0.52.1",
 ]
 
 [dependency-groups]
